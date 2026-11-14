@@ -79,6 +79,9 @@ namespace Memoria.Multiplayer
             foreach (String entry in text.Split(';'))
             {
                 String trimmed = entry.Trim().Trim('"').Trim();
+                // Tolerate a pasted "FieldModels = " in front of the value
+                if (trimmed.StartsWith(nameof(FieldModels), StringComparison.OrdinalIgnoreCase) && trimmed.Substring(nameof(FieldModels).Length).TrimStart().StartsWith("="))
+                    trimmed = trimmed.Substring(nameof(FieldModels).Length).TrimStart().Substring(1).Trim();
                 if (trimmed.Length == 0)
                     continue;
                 Int32 eq = trimmed.IndexOf('=');

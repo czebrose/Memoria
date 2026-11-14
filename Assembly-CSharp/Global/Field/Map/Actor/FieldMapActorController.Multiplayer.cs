@@ -76,7 +76,7 @@ public partial class FieldMapActorController
         }
         if (now - this.followerStatsStart < 1f)
             return;
-        if (this.followerStatsDistance > 1f)
+        if (this.followerStatsDistance > 1f && Configuration.Multiplayer.DebugOverlay) // only with the debug overlay
         {
             Int32 controllers = this.GetComponents<FieldMapActorController>().Length;
             Log.Message($"[Multiplayer] P{this.multiplayerOwner} movement over {now - this.followerStatsStart:0.00}s: {this.followerStatsDistance:0} units in {this.followerStatsTicks} ticks ({this.followerStatsMovingTicks} moving, {this.followerStatsSameFrameTicks} extra in the same frame) over {Time.frameCount - this.followerStatsFrame} frames, biggest step {this.followerStatsMaxStep:0}, speed {this.speed:0}, controllers {controllers}; leader moved {this.followerStatsLeaderDistance:0}");

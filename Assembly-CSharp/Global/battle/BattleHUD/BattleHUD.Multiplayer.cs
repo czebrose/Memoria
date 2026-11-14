@@ -580,6 +580,8 @@ public partial class BattleHUD
         if (menu.Rows.Count == 0)
             menu.Rows.Add(new MultiplayerMenuRow { Text = "(no target)", Enabled = false, Value = -1 });
         String list = String.Join(", ", menu.Rows.ConvertAll(r => $"'{r.Text}'{(r.Enabled ? "" : " (off)")}").ToArray());
+        if (!Configuration.Multiplayer.DebugOverlay) // diagnostics for the blank target list, only with the debug overlay
+            return;
         Log.Message($"[Multiplayer] P{menu.Player} target list for {menu.CommandId} sub {menu.SubIndex}: type {type}, default {(menu.DefaultAlly ? "ally" : "enemy")}, dead {menu.TargetDead}, all {menu.AllMode}, cursor {menu.Cursor}: {list}");
         menu.PanelLogPending = true;
     }

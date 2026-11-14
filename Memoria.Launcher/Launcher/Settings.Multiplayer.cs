@@ -132,7 +132,7 @@ namespace Memoria.Launcher
                 }
             }
 
-            _multiplayerFieldModels = String.Join(Environment.NewLine, SplitMultiplayerList(iniFile.GetSetting(MultiplayerSection, "FieldModels"), ';'));
+            _multiplayerFieldModels = String.Join(Environment.NewLine, Array.ConvertAll(SplitMultiplayerList(iniFile.GetSetting(MultiplayerSection, "FieldModels"), ';'), StripFieldModelsKey));
 
             Refresh(nameof(MultiplayerEnabled));
             Refresh(nameof(MultiplayerBattleMenus));
@@ -181,7 +181,20 @@ namespace Memoria.Launcher
 
         private static String JoinFieldModels(String text)
         {
-            return String.Join("; ", SplitMultiplayerList(text, ';'));
+            // A whole ini line pasted into the box ("FieldModels = Beatrix=...") keeps only its value
+            String[] entries = SplitMultiplayerList(text, ';');
+            for (Int32 i = 0; i < entries.Length; i++)
+                entries[i] = StripFieldModelsKey(entries[i]);
+            return String.Join("; ", Array.FindAll(entries, entry => entry.Length > 0));
+        }
+
+        private static String StripFieldModelsKey(String entry)
+        {
+            const String key = "FieldModels";
+            if (!entry.StartsWith(key, StringComparison.OrdinalIgnoreCase))
+                return entry;
+            String rest = entry.Substring(key.Length).TrimStart();
+            return rest.StartsWith("=") ? rest.Substring(1).Trim() : entry;
         }
     }
 }
