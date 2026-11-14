@@ -6,6 +6,10 @@
 
 Note: This is **not** affiliated with the Memoria Project, a 2023 Proof-of-concept tribute render in Unreal Engine
 
+> **This fork adds local multiplayer (work in progress):** up to 4 players, each with their own controller and characters,
+> in battles and on fields. See **[docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)** for what works, settings, how to try it and
+> how to build it.
+
 [![Download Latest Release](https://img.shields.io/badge/Download%20Latest%20Release-006400?logo=github)](https://github.com/Albeoris/Memoria/releases/latest)
 
 ## Features
