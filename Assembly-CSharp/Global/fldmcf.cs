@@ -60,11 +60,15 @@ public static class fldmcf
             Int32 charUID = ch.Key;
             FF9Char character = ch.Value;
             Actor charActor = PersistenSingleton<EventEngine>.Instance.getActiveActorByUID(charUID);
+            // [Multiplayer] Extra players' field characters are detached actors (not in the active list): light them too
+            Boolean isFollower = charActor == null && character != null && Memoria.Multiplayer.MultiplayerField.IsFollowerActor(character.evt);
+            if (isFollower)
+                charActor = (Actor)character.evt;
             if (character != null && charActor != null)
             {
                 FF9FieldCharState charState = FF9StateSystem.Field.FF9Field.loc.map.charStateArray[charUID];
                 DMSMapChar charLight = fldmcf.GetCharLightByModelID(lightConfig, charActor.model);
-                DMSMapLight floorLight = fldmcf.GetLightByCharFloor(lightConfig, charUID, out Int16 charFloor);
+                DMSMapLight floorLight = fldmcf.GetLightByCharFloor(lightConfig, charUID, out Int16 charFloor, isFollower ? charActor : null);
                 UInt32 isUsingLadder = character.attr & 4u;
                 Boolean applyLight = (charState.floor & 0xFF) != (charFloor & 0xFF) || (isUsingLadder ^ (charState.attr & 4u)) != 0 || FF9Char.ff9charptr_attr_test(character, 0x100) == 0;
                 if (applyLight)
@@ -157,11 +161,13 @@ public static class fldmcf
         return null;
     }
 
-    private static DMSMapLight GetLightByCharFloor(DMSMapConf lightConfig, Int32 uid, out Int16 charFloor)
+    private static DMSMapLight GetLightByCharFloor(DMSMapConf lightConfig, Int32 uid, out Int16 charFloor, Actor follower = null)
     {
         charFloor = 0;
         Int16 triIndex = 0;
         BGI.BGI_charGetInfo(uid, ref triIndex, ref charFloor);
+        if (follower != null && follower.fieldMapActorController != null) // [Multiplayer] BGI only knows active actors
+            charFloor = (Int16)follower.fieldMapActorController.activeFloor;
         if (lightConfig.lightUse == 0)
             return null;
         if ((charFloor & 0xFF) == 0xFF)

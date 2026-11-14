@@ -377,6 +377,10 @@ public class HonoluluFieldMain : HonoBehavior
     private void updatePlayerObj()
     {
         Obj objUID = this.ee.GetObjByUID(250);
+        // [Multiplayer] While an extra player interacts, object 250 can mean their character: it must never become the
+        // field's player (isPlayer would make it move twice per tick and the camera/leader logic would follow it)
+        if (Memoria.Multiplayer.MultiplayerField.IsFollowerActor(objUID))
+            return;
         String text = "Player";
         if (objUID != null && objUID.go != null && objUID.go.name != text)
         {

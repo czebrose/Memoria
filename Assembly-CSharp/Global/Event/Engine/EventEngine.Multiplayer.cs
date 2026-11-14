@@ -13,6 +13,8 @@ public partial class EventEngine
             return;
         // Same choice as ProcessEvents for a moving / standing actor
         this.SetAnim(actor, moving ? (running ? actor.run : actor.walk) : actor.idle);
+        if (moving && actor.fieldMapActorController != null) // FieldModels' walk/run animation speed
+            actor.aspeed = actor.fieldMapActorController.multiplayerMoveAnimSpeed;
         // Same frame advance as ProcessAnime for an actor without a scripted animation
         if (actor.frameN > 0 && this.NextFrame(actor) >= actor.frameN)
         {

@@ -1,5 +1,6 @@
 using Memoria;
 using Memoria.Multiplayer;
+using Memoria.Prime;
 using System;
 using UnityEngine;
 
@@ -16,10 +17,90 @@ public partial class FieldMapActorController
 
     public Boolean IsMultiplayerFollower => this.multiplayerOwner > 0;
 
+    /// <summary>Walk/run animation speed (16 = normal), from FieldModels.</summary>
+    [NonSerialized]
+    public Byte multiplayerMoveAnimSpeed = 16;
+
+    [NonSerialized]
+    private Single followerJumpLogTime;
+
+    /// <summary>Diagnostics: log a tick in which this character moved much further than walking/running allows.</summary>
+    private void LogFollowerJump(String how, Vector3 startPos, String details)
+    {
+        Vector3 moved = this.curPos - startPos;
+        moved.y = 0f;
+        if (moved.magnitude <= 75f || Time.realtimeSinceStartup < this.followerJumpLogTime)
+            return;
+        this.followerJumpLogTime = Time.realtimeSinceStartup + 1f;
+        Log.Message($"[Multiplayer] P{this.multiplayerOwner} moved {moved.magnitude:0} in one tick ({how}; {details}) from {startPos} to {this.curPos}, tri {this.activeTri}, floor {this.activeFloor}, deltaTime {Time.deltaTime:0.000}");
+    }
+
+    // Diagnostics: once a second while moving, how far this character went, in how many movement ticks and frames
+    [NonSerialized] private Single followerStatsStart = -1f;
+    [NonSerialized] private Int32 followerStatsFrame;
+    [NonSerialized] private Int32 followerStatsTicks;
+    [NonSerialized] private Int32 followerStatsMovingTicks;
+    [NonSerialized] private Int32 followerStatsSameFrameTicks;
+    [NonSerialized] private Int32 followerStatsLastFrame;
+    [NonSerialized] private Single followerStatsDistance;
+    [NonSerialized] private Single followerStatsMaxStep;
+    [NonSerialized] private Single followerStatsLeaderDistance;
+    [NonSerialized] private Vector3 followerStatsLeaderPos;
+
+    private void TrackFollowerStats(Vector3 startPos, Boolean moving)
+    {
+        Single now = Time.realtimeSinceStartup;
+        if (this.followerStatsStart < 0f)
+        {
+            this.followerStatsStart = now;
+            this.followerStatsFrame = Time.frameCount;
+        }
+        Vector3 moved = this.curPos - startPos;
+        moved.y = 0f;
+        this.followerStatsTicks++;
+        if (Time.frameCount == this.followerStatsLastFrame)
+            this.followerStatsSameFrameTicks++;
+        this.followerStatsLastFrame = Time.frameCount;
+        if (moving)
+            this.followerStatsMovingTicks++;
+        this.followerStatsDistance += moved.magnitude;
+        this.followerStatsMaxStep = Math.Max(this.followerStatsMaxStep, moved.magnitude);
+        FieldMapActorController leader = this.fieldMap.playerController;
+        if (leader != null)
+        {
+            Vector3 leaderMoved = leader.curPos - this.followerStatsLeaderPos;
+            leaderMoved.y = 0f;
+            if (this.followerStatsTicks > 1 && leaderMoved.magnitude < 200f)
+                this.followerStatsLeaderDistance += leaderMoved.magnitude;
+            this.followerStatsLeaderPos = leader.curPos;
+        }
+        if (now - this.followerStatsStart < 1f)
+            return;
+        if (this.followerStatsDistance > 1f)
+        {
+            Int32 controllers = this.GetComponents<FieldMapActorController>().Length;
+            Log.Message($"[Multiplayer] P{this.multiplayerOwner} movement over {now - this.followerStatsStart:0.00}s: {this.followerStatsDistance:0} units in {this.followerStatsTicks} ticks ({this.followerStatsMovingTicks} moving, {this.followerStatsSameFrameTicks} extra in the same frame) over {Time.frameCount - this.followerStatsFrame} frames, biggest step {this.followerStatsMaxStep:0}, speed {this.speed:0}, controllers {controllers}; leader moved {this.followerStatsLeaderDistance:0}");
+        }
+        this.followerStatsStart = now;
+        this.followerStatsFrame = Time.frameCount;
+        this.followerStatsTicks = 0;
+        this.followerStatsMovingTicks = 0;
+        this.followerStatsSameFrameTicks = 0;
+        this.followerStatsDistance = 0f;
+        this.followerStatsMaxStep = 0f;
+        this.followerStatsLeaderDistance = 0f;
+    }
+
     /// <summary>Called by UpdateMovement in place of MovePC/MoveNPC for an extra player's character.</summary>
     private void MoveMultiplayerFollower(Boolean copyLastPos)
     {
         EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+        if (this.isPlayer)
+        {
+            // Never the field's player: HonoUpdate would move it twice per tick whenever player 1 runs
+            this.isPlayer = false;
+            Log.Warning($"[Multiplayer] P{this.multiplayerOwner}'s character was marked as the field's player; undone");
+        }
         Boolean userControl = engine.GetUserControl();
         if (!userControl || copyLastPos)
             this.CopyLastPos();
@@ -81,6 +162,8 @@ public partial class FieldMapActorController
         // Walk/run only while actually moving (not while pushing against a wall or the screen edge)
         Vector3 moved = this.curPos - startPos;
         Boolean hasMoved = moving && new Vector2(moved.x, moved.z).sqrMagnitude > 1f;
+        this.LogFollowerJump("own movement", startPos, $"input {input.x:0.00},{input.y:0.00}, run {this.isRunning}, speed {this.speed:0}/{this.minimumSpeed:0}, control {userControl}");
+        this.TrackFollowerStats(startPos, moving);
         engine.AnimateMultiplayerFollower(this.originalActor, hasMoved, this.isRunning && hasMoved);
     }
 
@@ -129,6 +212,7 @@ public partial class FieldMapActorController
         this.isRunning = false;
         Vector3 moved = this.curPos - startPos;
         Boolean hasMoved = new Vector2(moved.x, moved.z).sqrMagnitude > 1f;
+        this.LogFollowerJump("walking with the leader", startPos, $"leader step {stepLength:0}, walks {leaderWalks}");
         engine.AnimateMultiplayerFollower(this.originalActor, hasMoved, running && hasMoved);
     }
 

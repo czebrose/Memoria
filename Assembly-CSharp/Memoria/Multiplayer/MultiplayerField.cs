@@ -332,6 +332,7 @@ namespace Memoria.Multiplayer
                 FieldMapActorController controller = actor.fieldMapActorController;
                 controller.radius = model.Size * 4f;
                 controller.multiplayerOwner = player;
+                controller.multiplayerMoveAnimSpeed = (Byte)Mathf.Clamp(Mathf.RoundToInt(16f * model.MoveAnimPercent / 100f), 1, 255);
                 FieldMapActor fieldActor = actor.go.GetComponent<FieldMapActor>();
                 if (fieldActor != null)
                     fieldActor.CharRadius = model.Size * 4f;

@@ -16,6 +16,7 @@ namespace Memoria.Multiplayer
         public UInt16 TurnLeft;
         public UInt16 TurnRight;
         public Byte Size;         // SetObjectLogicalSize's 1st argument (pathing radius / 4)
+        public Int32 MoveAnimPercent = 100; // walk/run animation playback speed, to match the steps to the movement speed
 
         public FieldModel(UInt16 model, Byte headHeight, UInt16 idle, UInt16 walk, UInt16 run, UInt16 turnLeft, UInt16 turnRight, Byte size)
         {
@@ -29,7 +30,7 @@ namespace Memoria.Multiplayer
             Size = size;
         }
 
-        public override String ToString() => $"model {Model}, anims {Idle}/{Walk}/{Run}/{TurnLeft}/{TurnRight}, size {Size}";
+        public override String ToString() => $"model {Model}, anims {Idle}/{Walk}/{Run}/{TurnLeft}/{TurnRight}, size {Size}" + (MoveAnimPercent != 100 ? $", walk/run anim speed {MoveAnimPercent}%" : "");
     }
 
     /// <summary>
@@ -37,7 +38,7 @@ namespace Memoria.Multiplayer
     /// Defaults are each character's most common model and animations in the game's own field scripts;
     /// [Multiplayer] FieldModels overrides them per character:
     ///   FieldModels = Beatrix=167,87,11676,11676,11676,11676,11676,26; Vivi=...
-    /// (model, head height, idle, walk, run, turn left, turn right, size)
+    /// (model, head height, idle, walk, run, turn left, turn right, size[, walk/run animation speed in %])
     /// </summary>
     public static class FieldModels
     {
@@ -83,9 +84,9 @@ namespace Memoria.Multiplayer
                 Int32 eq = trimmed.IndexOf('=');
                 String[] values = eq > 0 ? trimmed.Substring(eq + 1).Split(',') : new String[0];
                 CharacterId character;
-                if (eq <= 0 || !MultiplayerManager.TryParseCharacter(trimmed.Substring(0, eq).Trim(), out character) || values.Length != 8)
+                if (eq <= 0 || !MultiplayerManager.TryParseCharacter(trimmed.Substring(0, eq).Trim(), out character) || values.Length < 8 || values.Length > 9)
                 {
-                    Log.Warning($"[Multiplayer] FieldModels: cannot read '{trimmed}' (expected Name=model,height,idle,walk,run,turnL,turnR,size)");
+                    Log.Warning($"[Multiplayer] FieldModels: cannot read '{trimmed}' (expected Name=model,height,idle,walk,run,turnL,turnR,size[,animSpeed%])");
                     continue;
                 }
                 try
@@ -94,6 +95,8 @@ namespace Memoria.Multiplayer
                         UInt16.Parse(values[0].Trim()), Byte.Parse(values[1].Trim()),
                         UInt16.Parse(values[2].Trim()), UInt16.Parse(values[3].Trim()), UInt16.Parse(values[4].Trim()),
                         UInt16.Parse(values[5].Trim()), UInt16.Parse(values[6].Trim()), Byte.Parse(values[7].Trim()));
+                    if (values.Length > 8)
+                        model.MoveAnimPercent = Math.Max(10, Math.Min(400, Int32.Parse(values[8].Trim())));
                     if (!FF9BattleDB.GEO.TryGetValue(model.Model, out String _))
                     {
                         Log.Warning($"[Multiplayer] FieldModels: model {model.Model} for {character} does not exist");
