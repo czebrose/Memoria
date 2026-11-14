@@ -363,3 +363,13 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
   - Keyboard for a compact menu (P1 must use a pad).
   - Target highlighting on the battlefield.
   - Help texts.
+
+## Launcher: Multiplayer tab
+
+- **A "MULTIPLAYER" tab in the launcher** (between Advanced and Mods) edits `[Multiplayer]` in `Memoria.ini`; the ini stays the source of truth, so hand edits keep working.
+  - Column 1: Multiplayer on/off, players walk on fields (`FieldFollowers`), extra battle menus (`BattleMenus`), debug overlay; each player's controller (`PlayerPads`).
+  - Column 2: who plays each character, one dropdown per character (`Player2Characters`... `Player4Characters`; unlisted = player 1, as in the game).
+  - Column 3: `FieldModels` as free text, one character per line (written `;`-separated when the box loses focus).
+- **Code:** `Memoria.Launcher/Launcher/Settings.Multiplayer.cs` (properties, load/save), `SettingsGrid_Multiplayer.cs` (the three columns), tab in `MainWindow.xaml`, English texts in `Languages/en.xml` (other languages fall back to English). Two marked hook calls in `Settings.cs` (`SaveMultiplayerSetting`, `LoadMultiplayerSettings`).
+  - Not in the generic `SettingsList`: its writer sets `Enabled = 1` in a section whenever one of its toggles is switched on, which would turn multiplayer on with any multiplayer toggle.
+- **Building:** `tools/multiplayer/build-launcher.ps1` (`-TargetFramework v4.7.1` when only that targeting pack is installed; the launcher's project references are build-order only and are skipped). `install.ps1 -Launcher` installs it as `FF9_Launcher.exe` (original backed up once); `restore.ps1` puts the original back.

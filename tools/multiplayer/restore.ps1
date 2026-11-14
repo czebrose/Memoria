@@ -9,3 +9,7 @@ if (-not (Test-Path (Join-Path $backup 'Managed'))) { throw "No backup at $backu
 Copy-Item (Join-Path $backup 'Managed\*') (Join-Path $GamePath 'x64\FF9_Data\Managed') -Recurse -Force
 Copy-Item (Join-Path $backup 'Memoria.ini') (Join-Path $GamePath 'Memoria.ini') -Force
 Write-Host "Restored Managed\ and Memoria.ini from $backup"
+if (Test-Path (Join-Path $backup 'FF9_Launcher.exe')) {
+    Copy-Item (Join-Path $backup 'FF9_Launcher.exe') (Join-Path $GamePath 'FF9_Launcher.exe') -Force
+    Write-Host "Restored FF9_Launcher.exe from $backup"
+}

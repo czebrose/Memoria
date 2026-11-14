@@ -4,7 +4,9 @@
 # containing a Memoria.ini as a mod and adds it to [Mod] FolderNames.
 param(
     [string]$GamePath = 'C:\Program Files (x86)\Steam\steamapps\common\FINAL FANTASY IX',
-    [string]$BackupPath = (Join-Path $PSScriptRoot '..\..\..\MemoriaMultiplayerBackup')
+    [string]$BackupPath = (Join-Path $PSScriptRoot '..\..\..\MemoriaMultiplayerBackup'),
+    # Also install the dev-built launcher (build-launcher.ps1) as FF9_Launcher.exe; the original is backed up once
+    [switch]$Launcher
 )
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -23,4 +25,13 @@ if (-not (Test-Path $backup)) {
 foreach ($dll in 'Assembly-CSharp.dll', 'Memoria.Prime.dll', 'XInputDotNetPure.dll') {
     Copy-Item (Join-Path $root "Output\$dll") (Join-Path $managed $dll) -Force
     Write-Host "Installed $dll"
+}
+if ($Launcher) {
+    $launcherBackup = Join-Path $backup 'FF9_Launcher.exe'
+    if (-not (Test-Path $launcherBackup)) {
+        Copy-Item (Join-Path $GamePath 'FF9_Launcher.exe') $launcherBackup
+        Write-Host "Backed up FF9_Launcher.exe to $backup"
+    }
+    Copy-Item (Join-Path $root 'Output\Launcher\Memoria.Launcher.exe') (Join-Path $GamePath 'FF9_Launcher.exe') -Force
+    Write-Host 'Installed the launcher as FF9_Launcher.exe'
 }

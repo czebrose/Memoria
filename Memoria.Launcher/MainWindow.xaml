@@ -243,6 +243,37 @@
                 </Border>
             </TabItem>
 
+            <!-- Multiplayer Tab ([Multiplayer] fork addition) -->
+            <TabItem x:Name="menuMultiplayer"
+                Height="45"
+                Header="{DynamicResource Settings.menuMultiplayer}"
+                Style="{StaticResource MainTabs}" >
+                <Border Style="{StaticResource TransparentGridStyle}" Padding="0,0,20,0">
+                    <Grid UseLayoutRounding="True">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"  />
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <launcher:SettingsGrid_Multiplayer x:Name="SettingsGrid_Multiplayer"
+                            Grid.Column="0"
+                            Margin="20,15,0,0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top" />
+                        <launcher:SettingsGrid_Multiplayer2 x:Name="SettingsGrid_Multiplayer2"
+                            Grid.Column="1"
+                            Margin="20,15,0,0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top" />
+                        <launcher:SettingsGrid_Multiplayer3 x:Name="SettingsGrid_Multiplayer3"
+                            Grid.Column="2"
+                            Margin="20,15,0,0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top" />
+                    </Grid>
+                </Border>
+            </TabItem>
+
             <!-- Mods Tab -->
             <TabItem x:Name="ModManagerTab"
                 Height="45"

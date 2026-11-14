@@ -105,6 +105,8 @@
     <Compile Include="Launcher\SettingsGrid_Display.cs" />
     <Compile Include="Launcher\SettingsGrid_Main2.cs" />
     <Compile Include="Launcher\SettingsGrid_Main.cs" />
+    <Compile Include="Launcher\SettingsGrid_Multiplayer.cs" />
+    <Compile Include="Launcher\Settings.Multiplayer.cs" />
     <Compile Include="Launcher\Settings.cs" />
     <Compile Include="Launcher\SteamLauncherBootstrap.cs" />
     <Compile Include="Launcher\GameLaunchOptions.cs" />

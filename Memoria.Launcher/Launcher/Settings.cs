@@ -890,6 +890,7 @@ namespace Memoria.Launcher
                             iniFile.SetSetting("Graphics", "Enabled", "1");
                         break;
                 }
+                SaveMultiplayerSetting(iniFile, propertyName); // [Multiplayer] fork addition
                 iniFile.Save();
             }
             catch (Exception ex)
@@ -1225,6 +1226,8 @@ namespace Memoria.Launcher
                     _ => 0
                 });
                 Refresh(nameof(AntiAliasingChoice));
+
+                LoadMultiplayerSettings(iniFile); // [Multiplayer] fork addition
             }
             catch (Exception ex)
             {
