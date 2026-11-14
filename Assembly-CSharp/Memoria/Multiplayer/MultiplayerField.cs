@@ -132,6 +132,85 @@ namespace Memoria.Multiplayer
             return s_followers.TryGetValue(player, out Follower follower) && follower.Controller != null ? follower.Actor : null;
         }
 
+        /// <summary>
+        /// While movement is taken away: walk along when a script walks the leader (leaving through an exit or a door),
+        /// unless an extra player is the one acting (their pickup turns the leader, it is not a walk to follow) or a
+        /// message is on screen (a cutscene with dialogue).
+        /// </summary>
+        public static Boolean ShouldWalkWithLeader(EventEngine engine)
+        {
+            if (engine.MultiplayerRedirects.Count > 0 || Singleton<DialogManager>.Instance.Visible)
+                return false;
+            foreach (EventEngine.MultiplayerInteraction interaction in engine.MultiplayerInteractions)
+                if (interaction.HasControl || interaction.IsTalk)
+                    return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Who a character looks at while someone else acts: the extra player who talks, loots or picks something up, or
+        /// else the leader while a message is on screen (the leader talks to someone or receives an item).
+        /// </summary>
+        public static Boolean GetReactionFocus(EventEngine engine, Int32 forPlayer, out Vector3 focus)
+        {
+            focus = Vector3.zero;
+            Int32 actingPlayer = GetActingExtraPlayer(engine);
+            if (actingPlayer != 0)
+            {
+                Actor acting = GetFollowerActor(actingPlayer);
+                if (actingPlayer == forPlayer || acting == null || acting.fieldMapActorController == null)
+                    return false;
+                focus = acting.fieldMapActorController.curPos;
+                return true;
+            }
+            FieldMapActorController leader = engine.fieldmap?.playerController;
+            if (leader == null || !Singleton<DialogManager>.Instance.Visible)
+                return false;
+            focus = leader.curPos;
+            return true;
+        }
+
+        /// <summary>
+        /// While an extra player talks or loots, the leader (held still meanwhile) turns to look at them. Not during a
+        /// pickup run on the leader's entry: that function turns the leader toward the item itself.
+        /// </summary>
+        public static void TurnLeaderTowardActingPlayer(EventEngine engine)
+        {
+            if (engine.MultiplayerRedirects.Count > 0)
+                return;
+            Int32 actingPlayer = GetActingExtraPlayer(engine);
+            Actor acting = actingPlayer != 0 ? GetFollowerActor(actingPlayer) : null;
+            FieldMapActorController leader = engine.fieldmap?.playerController;
+            if (acting == null || acting.fieldMapActorController == null || leader == null || leader.actor == null || leader.actor.actor == null)
+                return;
+            Vector3 toActing = acting.fieldMapActorController.curPos - leader.curPos;
+            toActing.y = 0f;
+            if (toActing.sqrMagnitude < 1f)
+                return;
+            // Same angle convention and smoothing as MovePC's turn
+            Single target = Mathf.Atan2(-toActing.x, -toActing.z) * Mathf.Rad2Deg;
+            Single current = leader.actor.actor.rotAngle[1];
+            if (Mathf.Abs(target - current) > 180f)
+                target += target > current ? -360f : 360f;
+            Single rot = Mathf.Lerp(current, target, 0.3f);
+            while (rot > 180f)
+                rot -= 360f;
+            while (rot < -180f)
+                rot += 360f;
+            leader.actor.actor.rotAngle[1] = rot;
+        }
+
+        /// <summary>The extra player who is talking, looting or picking something up right now, or 0.</summary>
+        public static Int32 GetActingExtraPlayer(EventEngine engine)
+        {
+            foreach (EventEngine.MultiplayerInteraction interaction in engine.MultiplayerInteractions)
+                if (interaction.HasControl || interaction.IsTalk)
+                    return interaction.Player;
+            if (engine.MultiplayerRedirects.Count > 0)
+                return engine.MultiplayerRedirects[0].Player;
+            return 0;
+        }
+
         /// <summary>Movement input for a follower: left stick or D-pad of its owner's pad, and whether they hold run (B).</summary>
         public static Vector2 GetMoveInput(Int32 player, out Boolean run)
         {

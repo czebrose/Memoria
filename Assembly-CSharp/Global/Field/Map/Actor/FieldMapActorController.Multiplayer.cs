@@ -24,10 +24,26 @@ public partial class FieldMapActorController
         if (!userControl || copyLastPos)
             this.CopyLastPos();
 
+        // Where the leader went since the last tick (to walk along when a script moves them)
+        FieldMapActorController leader = this.fieldMap.playerController;
+        Vector3 leaderStep = Vector3.zero;
+        if (leader != null && !ReferenceEquals(leader, this))
+        {
+            if (this.followerLeaderPosValid)
+                leaderStep = leader.curPos - this.followerLeaderPos;
+            this.followerLeaderPos = leader.curPos;
+            this.followerLeaderPosValid = true;
+        }
+
         Boolean canMove = userControl
             && EventInput.IsMovementControl
             && !this.fieldMap.isBattleBackupPos
             && this.originalActor.state == EventEngine.stateRunning;
+        if (!canMove && !userControl && !this.fieldMap.isBattleBackupPos && this.originalActor.state == EventEngine.stateRunning)
+        {
+            this.ReactWhileOthersAct(engine, leaderStep);
+            return;
+        }
         Boolean wantsRun = false;
         Vector2 input = canMove ? MultiplayerField.GetMoveInput(this.multiplayerOwner, out wantsRun) : Vector2.zero;
 
@@ -68,15 +84,63 @@ public partial class FieldMapActorController
         engine.AnimateMultiplayerFollower(this.originalActor, hasMoved, this.isRunning && hasMoved);
     }
 
+    [NonSerialized]
+    private Vector3 followerLeaderPos;
+    [NonSerialized]
+    private Boolean followerLeaderPosValid;
+
     /// <summary>
-    /// Move by one step with the walkmesh and NPC rules; undo it and return false if it would take a character that is
-    /// on screen off the screen. A character already off-screen (the camera scrolled away) may move freely.
+    /// While a script has taken movement away (someone talks, loots, leaves the area...), an extra player's character
+    /// reacts like the leader does for them: it walks along when a script walks the leader (an exit, a door), and
+    /// otherwise turns to look at whoever is acting (MultiplayerField.GetReactionFocus).
     /// </summary>
-    private Boolean TryFollowerStep(Vector3 step)
+    private void ReactWhileOthersAct(EventEngine engine, Vector3 leaderStep)
+    {
+        Vector3 startPos = this.curPos;
+        leaderStep.y = 0f;
+        Single stepLength = leaderStep.magnitude;
+        // A real walk: more than a nudge, less than a teleport (a script placing the leader elsewhere)
+        Boolean leaderWalks = stepLength > 1f && stepLength < 200f && MultiplayerField.ShouldWalkWithLeader(engine);
+        Boolean running = false;
+        if (leaderWalks)
+        {
+            this.moveVec = leaderStep / stepLength;
+            this.TurnMultiplayerFollower();
+            running = stepLength > 45f; // the leader runs at 60/tick, walks at 30
+            // No screen-edge wall here: following the leader out of the area is the point
+            Vector3 step = this.moveVec * Mathf.Min(stepLength, 60f);
+            if (!this.TryFollowerStep(step, false))
+            {
+                this.TryFollowerStep(new Vector3(step.x, 0f, 0f), false);
+                this.TryFollowerStep(new Vector3(0f, 0f, step.z), false);
+            }
+        }
+        else if (MultiplayerField.GetReactionFocus(engine, this.multiplayerOwner, out Vector3 focus))
+        {
+            Vector3 toFocus = focus - this.curPos;
+            toFocus.y = 0f;
+            if (toFocus.sqrMagnitude > 1f)
+            {
+                this.moveVec = toFocus.normalized;
+                this.TurnMultiplayerFollower();
+            }
+        }
+        this.moveVec = Vector3.zero;
+        this.isRunning = false;
+        Vector3 moved = this.curPos - startPos;
+        Boolean hasMoved = new Vector2(moved.x, moved.z).sqrMagnitude > 1f;
+        engine.AnimateMultiplayerFollower(this.originalActor, hasMoved, running && hasMoved);
+    }
+
+    /// <summary>
+    /// Move by one step with the walkmesh and NPC rules; with keepOnScreen, undo it and return false if it would take a
+    /// character that is on screen off the screen. A character already off-screen (the camera scrolled away) may move freely.
+    /// </summary>
+    private Boolean TryFollowerStep(Vector3 step, Boolean keepOnScreen = true)
     {
         if (step.sqrMagnitude < 0.01f)
             return false;
-        Boolean wasVisible = MultiplayerField.IsOnScreen(this.fieldMap, this.curPos, this.originalActor);
+        Boolean wasVisible = keepOnScreen && MultiplayerField.IsOnScreen(this.fieldMap, this.curPos, this.originalActor);
         Vector3 pos = this.curPos;
         Int32 tri = this.activeTri;
         Int32 floor = this.activeFloor;

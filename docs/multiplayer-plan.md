@@ -322,3 +322,11 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
   - NPCs whose range function starts a cutscene can now be triggered by P2 too.
   - Square (Tetra Master, tag 8) is leader-only.
   - The leader, not P2's character, plays the kneel/open poses.
+
+## Reactions (characters react when someone else acts)
+
+- **Extra players' characters** (`FieldMapActorController.ReactWhileOthersAct`) react whenever a script has taken movement away:
+  - **Walk along:** if a script walks the leader (an exit, a door) and no extra player is acting and no message is on screen (`MultiplayerField.ShouldWalkWithLeader`), they walk the same way at the same pace, with walkmesh/NPC collision but no screen-edge wall, so they leave with the leader. The leader's per-tick movement is tracked in the follower's controller; steps over 200 units count as teleports and are ignored.
+  - **Look:** otherwise they turn to face whoever is acting (`GetReactionFocus`): the extra player who talks, loots or picks something up, or else the leader while a message is on screen.
+- **The leader** turns to face an extra player who is talking or looting (`MultiplayerField.TurnLeaderTowardActingPlayer`, from `MultiplayerTalk.Process`). It is held still meanwhile. Not during a pickup run on the leader's entry: that function turns the leader toward the item itself.
+- **Not yet:** cutscenes where a script walks the leader without dialogue also make extra players walk along (Phase 3e will hide them during cutscenes).

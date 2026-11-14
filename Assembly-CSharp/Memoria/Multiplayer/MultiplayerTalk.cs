@@ -52,6 +52,8 @@ namespace Memoria.Multiplayer
                 ProcessInteractions(engine);
                 UpdateMessageOwner(engine);
                 UpdateBubbles(engine);
+                if (MultiplayerManager.IsActive)
+                    MultiplayerField.TurnLeaderTowardActingPlayer(engine);
             }
             finally
             {
