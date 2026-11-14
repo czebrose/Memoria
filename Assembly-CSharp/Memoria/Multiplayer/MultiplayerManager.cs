@@ -70,6 +70,8 @@ namespace Memoria.Multiplayer
             XInputPads.Poll();
             LogSlotChanges();
             MultiplayerBattle.Update();
+            if (global::Assets.Scripts.Common.SceneDirector.IsBattleScene() && UIManager.Battle != null)
+                UIManager.Battle.UpdateMultiplayerMenus();
             MultiplayerField.Update();
             MultiplayerTalk.LatchInput();
 

@@ -101,7 +101,7 @@ public partial class BattleHUD : UIScene
                     || !_scene.ReadyQueue.Contains(playerId)
                     || _scene.InputFinishList.Contains(playerId)
                     || _scene._unconsciousStateList.Contains(playerId)
-                    || !Memoria.Multiplayer.MultiplayerBattle.CanSelect(playerId)) // [Multiplayer] only your own characters
+                    || !Memoria.Multiplayer.MultiplayerBattle.CanSelect(playerId) || _scene.IsInMultiplayerMenu(playerId)) // [Multiplayer] only your own characters
                     return;
 
                 _scene.SwitchPlayer(playerId);

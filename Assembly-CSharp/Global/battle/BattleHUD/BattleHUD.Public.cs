@@ -876,7 +876,7 @@ public partial class BattleHUD : UIScene
             for (Int32 i = 0; i < ReadyQueue.Count; i++)
             {
                 Int32 current = ReadyQueue[i];
-                if (!InputFinishList.Contains(current) && !_unconsciousStateList.Contains(current))
+                if (!InputFinishList.Contains(current) && !_unconsciousStateList.Contains(current) && !IsInMultiplayerMenu(current)) // [Multiplayer]
                 {
                     if (ReadyQueue.IndexOf(current) > 0)
                     {

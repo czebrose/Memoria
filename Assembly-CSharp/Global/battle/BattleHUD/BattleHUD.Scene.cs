@@ -423,7 +423,7 @@ public partial class BattleHUD : UIScene
                     {
                         Int32 current = ReadyQueue[i];
                         if (!InputFinishList.Contains(current) && !_unconsciousStateList.Contains(current) && current != CurrentPlayerIndex
-                            && Memoria.Multiplayer.MultiplayerBattle.CanSelect(current)) // [Multiplayer] only cycle through your own characters
+                            && Memoria.Multiplayer.MultiplayerBattle.CanSelect(current) && !IsInMultiplayerMenu(current)) // [Multiplayer] only cycle through your own characters
                         {
                             if (i > 0)
                             {

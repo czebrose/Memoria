@@ -330,3 +330,32 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
   - **Look:** otherwise they turn to face whoever is acting (`GetReactionFocus`): the extra player who talks, loots or picks something up, or else the leader while a message is on screen.
 - **The leader** turns to face an extra player who is talking or looting (`MultiplayerField.TurnLeaderTowardActingPlayer`, from `MultiplayerTalk.Process`). It is held still meanwhile. Not during a pickup run on the leader's entry: that function turns the leader toward the item itself.
 - **Not yet:** cutscenes where a script walks the leader without dialogue also make extra players walk along (Phase 3e will hide them during cutscenes).
+
+## Phase 4 notes (compact second battle menu, prototype)
+
+- **Why not split `BattleHUD`:** its menu state is about 25 fields in ~6,500 lines, and NGUI navigation (`ButtonGroupState`) is fully static, with one active group and one pointer. Splitting it would be a deep, upstream-conflicting rewrite.
+- **Instead, `Global/battle/BattleHUD/BattleHUD.Multiplayer.cs`** (a partial of `BattleHUD`): while the main menu is busy with one player's character (`CurrentPlayerIndex >= 0`), any *other* player whose character is ready (in `ReadyQueue`, not finished, not unconscious) gets a compact menu. It's drawn with IMGUI by `MultiplayerBattleMenuView`, near the top of the screen, one panel per player, and driven only by that player's pad (`XInputPads`): up/down, A confirm, B back, LB/RB one/all.
+- **Same rules as the main menu:**
+  - **Commands:** `CharacterCommands.CommandSets[preset].Get(trance, menu)` + `BattleCommandHelper.Patch` / `GetCommandEnabledState`, with hidden commands left out.
+  - **Abilities:** `GetAbilityState` / `GetMonsterTransformAbilityState` with an explicit player index (monster transforms: `transform.spell[ListEntry[i]]`, so B.Waltz's moves are included).
+  - **MP:** `GetActionMpCost`'s formula with this menu's command.
+  - **Items:** `DisplayItem`'s filter, including `use_condition` NCalc.
+  - **Targets:** the target type, `DefaultAlly` and `ForDead` from `SetTargetVisibility`; Many* gets a one/all switch.
+- **Sending:** the main menu's own `ProcessCommand` builds the command, run with this character's context swapped in: `CurrentPlayerIndex`, `_currentCommandIndex/Id`, `_currentSubMenuIndex`, `_targetCursor`, and `_itemIdList` contents, all restored afterwards. It's then sent like `SendCommand`: `cmd[0]`, `sel_mode = 1`, `btl_cmd.SetCommand`, `InputFinishList`, blink off.
+- **Not handled** (shown as "main menu", or "use the main menu"): double cast and Mix commands, the main menu access command, and Instant commands needing a target choice. Manual trance isn't offered.
+- **The main menu skips characters a compact menu holds:** auto-select, `SwitchAvailablePlayerOrIdle`, next-character cycling, party clicks and `switchBtlId` (marked edits).
+- **Closing:** a compact menu closes when its command is sent, or when its character is no longer waiting for that player, for example because that player took the main menu.
+- **Config:** `[Multiplayer] BattleMenus` (default 1).
+- **Look:** each compact menu is shown in a **copy of the game's command window** (`SyncMultiplayerPanels`): same frame, font and caption, and the game's own pointer hand via `PointerManager.AttachPointerToGameObject`.
+  - **Making the copy inert:** it's deactivated right after `Instantiate`, so its rows leave `ButtonGroupState`'s groups in `OnDisable`. Then it's stripped of `ButtonGroupState`, `UIKeyNavigation`, `UIButtonColor`, `UIEventListener`, colliders and tweens, and un-anchored, so the main menu's cursor can't land on it.
+  - **Layout:** the 6 rows of the copied window, scaled to 82%. On the command stage each command sits in the same row as in the main window (Attack 0, Defend 1, Ability1 2, Ability2 3, Item 4, Change 5). Lists fill the rows in reading order (top to bottom, left to right) and scroll by one visual row, with a "3/12" count in the caption. The cursor moves by position: up/down/left/right go to the nearest filled row in that direction (`NavigateMultiplayerMenu`).
+  - **All rows are forced visible** on each refresh: the main window hides rows a character doesn't have, and a copy taken at that moment kept them hidden (the cause of a blank target list).
+  - Up to 3 copies sit side by side at the top of the screen in player order, placed through the UI camera so the layout follows any resolution.
+  - **Fallback:** if a copy can't be made, the IMGUI overlay draws the menu instead.
+- **Who gets a compact menu:** any player whose character is ready while the main menu is busy with someone else, P1 included (on their pad). One menu per player. A player using the main menu doesn't also get a compact one.
+- **Diagnostics:** a ready character with no menu for 3 s is logged once with the reason (`LogWaitingCharacters`).
+- **ATB "Wait" mode** (in-game config): the game freezes every ATB gauge while the *main* menu is in an ability, item or target list. So while one player browses there, others' gauges stop and nobody new becomes ready. Compact menus don't freeze ATB.
+- **Not yet:**
+  - Keyboard for a compact menu (P1 must use a pad).
+  - Target highlighting on the battlefield.
+  - Help texts.

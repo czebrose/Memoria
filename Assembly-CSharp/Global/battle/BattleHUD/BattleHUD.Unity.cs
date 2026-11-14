@@ -289,7 +289,8 @@ public partial class BattleHUD : UIScene
             Int32 playerId = 0;
             while (1 << playerId != switchBtlId)
                 ++playerId;
-            SwitchPlayer(playerId);
+            if (!IsInMultiplayerMenu(playerId)) // [Multiplayer] its owner is commanding it in their compact menu
+                SwitchPlayer(playerId);
             switchBtlId = -1;
         }
 
@@ -310,6 +311,8 @@ public partial class BattleHUD : UIScene
         {
             Int32 current = ReadyQueue[index];
             if (InputFinishList.Contains(current) || _unconsciousStateList.Contains(current))
+                continue;
+            if (IsInMultiplayerMenu(current)) // [Multiplayer] another player is commanding it in their compact menu
                 continue;
 
             if (_isAutoAttack)
