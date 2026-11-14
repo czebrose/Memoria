@@ -436,6 +436,12 @@
     <Compile Include="Memoria\Scenes\ControlPanel\ControlPanel.cs" />
     <Compile Include="Memoria\Configuration\Access\Speedrun.cs" />
     <Compile Include="Memoria\Configuration\Structure\SpeedrunSection.cs" />
+    <Compile Include="Memoria\Configuration\Access\Multiplayer.cs" />
+    <Compile Include="Memoria\Configuration\Structure\MultiplayerSection.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerBattle.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerManager.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerOverlay.cs" />
+    <Compile Include="Memoria\Multiplayer\XInputPads.cs" />
     <Compile Include="Memoria\Data\Battle\RegularItem.cs" />
     <Compile Include="Memoria\Scenes\ControlPanel\ControlRoll.cs" />
     <Compile Include="Memoria\Scenes\ControlPanel\ControlSlider.cs" />

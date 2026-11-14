@@ -62,12 +62,24 @@ namespace UnityXInput
                 this.resetAxesTime -= Time.deltaTime;
                 UnityEngine.Input.ResetInputAxes();
             }
+            if (Memoria.Multiplayer.MultiplayerManager.IsActive) // [Multiplayer] read the slot of the player in control
+            {
+                PlayerIndex wanted = (PlayerIndex)Memoria.Multiplayer.MultiplayerManager.ActivePadSlot;
+                if (wanted != this.playerIndex || !this.playerIndexSet)
+                {
+                    // Seed the new slot's state so the switch does not look like a button press or a disconnection
+                    this.playerIndex = wanted;
+                    this.playerIndexSet = true;
+                    this.state = XInputDotNetPure.GamePad.GetState(wanted);
+                    this.waitTime = 0f;
+                }
+            }
             if (this.waitTime > 0f)
             {
                 this.waitTime -= Time.deltaTime;
                 return;
             }
-            if (!this.playerIndexSet || !this.prevState.IsConnected)
+            if (!Memoria.Multiplayer.MultiplayerManager.IsActive && (!this.playerIndexSet || !this.prevState.IsConnected)) // [Multiplayer] slot is chosen above
             {
                 this.CheckConnection();
             }
@@ -93,6 +105,7 @@ namespace UnityXInput
 
         private void Update()
         {
+            Memoria.Multiplayer.MultiplayerManager.Update(); // [Multiplayer]
             this.Refresh();
         }
 

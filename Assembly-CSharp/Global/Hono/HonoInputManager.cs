@@ -558,7 +558,7 @@ public class HonoInputManager : PersistenSingleton<HonoInputManager>
             GamePadState state = GamePad.GetState(PlayerIndex.One);
             for (Int32 i = 0; i < this.KeyName.Length; i++)
             {
-                if (ApplicationIsActivated() && VKKeyCodeMapping.ContainsKey(this.inputKeysPrimary[i]) && GetAsyncKeyState(VKKeyCodeMapping[this.inputKeysPrimary[i]]) != 0)
+                if (Memoria.Multiplayer.MultiplayerManager.KeyboardAllowed && ApplicationIsActivated() && VKKeyCodeMapping.ContainsKey(this.inputKeysPrimary[i]) && GetAsyncKeyState(VKKeyCodeMapping[this.inputKeysPrimary[i]]) != 0) // [Multiplayer] keyboard = P1
                     this.isInput[i] = true;
                 if ((Configuration.Control.AlwaysCaptureGamepad || ApplicationIsActivated()) && this.CheckRawXInput(this.joystickKeysPrimary[i], state))
                     this.isInput[i] = true;
@@ -571,6 +571,8 @@ public class HonoInputManager : PersistenSingleton<HonoInputManager>
         if (!HonoInputManager.ApplicationIsActivated())
             return false;
         if (Application.isEditor)
+            return false;
+        if (!Memoria.Multiplayer.MultiplayerManager.KeyboardAllowed) // [Multiplayer] keyboard = P1
             return false;
         if (key == Control.Left)
             return HonoInputManager.GetAsyncKeyState(37) != 0 || HonoInputManager.GetAsyncKeyState(65) != 0;

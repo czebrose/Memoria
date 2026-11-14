@@ -42,6 +42,7 @@ public static class AssetManager
         foreach (String name in Configuration.Mod.FolderNames)
             modsNames += "'" + name + "' ";
         Log.Message($"[Initialization] Mods: {modsNames}");
+        Memoria.Multiplayer.MultiplayerManager.Initialize(); // [Multiplayer]
 
         ControllerWatcher.Instance.StartCoroutine("RefreshControllers");
 

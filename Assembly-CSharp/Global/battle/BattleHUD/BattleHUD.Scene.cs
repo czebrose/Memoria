@@ -422,7 +422,8 @@ public partial class BattleHUD : UIScene
                     for (Int32 i = 0; i < ReadyQueue.Count; i++)
                     {
                         Int32 current = ReadyQueue[i];
-                        if (!InputFinishList.Contains(current) && !_unconsciousStateList.Contains(current) && current != CurrentPlayerIndex)
+                        if (!InputFinishList.Contains(current) && !_unconsciousStateList.Contains(current) && current != CurrentPlayerIndex
+                            && Memoria.Multiplayer.MultiplayerBattle.CanSelect(current)) // [Multiplayer] only cycle through your own characters
                         {
                             if (i > 0)
                             {
@@ -448,7 +449,7 @@ public partial class BattleHUD : UIScene
                         BattleHUD.ForceNextTurn = true;
                         return true;
                     }
-                    else
+                    else if (Memoria.Multiplayer.MultiplayerBattle.CanSelect(ReadyQueue[0])) // [Multiplayer]
                     {
                         SwitchPlayer(ReadyQueue[0]);
                     }

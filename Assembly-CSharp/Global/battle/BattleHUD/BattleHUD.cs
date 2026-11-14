@@ -471,11 +471,11 @@ public partial class BattleHUD : UIScene
 
         if (_isTranceMenu)
         {
-            _commandPanel.SetCaptionText(Localization.Get("TranceCaption"));
+            _commandPanel.SetCaptionText(Memoria.Multiplayer.MultiplayerBattle.Tag(CurrentPlayerIndex) + Localization.Get("TranceCaption")); // [Multiplayer] "P2 " tag
         }
         else
         {
-            _commandPanel.SetCaptionText(Localization.Get("CommandCaption"));
+            _commandPanel.SetCaptionText(Memoria.Multiplayer.MultiplayerBattle.Tag(CurrentPlayerIndex) + Localization.Get("CommandCaption")); // [Multiplayer] "P2 " tag
             _commandPanel.SetCaptionColor(FF9TextTool.White);
         }
 
@@ -1146,7 +1146,7 @@ public partial class BattleHUD : UIScene
 
     private void DisplayCharacterParameter(UI.PanelParty.Character playerHud, BattleUnit bd, DamageAnimationInfo hp, DamageAnimationInfo mp)
     {
-        playerHud.Name.Label.SetText(bd.NameTag);
+        playerHud.Name.Label.SetText(Memoria.Multiplayer.MultiplayerBattle.Tag(bd) + bd.NameTag); // [Multiplayer] "P2 " tag
         playerHud.HP.SetText(String.IsNullOrEmpty(bd.UILabelHP) ? hp.CurrentValue.ToString() : bd.UILabelHP);
         playerHud.MP.SetText(String.IsNullOrEmpty(bd.UILabelMP) ? mp.CurrentValue.ToString() : bd.UILabelMP);
         ParameterStatus parameterStatus = CheckHPState(bd);
@@ -1284,6 +1284,7 @@ public partial class BattleHUD : UIScene
         SetIdle();
         FF9Sfx.FF9SFX_Play(1044);
         CurrentPlayerIndex = playerId;
+        Memoria.Multiplayer.MultiplayerBattle.OnCommandMenuOpened(playerId); // [Multiplayer] the character's owner takes control
 
         UI.PanelParty.Character playerDetailHud = _partyDetail.FindCharacter(playerId);
         playerDetailHud.BoxCollider.enabled = false;
@@ -1535,6 +1536,7 @@ public partial class BattleHUD : UIScene
         _currentCommandIndex = BattleCommandMenu.Attack;
         _currentSubMenuIndex = 0;
         CurrentPlayerIndex = -1;
+        Memoria.Multiplayer.MultiplayerBattle.OnBattleStart(); // [Multiplayer]
         _subMenuType = SubMenuType.Normal;
         _runCounter = 0.0f;
         _isTryingToRun = false;

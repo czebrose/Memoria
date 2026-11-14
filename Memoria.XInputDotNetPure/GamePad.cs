@@ -347,6 +347,8 @@ namespace XInputDotNetPure
         {
             RawState rawState;
             uint result = Imports.XInputGamePadGetState((uint)playerIndex, out rawState);
+            if (!MergeJoyShockDevices) // [Multiplayer] each slot is exactly one XInput controller
+                return new GamePadState(result == Utils.Success, rawState, deadZone);
 
             try
             {
@@ -412,6 +414,12 @@ namespace XInputDotNetPure
         }
 
         public static Single Threshold { set; get; }
+
+        /// <summary>
+        /// [Multiplayer] When true (default), DS4/DualSense/Switch controllers read through JoyShockLibrary are
+        /// added to every slot's state. Local multiplayer turns this off so that one slot is one player.
+        /// </summary>
+        public static Boolean MergeJoyShockDevices { set; get; } = true;
 
         public static void SetVibration(PlayerIndex playerIndex, float leftMotor, float rightMotor)
         {

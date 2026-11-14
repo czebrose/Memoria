@@ -27,6 +27,7 @@ namespace Memoria
         private volatile SaveFileSection _saves;
         private volatile SpeedrunSection _speedrun;
         private volatile DebugSection _debug;
+        private volatile MultiplayerSection _multiplayer; // [Multiplayer]
 
         public Configuration()
         {
@@ -51,6 +52,7 @@ namespace Memoria
             BindingSection(out _speedrun, v => _speedrun = v);
             BindingSection(out _debug, v => _debug = v);
             BindingSection(out _shaders, v => _shaders = v);
+            BindingSection(out _multiplayer, v => _multiplayer = v); // [Multiplayer]
         }
     }
 }

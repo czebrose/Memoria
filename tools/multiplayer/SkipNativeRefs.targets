@@ -1,0 +1,9 @@
+<Project>
+  <!-- [Multiplayer] Local dev hook used by build.ps1: drops build-order-only references
+       (native SaXAudio, .NET 10 FF9SpecialEffectPlugin) so Assembly-CSharp can be built without
+       the C++ v143 toolset or the .NET 10 SDK. Neither is referenced as an assembly. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Assembly-CSharp'">
+    <ProjectReference Remove="..\FF9SpecialEffectPlugin\FF9SpecialEffectPlugin.csproj" />
+    <ProjectReference Remove="..\SaXAudio\SaXAudio.vcxproj" />
+  </ItemGroup>
+</Project>

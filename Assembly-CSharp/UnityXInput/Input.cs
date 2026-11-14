@@ -289,7 +289,7 @@ namespace UnityXInput
                 if (GetKey(KeyCode.DownArrow) || GetKey(HonoInputManager.MemoriaKeyBindings[2])) axis += -1f;
 
             }
-            else
+            else if (!IsMergedJoystickAxis(axisName)) // [Multiplayer]
             {
                 axis = UnityEngine.Input.GetAxis(axisName);
             }
@@ -310,11 +310,26 @@ namespace UnityXInput
                 if (GetKey(KeyCode.DownArrow) || GetKey(HonoInputManager.MemoriaKeyBindings[2])) axisRaw += -1f;
 
             }
-            else
+            else if (!IsMergedJoystickAxis(axisName)) // [Multiplayer]
             {
                 axisRaw = UnityEngine.Input.GetAxisRaw(axisName);
             }
             return (axisRaw == 0f) ? Input.GetXAxis(axisName) : axisRaw;
+        }
+
+        /// <summary>
+        /// [Multiplayer] Unity's own joystick axes (e.g. "LeftTrigger") combine every connected controller.
+        /// With multiplayer on, the trigger axes come only from the active player's pad (GetXAxis) instead.
+        /// </summary>
+        private static Boolean IsMergedJoystickAxis(String axisName)
+        {
+            return Memoria.Multiplayer.MultiplayerManager.IsActive && axisName.Contains("Trigger");
+        }
+
+        /// <summary>[Multiplayer] The keyboard belongs to player 1; function keys stay usable for everyone.</summary>
+        private static Boolean IsKeyBlocked(KeyCode key)
+        {
+            return !Memoria.Multiplayer.MultiplayerManager.KeyboardAllowed && (key < KeyCode.F1 || key > KeyCode.F15);
         }
 
         public static Boolean GetButtonUp(String keyName)
@@ -334,17 +349,17 @@ namespace UnityXInput
 
         public static Boolean GetKeyUp(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKeyUp(keyName);
+            return !IsKeyBlocked(keyName) && UnityEngine.Input.GetKeyUp(keyName); // [Multiplayer]
         }
 
         public static Boolean GetKeyDown(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKeyDown(keyName);
+            return !IsKeyBlocked(keyName) && UnityEngine.Input.GetKeyDown(keyName); // [Multiplayer]
         }
 
         public static Boolean GetKey(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKey(keyName);
+            return !IsKeyBlocked(keyName) && UnityEngine.Input.GetKey(keyName); // [Multiplayer]
         }
 
         public static Boolean GetMouseButtonUp(Int32 index)
