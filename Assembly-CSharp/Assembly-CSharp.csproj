@@ -441,7 +441,9 @@
     <Compile Include="Global\Field\Map\Actor\FieldMapActorController.Multiplayer.cs" />
     <Compile Include="Memoria\Multiplayer\FieldModels.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerBattle.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerBubbles.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerField.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerKeys.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerTalk.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerManager.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerOverlay.cs" />

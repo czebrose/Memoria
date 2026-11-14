@@ -289,7 +289,7 @@ public class EventCollision
         return WMUIData.ControlNo >= 1 && WMUIData.ControlNo <= 6;
     }
 
-    private static Boolean CheckNPCPush(PosObj po)
+    internal static Boolean CheckNPCPush(PosObj po) // [Multiplayer] internal (was private)
     {
         Boolean result = true;
         if (PersistenSingleton<EventEngine>.Instance.gMode == 1)
@@ -318,7 +318,7 @@ public class EventCollision
         return result;
     }
 
-    private static Boolean CheckQuadPush(PosObj ctrl, Obj quad)
+    internal static Boolean CheckQuadPush(PosObj ctrl, Obj quad) // [Multiplayer] internal (was private)
     {
         if (PersistenSingleton<EventEngine>.Instance.gMode == 1)
         {
@@ -364,7 +364,7 @@ public class EventCollision
         return num >> 4 & 255;
     }
 
-    private static Boolean IsQuadTalkable(PosObj ctrl, Obj quad)
+    internal static Boolean IsQuadTalkable(PosObj ctrl, Obj quad) // [Multiplayer] internal (was private)
     {
         if (PersistenSingleton<EventEngine>.Instance.gMode == 1)
         {

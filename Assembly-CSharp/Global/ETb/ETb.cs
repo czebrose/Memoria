@@ -78,7 +78,7 @@ public static class ETb
     }
 
     /// <summary>Take into account that Japanese event scripts use Control.Cancel in place of Confirm and vice versa (eg. "IsButton(589824L)" to close a dialog by script)</summary>
-    private static UInt32 ProcessJapaneseLayout(UInt32 inputs)
+    internal static UInt32 ProcessJapaneseLayout(UInt32 inputs) // [Multiplayer] internal (was private)
     {
         Boolean hasConfirm = (inputs & EventInput.Confirm) != 0;
         Boolean hasCancel = (inputs & EventInput.Cancel) != 0;

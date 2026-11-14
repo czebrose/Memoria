@@ -283,7 +283,42 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
   - `GetObjByUID` and `FindObjByUID` get the fallbacks.
   - `ProcessEvents` gets two calls and the leader's `CollisionRequest` guard.
   - `MovePC` gets the guard.
-- **Remaining risk:** a talk function that *runs a function on* 250 (`RunScript*` on the player) would target a detached actor that never runs code.
+- **Calls on the player:** a talk function that *runs a function on* 250 (`RunScript*` on the player) is now handled by the looting change below: the call is skipped.
+
+## Phase 3c+ notes (extra players loot: chests, item spots)
+
+- **How vanilla chests work** (`ChestA_*`, ~175 `RunScriptSync(2, 250, 14/15)` across the game):
+  - The chest's **range** function (tag 2) is requested every tick for whatever the player stands next to (`EventCollision.CollisionRequest`).
+  - It checks the button itself (`IsButton(Confirm|Special)`).
+  - It runs the player's "open chest" pose with `RunScriptSync(2, 250, 14)` and waits.
+- **Interactions generalise the talk.** `EventEngine.MultiplayerInteraction` = an extra player, their character, and a target whose function runs for them. Talks are one kind (tag 3); range checks are the other (tag 2).
+  - While a target's code runs (`gCur == target`), 250 means that player's character.
+  - Its `B_KEYON`/`B_KEYOFF`/`B_KEY` button checks (EBin → `EventEngine.ScriptKeyOn/KeyOff/Key`) read that player's controller via **`MultiplayerKeys`**: per-tick masks with the same bits as `EventInput` (logical + PS physical), presses collected every frame, Japanese-layout swap.
+  - Everything else keeps the leader and player 1's input (`ETb.sKeyOn`).
+- **`MultiplayerTalk.Process`** runs once per field tick:
+  1. Updates the key masks.
+  2. Ends interactions whose target's level went back above 1.
+  3. Gives control to the player of a range function that took movement away (chest opening).
+  4. Starts new interactions: on a fresh Confirm press, a talk with an NPC (facing) or a **talk region** (`TreadQuad(actor, 4)` + `IsQuadTalkable`); otherwise a range check of the **object** next to the character (`Collision` mode 4/2 + `CheckNPCPush`, as for the leader), at most one per player at a time.
+- **Walking into a region does nothing for P2:** field exits are region range functions, so P2 can't walk the party into another field. Regions run for P2 only on a Confirm press (below). Doors opened with a button are talk functions: P2 *can* open them, and everyone follows.
+- **Hidden items** (e.g. the Gil in Alexandria's shops, field 105 `Code9_Loop`; most of the city's items): a **code entry's loop** checks every tick whether 250 stands near a spot and `IsButton(Confirm)`, then runs the player entry's pickup function with `RunScriptSync(2, 250, 15)`. That function (`Vivi_15`) turns, kneels, does `AddGil`/`AddItem` and shows "Received...". Nothing requests those loops, so:
+  - **Press tick:** a Confirm press that starts no talk makes the *next* tick a press tick. Code entries (`cid 2`, except the main entry) then see that player's character as 250 and read their buttons (`IsMultiplayerPressTickFor`), but only if player 1 didn't press Confirm themselves that tick. On the same press, the region the character stands in gets its range function requested.
+  - **Player functions run on the leader:** `EventEngine.Request` on a follower (script level 7, so `RunScriptSync`'s `requestAcceptable` passes) runs that function on the **leader's entry** instead (`RequestForMultiplayerFollower`). The leader turns and kneels, the item goes to the shared inventory, and the extra player gets control for the message until the function returns (`MultiplayerRedirect`, ended when the leader's level goes back above the requested level). Chests' pose calls (`RunScriptSync(2, 250, 14/15)`) do the same: the leader plays the pose. While one runs, the leader waits and nobody starts another interaction.
+- **Upstream edits** (marked):
+  - `EventEngine.Request` redirect.
+  - EBin `B_KEYON/B_KEYOFF/B_KEY`.
+  - `internal` (was private): `EventCollision.CheckNPCPush`, `CheckQuadPush`, `IsQuadTalkable`, and `ETb.ProcessJapaneseLayout`.
+- **Hidden-item loops look at whoever is near.** `EventEngine.IsMultiplayerItemLoop` parses each code entry once per field with Memoria's `EventEngineUtils.BinaryScript.Entry`. A loop counts as an item loop when its function 1 contains a `Bubble` (`FICON`) and a `RunScriptSync` (`REQEW`) whose object argument is the constant 250.
+  - Each tick such a loop looks at one player (`DecideItemLoopPlayer`). It picks the leader if the loop showed the leader a bubble in the last 2 ticks, else an extra player it showed a bubble to, else the leader and the extra players in turn.
+  - So the leader's own items behave as before, and an extra player standing on a spot is noticed within a tick or two. P2's "!" shows there, and their Confirm picks it up.
+  - Other code loops (story triggers, positional sounds) still only see an extra player on their press tick.
+- **P2's "!"** (`MultiplayerBubbles`): a clone of the game's `BubbleUI` per extra player, shown over their character at the end of each field tick.
+  - It's polled by `EventEngine.GetMultiplayerTalkIcon` (what they face is talkable, with `EIcon.PollCollisionIcon`'s rules).
+  - It's also polled by the `Bubble` opcode when the running script acts for them (`HandleMultiplayerBubble`, which then doesn't poll the leader's bubble).
+  - Hidden while anyone talks, while a menu or message is open, and off the field.
+- **Messages belong to whoever caused them** (`MultiplayerTalk.UpdateMessageOwner`). A message window that opens while an extra player's talk, chest or pickup runs, or within 1 s after a script read their Confirm/Cancel/Special press (`ScriptKeyOn` → `OnScriptReadPress`), gives that player control until it closes.
+  - This fixes P1 having to close P2's "Received ... Gil!": item scripts take movement away only conditionally, so control had stayed with P1.
 - **Not yet:**
-  - No "!" talk icon over extra players.
-  - Square (Tetra Master, tag 8) and talk regions (quads) are leader-only.
+  - NPCs whose range function starts a cutscene can now be triggered by P2 too.
+  - Square (Tetra Master, tag 8) is leader-only.
+  - The leader, not P2's character, plays the kneel/open poses.

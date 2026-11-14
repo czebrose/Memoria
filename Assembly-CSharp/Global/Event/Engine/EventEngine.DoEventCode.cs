@@ -1810,6 +1810,8 @@ public partial class EventEngine
             case EBin.event_code_binary.FICON: // 0x68, "Bubble", "Display a speech bubble with a symbol inside over the head of player's character"
             {
                 BubbleUI.IconType bubbleType = (BubbleUI.IconType)this.getv1(); // arg1: bubble symbol
+                if (this.HandleMultiplayerBubble(bubbleType)) // [Multiplayer] a bubble over the extra player this script acts for
+                    return 0;
                 if (mapNo == 2955)
                 {
                     if (this.gCur.uid == 24)

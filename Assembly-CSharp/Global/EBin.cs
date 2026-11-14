@@ -1037,7 +1037,7 @@ public class EBin
             case op_binary.B_KEYON: // B_KEYON = 79
             {
                 VoicePlayer.scriptRequestedButtonPress = true;
-                _calcValue = (Mathf.Abs(EvaluateValueExpression() & ETb.KeyOn(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1;
+                _calcValue = (Mathf.Abs(EvaluateValueExpression() & _eventEngine.ScriptKeyOn(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1; // [Multiplayer] was ETb.KeyOn
                 expr_Push_v0_Int24();
                 break;
             }
@@ -1055,13 +1055,13 @@ public class EBin
             }
             case op_binary.B_KEYOFF:
             {
-                _calcValue = (Mathf.Abs(EvaluateValueExpression() & ETb.KeyOff(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1;
+                _calcValue = (Mathf.Abs(EvaluateValueExpression() & _eventEngine.ScriptKeyOff(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1; // [Multiplayer] was ETb.KeyOff
                 expr_Push_v0_Int24();
                 break;
             }
             case op_binary.B_KEY:
             {
-                _calcValue = (Mathf.Abs(EvaluateValueExpression() & ETb.GetInputs(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1;
+                _calcValue = (Mathf.Abs(EvaluateValueExpression() & _eventEngine.ScriptKey(Localization.CurrentSymbol == "JP")) <= 0) ? 0 : 1; // [Multiplayer] was ETb.GetInputs
                 expr_Push_v0_Int24();
                 break;
             }

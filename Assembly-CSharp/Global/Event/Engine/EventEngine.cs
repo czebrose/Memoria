@@ -336,6 +336,8 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
 
     public Boolean Request(Obj p, Int32 level, Int32 tagNumber, Boolean ew)
     {
+        if (Memoria.Multiplayer.MultiplayerField.IsFollowerActor(p)) // [Multiplayer] an extra player's character has no script: run it on the leader's entry
+            return this.RequestForMultiplayerFollower(p, level, tagNumber, ew);
         Int32 ip = this.nil;
         if (p != null && level < p.level)
         {

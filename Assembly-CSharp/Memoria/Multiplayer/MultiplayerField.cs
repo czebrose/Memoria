@@ -41,6 +41,7 @@ namespace Memoria.Multiplayer
             if (!onField || !Configuration.Multiplayer.FieldFollowers)
             {
                 RemoveAll(onField ? "field followers disabled" : null);
+                MultiplayerTalk.OnLeftField();
                 return;
             }
             if (!ReferenceEquals(fieldMap, s_fieldMap))
@@ -101,6 +102,28 @@ namespace Memoria.Multiplayer
             {
                 return true;
             }
+        }
+
+        /// <summary>Whether an object is an extra player's field character (a detached actor that runs no script code).</summary>
+        public static Boolean IsFollowerActor(Obj obj)
+        {
+            if (obj == null || s_followers.Count == 0)
+                return false;
+            foreach (Follower follower in s_followers.Values)
+                if (ReferenceEquals(follower.Actor, obj))
+                    return true;
+            return false;
+        }
+
+        /// <summary>The player (2-4) whose field character this is, or 0.</summary>
+        public static Int32 GetFollowerPlayer(Obj obj)
+        {
+            if (obj == null)
+                return 0;
+            foreach (Follower follower in s_followers.Values)
+                if (ReferenceEquals(follower.Actor, obj))
+                    return follower.Player;
+            return 0;
         }
 
         /// <summary>The field character of an extra player, or null if they have none on this field.</summary>
@@ -191,6 +214,10 @@ namespace Memoria.Multiplayer
                 };
                 for (Int32 i = 0; i < actor.idleSpeed.Length; i++)
                     actor.idleSpeed[i] = 16;
+                // Idle script level (like an entry whose main function returned): scripts that run a function on the
+                // player and wait (RunScriptSync(2, 250, ...)) see it as available; EventEngine.Request then runs that
+                // function on the leader's entry instead (followers have no code), so nothing waits forever.
+                actor.level = 7;
 
                 // Model, as the SetModel opcode builds it
                 actor.go = ModelFactory.CreateModel(modelName, false, true, Configuration.Graphics.ElementsSmoothTexture);
@@ -263,11 +290,8 @@ namespace Memoria.Multiplayer
             Int32 uid = follower.Actor.uid;
             // A character removed in the middle of its talk gives object 250 back to the leader first
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
-            if (engine != null && ReferenceEquals(engine.MultiplayerTalker, follower.Actor))
-            {
-                engine.EndMultiplayerTalk();
-                MultiplayerTalk.OnTalkEnded("the character was removed");
-            }
+            if (engine != null)
+                MultiplayerTalk.EndFor(engine, follower.Actor, "the character was removed");
             // Only remove entries that are still ours: battles and new fields reuse these dictionaries and UIDs
             if (FF9StateSystem.Common.FF9.charArray.TryGetValue(uid, out FF9Char ch) && ReferenceEquals(ch.evt, follower.Actor))
             {
