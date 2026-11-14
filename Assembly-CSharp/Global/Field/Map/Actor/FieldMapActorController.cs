@@ -589,6 +589,8 @@ public partial class FieldMapActorController : HonoBehavior
     {
         if (!FF9StateSystem.Field.isDebug && (!EventInput.IsMovementControl || this.fieldMap.isBattleBackupPos))
             return;
+        if (PersistenSingleton<EventEngine>.Instance.IsMultiplayerTalkActive) // [Multiplayer] the leader waits while an extra player talks
+            return;
         if (!FF9StateSystem.Field.isDebug && this.originalActor.state != EventEngine.stateRunning)
             return;
 

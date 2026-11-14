@@ -408,7 +408,7 @@ public class EventCollision
         return true;
     }
 
-    private static Boolean IsNPCTalkable(Obj npc)
+    internal static Boolean IsNPCTalkable(Obj npc) // [Multiplayer] internal (was private) for EventEngine.TryStartMultiplayerTalk
     {
         if (PersistenSingleton<EventEngine>.Instance.gMode == 1)
         {

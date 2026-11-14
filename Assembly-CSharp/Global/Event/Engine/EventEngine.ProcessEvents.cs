@@ -117,6 +117,7 @@ public partial class EventEngine
             codeFlowState = EventEngine.FLOW_STATE_EXEC;
         else
             this.gStopObj = null;
+        this.EndMultiplayerTalkOnSceneChange(codeFlowState); // [Multiplayer]
 
         Boolean hasMoved = false;
         this._aimObj = null;
@@ -174,7 +175,7 @@ public partial class EventEngine
                         if (obj.uid == this._context.controlUID)
                         {
                             EIcon.ProcessHereIcon(actor);
-                            if (this.GetUserControl())
+                            if (this.GetUserControl() && !this.IsMultiplayerTalkActive) // [Multiplayer] no leader talk while an extra player talks
                                 this.CollisionRequest(actor);
                         }
                     }
@@ -262,6 +263,8 @@ public partial class EventEngine
                 }
             }
         }
+        if (!isBattle && this.gMode == 1)
+            Memoria.Multiplayer.MultiplayerTalk.Process(this); // [Multiplayer] extra players' talk requests, next to the leader's CollisionRequest
         if (this._collTimer > 0)
             --this._collTimer;
         if (EventEngine.sTalkTimer > 0 && --EventEngine.sTalkTimer != 0)

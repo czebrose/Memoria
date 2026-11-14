@@ -834,7 +834,7 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
         if (uid == 255)
             return this.gCur.uid;
         if (uid == 250)
-            return this._context.controlUID;
+            return this.ResolveMultiplayerPlayerUID(this._context.controlUID); // [Multiplayer] the talker, for the NPC they talk to
         if (uid >= 251 && uid <= 254)
             return this._context.partyUID[uid - 251];
         if (uid < 0)
@@ -869,7 +869,7 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
         ObjList objList = this._context.activeObj;
         while (objList != null && objList.obj.uid != uid)
             objList = objList.next;
-        return objList?.obj;
+        return objList?.obj ?? this.FindMultiplayerTalker(uid); // [Multiplayer] an extra player talking as object 250
     }
 
     public Obj FindObjByUID(Int32 uid)
@@ -877,7 +877,7 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
         ObjList objList = this._context.activeObj;
         while (objList != null && objList.obj.uid != uid)
             objList = objList.next;
-        return objList?.obj;
+        return objList?.obj ?? this.FindMultiplayerTalker(uid); // [Multiplayer] an extra player talking as object 250
     }
 
     public Int32 GetSysList(Int32 num)

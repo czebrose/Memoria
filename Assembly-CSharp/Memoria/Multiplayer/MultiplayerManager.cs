@@ -71,6 +71,7 @@ namespace Memoria.Multiplayer
             LogSlotChanges();
             MultiplayerBattle.Update();
             MultiplayerField.Update();
+            MultiplayerTalk.LatchInput();
 
             if (Configuration.Multiplayer.DebugOverlay)
             {

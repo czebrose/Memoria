@@ -442,6 +442,7 @@
     <Compile Include="Memoria\Multiplayer\FieldModels.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerBattle.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerField.cs" />
+    <Compile Include="Memoria\Multiplayer\MultiplayerTalk.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerManager.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerOverlay.cs" />
     <Compile Include="Memoria\Multiplayer\XInputPads.cs" />

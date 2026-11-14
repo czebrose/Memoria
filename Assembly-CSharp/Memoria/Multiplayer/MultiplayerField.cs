@@ -103,6 +103,12 @@ namespace Memoria.Multiplayer
             }
         }
 
+        /// <summary>The field character of an extra player, or null if they have none on this field.</summary>
+        public static Actor GetFollowerActor(Int32 player)
+        {
+            return s_followers.TryGetValue(player, out Follower follower) && follower.Controller != null ? follower.Actor : null;
+        }
+
         /// <summary>Movement input for a follower: left stick or D-pad of its owner's pad, and whether they hold run (B).</summary>
         public static Vector2 GetMoveInput(Int32 player, out Boolean run)
         {
@@ -255,6 +261,13 @@ namespace Memoria.Multiplayer
         {
             s_followers.Remove(follower.Player);
             Int32 uid = follower.Actor.uid;
+            // A character removed in the middle of its talk gives object 250 back to the leader first
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine != null && ReferenceEquals(engine.MultiplayerTalker, follower.Actor))
+            {
+                engine.EndMultiplayerTalk();
+                MultiplayerTalk.OnTalkEnded("the character was removed");
+            }
             // Only remove entries that are still ours: battles and new fields reuse these dictionaries and UIDs
             if (FF9StateSystem.Common.FF9.charArray.TryGetValue(uid, out FF9Char ch) && ReferenceEquals(ch.evt, follower.Actor))
             {

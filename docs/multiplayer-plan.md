@@ -258,3 +258,32 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
   - Followers can't talk (3c).
   - Exits aren't handled specially (3d). Followers simply respawn next to the leader on the next field.
   - Cutscenes don't hide them (3e).
+
+## Phase 3c notes (extra players talk to NPCs)
+
+- **`Memoria/Multiplayer/MultiplayerTalk.cs`:**
+  - `MultiplayerManager.Update` latches each extra player's A press.
+  - `EventEngine.ProcessEvents` calls `MultiplayerTalk.Process` once per field tick, after the loop where the leader's `CollisionRequest` runs, so the request happens in the same engine state as the leader's own.
+- **`EventEngine.TryStartMultiplayerTalk`** (in `EventEngine.Multiplayer.cs`) repeats `EventCollision.CheckNPCInput` for the follower: `Collision(..., mode 4)`, `IsNPCTalkable`, facing angle within ±1024. If it passes:
+  - `sSysAngle` and `listener` are set.
+  - The NPC's talk function is requested with `Request(npc, 1, tagTalk)`.
+  - Control (`MultiplayerManager.ActivePlayer`) goes to the talker, so dialogue choices and shop/save menus are theirs.
+- **Object 250 means the talker only for the talked-to NPC's own code.** `GetUIDFromLocalUID(250)` returns the talker's UID while `gCur` is that NPC, and `controlUID` otherwise.
+  - `_context.controlUID` is **never changed**, so the engine and every other script keep the leader.
+  - `GetObjByUID` and `FindObjByUID` fall back to the talker for its UID while the talk is active. `GetObjByUID` has its own copy of the lookup loop, so it needs the fallback too.
+- **Why it's this narrow** (found in Alexandria, field 100): a first version set `controlUID` to the follower for the whole talk.
+  - That exposed the detached actor to the children's ambient loops (`GetEntryPosX(250)`, `DistanceWithEntry(ObjectUID_250)`) and to region triggers that `RunScriptSync(2, 250, 16)`, which run a function *on* the player.
+  - Because `GetObjByUID` lacked the fallback, 250 resolved to nothing. The result was `InvalidCastException`/`NullReferenceException` every tick and broken rendering.
+- **The leader waits while an extra player talks**, even when the talk script doesn't call `DisableMove` (the Alexandria child only does conditionally). `MovePC` returns early and the leader's `CollisionRequest` is skipped.
+- **The talk ends** when the NPC's script level goes back above 1 (the request set it to 1, and the return restores it), or when the follower is removed. Control then returns to P1.
+- **Scene changes:** `ProcessEvents` calls `EndMultiplayerTalkOnSceneChange` right after `ProcessCode`, which ends the talk on a battle, field, world map, Tetra Master or game-over jump.
+- **Upstream edits** (marked `[Multiplayer]`):
+  - `EventCollision.IsNPCTalkable` is now `internal`.
+  - `GetUIDFromLocalUID(250)` resolves as described above.
+  - `GetObjByUID` and `FindObjByUID` get the fallbacks.
+  - `ProcessEvents` gets two calls and the leader's `CollisionRequest` guard.
+  - `MovePC` gets the guard.
+- **Remaining risk:** a talk function that *runs a function on* 250 (`RunScript*` on the player) would target a detached actor that never runs code.
+- **Not yet:**
+  - No "!" talk icon over extra players.
+  - Square (Tetra Master, tag 8) and talk regions (quads) are leader-only.
