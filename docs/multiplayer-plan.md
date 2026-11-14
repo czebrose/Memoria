@@ -227,3 +227,34 @@ There are three layers. Everything ends up in a single set of `HonoInputManager`
 - **Battle end:** `MultiplayerBattle.Update` (called from `MultiplayerManager.Update`) returns control to P1 once the scene is no longer a battle scene.
 - **Index note:** BattleHUD's "player id" (`CurrentPlayerIndex`, `ReadyQueue`) is the index into `btl_data`. `BattleUnit.Id` is the `btl_id` **bitmask**, so don't mix them.
 - **One menu at a time:** while one player's menu is open, the other player waits. Simultaneous menus are Phase 4.
+
+## Phase 3a notes (extra players' characters on fields, prototype)
+
+- **`Memoria/Multiplayer/MultiplayerField.cs`:**
+  - On a field (`gMode == 1`) with the leader on the walkmesh and user control on, each player 2–4 gets a *follower*: the first party member they own.
+  - Followers are rebuilt per field map, since they're children of the field map, which is destroyed on field changes and battles.
+  - Toggle: `[Multiplayer] FieldFollowers` (default 1).
+- **Followers are detached actors:**
+  - Built with the parameterless `Actor()`. `Actor(sid, uid)` would add the object to the engine's active list with that entry's bytecode, which is why Memoria's unused `CharacterBuilder` prototype isn't reused.
+  - UID is 240+player, skipped if the field uses it.
+  - The model is built as the `SetModel` opcode does, the animations as `Set*Animation` load them, plus the `charArray`/`charStateArray`/`shadowArray` entries the renderer, shadows and colour effects need, then `FieldMap.AddFieldChar(..., isPlayer: false, ...)`.
+  - Scripts never see them. Object 250, `isPlayer`, `FieldMap.playerController` (camera) and encounters stay on the leader, and nothing is saved.
+- **Movement** (`Global/Field/Map/Actor/FieldMapActorController.Multiplayer.cs`, partial):
+  - `UpdateMovement` branches to `MoveMultiplayerFollower` when `multiplayerOwner > 0`.
+  - It reads the owner's left stick or D-pad (`MultiplayerField.GetMoveInput`): B held = run, inverted by the game's run setting. It moves camera-relative like `MovePC`, runs as two walking steps, turns like `MovePC`, and pushes out of NPCs without the leader's lock timers.
+  - The walkmesh is then enforced by the shared `ServiceChar`/`UpdateActiveTri`.
+  - The follower is frozen whenever the leader has no user control (cutscenes, menus, dialogue).
+- **Animation** (`Global/Event/Engine/EventEngine.Multiplayer.cs`, partial): applies the engine's own walk/run/idle choice, `ProcessAnime`'s frame advance and `ff9fieldCharService`'s rotation, because the engine skips detached actors.
+- **Field models** (`Memoria/Multiplayer/FieldModels.cs`):
+  - Defaults are each character's most common field model and animations in the vanilla field scripts.
+  - `[Multiplayer] FieldModels = Name=model,height,idle,walk,run,turnL,turnR,size; ...` overrides them. B.Waltz as Black Waltz No. 3: `Beatrix=167,87,11676,11676,11676,11676,11676,26`. That model's only field animation is a floating idle, so it glides.
+- **Placement and the screen edge (3b, as decided with the user):**
+  - **Followers never jump within a field.** They're placed next to the leader only when a field starts, after its opening cutscene once players can move. After that, only their own controller moves them.
+  - **Spawn spot:** on the leader's walkmesh floor and on screen (feet and head, projected like the leader's click-to-move marker in `HonoOnGUI`). Falls back to same floor, then to the leader's own spot. The first version placed P2 out of view on deck → engine room (504).
+  - **The screen edge is a wall:** a step that would take an on-screen follower off-screen (feet or head; head = y - eye, since field Y grows upwards) is undone, sliding along the edge by trying the X and Z parts of the step. The walk animation follows actual movement, so a blocked follower stands still.
+  - **Camera scrolls away:** the follower stays where it is, is free to move while off-screen, and can walk back into view. Earlier pull-back versions were removed at the user's request: one teleported after 1 s off-screen, and an earlier one also triggered on distance, which fired in the big fixed-camera engine room.
+- **Not yet** (later sub-steps):
+  - The leader walks through followers.
+  - Followers can't talk (3c).
+  - Exits aren't handled specially (3d). Followers simply respawn next to the leader on the next field.
+  - Cutscenes don't hide them (3e).

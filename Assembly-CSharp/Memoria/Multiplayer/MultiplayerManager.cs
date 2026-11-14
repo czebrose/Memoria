@@ -61,6 +61,7 @@ namespace Memoria.Multiplayer
                 {
                     s_wasActive = false;
                     SetActivePlayer(1, "multiplayer disabled");
+                    MultiplayerField.OnMultiplayerDisabled();
                 }
                 return;
             }
@@ -69,6 +70,7 @@ namespace Memoria.Multiplayer
             XInputPads.Poll();
             LogSlotChanges();
             MultiplayerBattle.Update();
+            MultiplayerField.Update();
 
             if (Configuration.Multiplayer.DebugOverlay)
             {
@@ -179,7 +181,7 @@ namespace Memoria.Multiplayer
             return result;
         }
 
-        private static Boolean TryParseCharacter(String text, out CharacterId id)
+        public static Boolean TryParseCharacter(String text, out CharacterId id)
         {
             foreach (String name in Enum.GetNames(typeof(CharacterId)))
             {

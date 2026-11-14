@@ -11,6 +11,10 @@ namespace Memoria
             public static Boolean DebugOverlay => Instance._multiplayer.DebugOverlay;
             /// <summary>XInput slot (0-3) of each player's controller, in player order. Default "0, 1, 2, 3".</summary>
             public static String PlayerPads => Instance._multiplayer.PlayerPads;
+            /// <summary>Show players 2-4's characters next to the leader on fields, walking with their own controller.</summary>
+            public static Boolean FieldFollowers => Instance._multiplayer.FieldFollowers;
+            /// <summary>Per-character field model overrides: "Name=model,height,idle,walk,run,turnL,turnR,size; ..."</summary>
+            public static String FieldModels => Instance._multiplayer.FieldModels;
             /// <summary>Characters owned by player 2..4 (CharacterId names or numbers, comma-separated). Unlisted characters belong to player 1.</summary>
             public static String GetPlayerCharacters(Int32 player)
             {

@@ -13,9 +13,13 @@ namespace Memoria
             public readonly IniValue<String> Player2Characters;
             public readonly IniValue<String> Player3Characters;
             public readonly IniValue<String> Player4Characters;
+            public readonly IniValue<Boolean> FieldFollowers;
+            public readonly IniValue<String> FieldModels;
 
             public MultiplayerSection() : base(nameof(MultiplayerSection), false)
             {
+                FieldFollowers = BindBoolean(nameof(FieldFollowers), true);
+                FieldModels = BindString(nameof(FieldModels), "");
                 DebugOverlay = BindBoolean(nameof(DebugOverlay), false);
                 PlayerPads = BindString(nameof(PlayerPads), "0, 1, 2, 3");
                 Player2Characters = BindString(nameof(Player2Characters), "");

@@ -321,7 +321,11 @@ public partial class FieldMapActorController : HonoBehavior
     {
         this.cTime = 0f;
         this.isMoving = false;
-        if (this.isPlayer)
+        if (this.IsMultiplayerFollower) // [Multiplayer] an extra player's character, moved by its owner's controller
+        {
+            this.MoveMultiplayerFollower(copyLastPos);
+        }
+        else if (this.isPlayer)
         {
             if (PersistenSingleton<EventEngine>.Instance.GetUserControl()
                 || FF9StateSystem.Common.FF9.fldMapNo == 1751 // Iifa Tree/Inner Roots (entrance after elevator)
