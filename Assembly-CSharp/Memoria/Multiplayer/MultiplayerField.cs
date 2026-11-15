@@ -349,12 +349,14 @@ namespace Memoria.Multiplayer
                 controller.radius = model.Size * 4f;
                 controller.multiplayerOwner = player;
                 controller.multiplayerMoveAnimSpeed = (Byte)Mathf.Clamp(Mathf.RoundToInt(16f * model.MoveAnimPercent / 100f), 1, 255);
+                controller.multiplayerMoveSpeedFactor = model.MoveSpeedPercent / 100f;
                 FieldMapActor fieldActor = actor.go.GetComponent<FieldMapActor>();
                 if (fieldActor != null)
                     fieldActor.CharRadius = model.Size * 4f;
                 String spot = controller.PlaceNextTo(leader, player - 2, pos => IsOnScreen(fieldMap, pos, actor));
                 engine.InitMultiplayerFollowerAnimation(actor);
                 engine.AnimateMultiplayerFollower(actor, false, false);
+                BlackWaltzWalk.AttachTo(actor); // the normal Black Waltz No. 3 has no walk of its own
 
                 s_followers[player] = new Follower { Player = player, Character = character, Actor = actor, Controller = controller };
                 Log.Message($"[Multiplayer] P{player}'s {character} appears on field {FF9StateSystem.Common.FF9.fldMapNo} at {spot}, floor {controller.activeFloor} ({model})");

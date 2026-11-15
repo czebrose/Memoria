@@ -35,7 +35,7 @@ All in `Memoria.ini`, section `[Multiplayer]` (or the launcher's MULTIPLAYER tab
 | `PlayerCount` | `2` | Number of players (2-4). Player N controls party slot N while their controller is connected; every other slot belongs to player 1. |
 | `PlayerPads` | `0, 1, 2, 3` | XInput controller slot (0-3) of players 1, 2, 3, 4. |
 | `FieldFollowers` | `1` | Extra players walk on fields. |
-| `BlackWaltzModel` | `0` | On fields, an extra player's Beatrix is shown as Black Waltz No. 3 (its beaten model, the only one that walks). |
+| `BlackWaltzModel` | `0` | On fields, an extra player's Beatrix is shown as Black Waltz No. 3: its normal model, walking with the beaten one's animations (`BlackWaltzWalk`), at 25% of the normal movement speed to fit that slow walk. |
 | `BlackMageModel` | `0` | On fields, an extra player's Vivi is shown as a Black Mage. |
 | `BattleMenus` | `1` | Compact battle menus for players waiting while the main menu is busy. |
 | `FieldModels` | empty | Advanced: override any character's field model, `Name=model,headHeight,idle,walk,run,turnLeft,turnRight,size[,walk/run animation speed %]`, separated by `;`. Wins over the two switches above. |

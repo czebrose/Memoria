@@ -448,6 +448,7 @@
     <Compile Include="Memoria\Multiplayer\MultiplayerKeys.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerTalk.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerManager.cs" />
+    <Compile Include="Memoria\Multiplayer\BlackWaltzWalk.cs" />
     <Compile Include="Memoria\Multiplayer\MultiplayerOverlay.cs" />
     <Compile Include="Memoria\Multiplayer\XInputPads.cs" />
     <Compile Include="Memoria\Data\Battle\RegularItem.cs" />

@@ -54,7 +54,6 @@ public partial class BattleHUD
         public Int32 NavDirection;
         public Single NavNextTime;
         public Int32 First;                 // list stages: first row shown (moves by whole visual rows)
-        public Boolean PanelLogPending;     // diagnostics: dump the panel's rows once after a target list is built
     }
 
     // ---- Slots: the 6 rows of the command window, laid out like the main menu -----------------------------------
@@ -579,11 +578,6 @@ public partial class BattleHUD
             }
         if (menu.Rows.Count == 0)
             menu.Rows.Add(new MultiplayerMenuRow { Text = "(no target)", Enabled = false, Value = -1 });
-        String list = String.Join(", ", menu.Rows.ConvertAll(r => $"'{r.Text}'{(r.Enabled ? "" : " (off)")}").ToArray());
-        if (!Configuration.Multiplayer.DebugOverlay) // diagnostics for the blank target list, only with the debug overlay
-            return;
-        Log.Message($"[Multiplayer] P{menu.Player} target list for {menu.CommandId} sub {menu.SubIndex}: type {type}, default {(menu.DefaultAlly ? "ally" : "enemy")}, dead {menu.TargetDead}, all {menu.AllMode}, cursor {menu.Cursor}: {list}");
-        menu.PanelLogPending = true;
     }
 
     // ---- Input ---------------------------------------------------------------------------------------------------
@@ -999,18 +993,6 @@ public partial class BattleHUD
         }
         SetMultiplayerPointer(panel, cursorRow);
         PlaceMultiplayerPanel(panel, slot);
-        if (menu.PanelLogPending)
-        {
-            menu.PanelLogPending = false;
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.Append($"[Multiplayer] P{menu.Player} panel {slot + 1} (root active {panel.Root.activeInHierarchy}, alpha {panel.Widget?.finalAlpha:0.00}, first {menu.First}):");
-            for (Int32 i = 0; i < MultiplayerVisibleRows; i++)
-            {
-                UILabel label = panel.RowLabels[i];
-                sb.Append($" [{i}: '{label.rawText}' shown {label.gameObject.activeInHierarchy}/{label.enabled}, alpha {label.finalAlpha:0.00}, size {label.width}x{label.height}, at {(Vector2)panel.Rows[i].transform.localPosition}]");
-            }
-            Log.Message(sb.ToString());
-        }
     }
 
     private void HideMultiplayerPanel(MultiplayerPanel panel)

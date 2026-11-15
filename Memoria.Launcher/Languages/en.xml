@@ -336,7 +336,7 @@ MultiplayerSlot3 = "Controller 3"
 MultiplayerSlot4 = "Controller 4"
 MultiplayerFieldModels = "Field models"
 MultiplayerBlackWaltzModel = "Beatrix as Black Waltz"
-MultiplayerBlackWaltzModel_Tooltip = "When another player plays Beatrix (B.Waltz in the HadesWorkshop mod), show her on fields as Black Waltz No. 3.&#xA;It uses the beaten Black Waltz model: the only Black Waltz the game can show walking."
+MultiplayerBlackWaltzModel_Tooltip = "When another player plays Beatrix (B.Waltz in the HadesWorkshop mod), show her on fields as Black Waltz No. 3.&#xA;The game has no walk for Black Waltz No. 3, so it borrows the stand and walk of the beaten Black Waltz."
 MultiplayerBlackMageModel = "Vivi as a Black Mage"
 MultiplayerBlackMageModel_Tooltip = "When another player plays Vivi (Duskly in the HadesWorkshop mod), show him on fields as a Black Mage from the Black Mage Village."
 />

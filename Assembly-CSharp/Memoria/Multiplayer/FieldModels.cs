@@ -17,6 +17,7 @@ namespace Memoria.Multiplayer
         public UInt16 TurnRight;
         public Byte Size;         // SetObjectLogicalSize's 1st argument (pathing radius / 4)
         public Int32 MoveAnimPercent = 100; // walk/run animation playback speed, to match the steps to the movement speed
+        public Int32 MoveSpeedPercent = 100; // how fast the character moves (walking and running), e.g. to fit a slow walk
 
         public FieldModel(UInt16 model, Byte headHeight, UInt16 idle, UInt16 walk, UInt16 run, UInt16 turnLeft, UInt16 turnRight, Byte size)
         {
@@ -30,7 +31,7 @@ namespace Memoria.Multiplayer
             Size = size;
         }
 
-        public override String ToString() => $"model {Model}, anims {Idle}/{Walk}/{Run}/{TurnLeft}/{TurnRight}, size {Size}" + (MoveAnimPercent != 100 ? $", walk/run anim speed {MoveAnimPercent}%" : "");
+        public override String ToString() => $"model {Model}, anims {Idle}/{Walk}/{Run}/{TurnLeft}/{TurnRight}, size {Size}" + (MoveAnimPercent != 100 ? $", walk/run anim speed {MoveAnimPercent}%" : "") + (MoveSpeedPercent != 100 ? $", move speed {MoveSpeedPercent}%" : "");
     }
 
     /// <summary>
@@ -62,9 +63,10 @@ namespace Memoria.Multiplayer
         private static Dictionary<CharacterId, FieldModel> s_overrides = new Dictionary<CharacterId, FieldModel>();
 
         // Ready-made swaps, switched on by [Multiplayer] BlackWaltzModel / BlackMageModel (the launcher's checkboxes):
-        // Black Waltz No. 3 uses its beaten model, the only Black Waltz field model with a walk; the Black Mage is the
-        // Black Mage Village model (GEO_NPC_F1_BMG), whose textures the HadesWorkshop mod also uses for Duskly in battle.
-        private static readonly FieldModel BlackWaltz = new FieldModel(207, 87, 6622, 8563, 8563, 6622, 6622, 26) { MoveAnimPercent = 70 };
+        // Black Waltz No. 3 uses its normal field model, which only floats: BlackWaltzWalk gives it the beaten model's
+        // stand and walk. The Black Mage is the Black Mage Village model (GEO_NPC_F1_BMG), whose textures the
+        // HadesWorkshop mod also uses for Duskly in battle.
+        private static readonly FieldModel BlackWaltz = new FieldModel(BlackWaltzWalk.NormalModel, 87, 11676, 11676, 11676, 11676, 11676, 26) { MoveSpeedPercent = 25 };
         private static readonly FieldModel BlackMage = new FieldModel(53, 66, 1257, 1272, 1260, 1265, 1261, 20);
 
         public static FieldModel Get(CharacterId character)
