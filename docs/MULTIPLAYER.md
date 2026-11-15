@@ -96,8 +96,8 @@ existing files are marked `[Multiplayer]`.
 ## Known issues
 
 - **Cutscenes:** extra players aren't hidden during cutscenes, and they walk along when a script walks the leader.
-- **Compact battle menus:** the target list has occasionally shown up blank (cause not found yet). No keyboard support
-  (player 1 needs a controller for it), no battlefield target highlight, no help texts.
+- **Compact battle menus:** no keyboard support (player 1 needs a controller for it), no battlefield target highlight,
+  no help texts.
 - **ATB "Wait" mode** freezes everyone's gauge while the main menu is in a sub-menu, so others can't become ready then.
 - **Field models:** extra players use each character's normal field model (or the Black Waltz / Black Mage swaps). Mod
   characters have no field models of their own.

@@ -494,7 +494,7 @@ public partial class BattleHUD
         }
         else
         {
-            AA_DATA aaData = GetSelectedActiveAbility(menu.BtlIndex, menu.CommandId, menu.SubIndex, out _, out _);
+            AA_DATA aaData = GetMultiplayerActiveAbility(menu, menu.SubIndex);
             menu.TargetType = aaData.Info.Target;
             menu.DefaultAlly = aaData.Info.DefaultAlly;
             menu.TargetDead = aaData.Info.ForDead;
@@ -621,7 +621,19 @@ public partial class BattleHUD
         UInt16 confirmButton = EventInput.isJapaneseLayout ? XInputPads.B : XInputPads.A;
         UInt16 cancelButton = EventInput.isJapaneseLayout ? XInputPads.A : XInputPads.B;
         if (XInputPads.IsPressed(slot, confirmButton))
-            ConfirmMultiplayerMenu(menu);
+        {
+            try
+            {
+                ConfirmMultiplayerMenu(menu);
+            }
+            catch (Exception err)
+            {
+                // Never leave a half-built (blank) page: report it and go back to the commands
+                Log.Error(err, $"[Multiplayer] P{menu.Player}'s compact menu failed on {menu.Stage} ({menu.CommandId}, sub {menu.SubIndex}); back to the commands");
+                BuildMultiplayerCommandRows(menu);
+                ShowMultiplayerMessage(menu, "That didn't work; try again or use the main menu");
+            }
+        }
         else if (XInputPads.IsPressed(slot, cancelButton))
             CancelMultiplayerMenu(menu);
         else if ((XInputPads.IsPressed(slot, XInputPads.LeftShoulder) || XInputPads.IsPressed(slot, XInputPads.RightShoulder))
@@ -698,7 +710,7 @@ public partial class BattleHUD
                 break;
             case CharacterCommandType.Instant:
             {
-                AA_DATA aaData = GetSelectedActiveAbility(menu.BtlIndex, menu.CommandId, -1, out _, out _);
+                AA_DATA aaData = GetMultiplayerActiveAbility(menu, -1);
                 TargetType targetType = aaData.Info.Target;
                 menu.TargetType = targetType;
                 if (targetType == TargetType.Self)
@@ -797,6 +809,25 @@ public partial class BattleHUD
         _partyDetail.SetBlink(menu.BtlIndex, false);
         Log.Message($"[Multiplayer] P{menu.Player} sent {detail.CommandId} (sub {detail.SubId}, targets 0x{detail.TargetId:X2}) from their compact menu");
         CloseMultiplayerMenu(menu, null);
+    }
+
+    /// <summary>
+    /// GetSelectedActiveAbility for this menu's character. Its PatchAbility reads the main menu's CurrentPlayerIndex, which
+    /// can be -1 (main menu just closed) or another character: that threw while building the target list, after the list
+    /// was already cleared, leaving it blank.
+    /// </summary>
+    private AA_DATA GetMultiplayerActiveAbility(MultiplayerMenu menu, Int32 abilityIndex)
+    {
+        Int32 savedPlayer = CurrentPlayerIndex;
+        try
+        {
+            CurrentPlayerIndex = menu.BtlIndex;
+            return GetSelectedActiveAbility(menu.BtlIndex, menu.CommandId, abilityIndex, out _, out _);
+        }
+        finally
+        {
+            CurrentPlayerIndex = savedPlayer;
+        }
     }
 
     /// <summary>GetActionMpCost with this menu's command instead of the main menu's.</summary>
