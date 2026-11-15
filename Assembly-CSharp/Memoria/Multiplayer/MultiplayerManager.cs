@@ -12,7 +12,9 @@ namespace Memoria.Multiplayer
     /// so that with [Multiplayer] Enabled = 0 the game behaves exactly like upstream Memoria.
     ///
     /// Players are numbered 1-4. Player N reads the XInput slot given by [Multiplayer] PlayerPads
-    /// (default: slot N-1); the keyboard belongs to player 1. Only the player "in control"
+    /// (default: slot N-1); the keyboard belongs to player 1. Player N (up to [Multiplayer] PlayerCount) controls the
+    /// character in party slot N while their controller is connected; every other character belongs to player 1.
+    /// Only the player "in control"
     /// (<see cref="ActivePlayer"/>) reaches the game: XInputManager reads that player's slot and the
     /// keyboard is ignored unless player 1 is in control.
     /// </summary>
@@ -28,8 +30,7 @@ namespace Memoria.Multiplayer
 
         private static String s_padsSource;
         private static Int32[] s_pads = { 0, 1, 2, 3 };
-        private static String s_ownersSource;
-        private static Dictionary<CharacterId, Int32> s_owners = new Dictionary<CharacterId, Int32>();
+        private static Int64 s_ownershipKey = -1;
 
         public static Boolean IsActive => Configuration.Multiplayer.Enabled;
 
@@ -47,7 +48,7 @@ namespace Memoria.Multiplayer
                 return;
             RefreshConfig();
             Log.Message($"[Multiplayer] Controller slots: {DescribePads()}");
-            Log.Message($"[Multiplayer] Character owners: {DescribeOwners()}");
+            Log.Message($"[Multiplayer] Players: {Configuration.Multiplayer.PlayerCount} (player N controls party slot N while their controller is connected; other slots: P1)");
             Log.Message($"[Multiplayer] Control: P{s_activePlayer}");
         }
 
@@ -69,6 +70,7 @@ namespace Memoria.Multiplayer
             RefreshConfig();
             XInputPads.Poll();
             LogSlotChanges();
+            LogOwnershipChanges();
             MultiplayerBattle.Update();
             if (global::Assets.Scripts.Common.SceneDirector.IsBattleScene() && UIManager.Battle != null)
                 UIManager.Battle.UpdateMultiplayerMenus();
@@ -108,10 +110,31 @@ namespace Memoria.Multiplayer
         /// <summary>The XInput slot XInputManager should read: the active player's pad.</summary>
         public static Int32 ActivePadSlot => GetPadSlot(s_activePlayer);
 
-        /// <summary>Player (1-4) that owns a character; characters not listed in the config belong to player 1.</summary>
+        /// <summary>Player (1-4) that controls a character: the owner of its party slot; characters outside the party belong to player 1.</summary>
         public static Int32 GetOwner(CharacterId character)
         {
-            return s_owners.TryGetValue(character, out Int32 player) ? player : 1;
+            PLAYER[] members = FF9StateSystem.Common?.FF9?.party?.member;
+            if (members == null)
+                return 1;
+            for (Int32 slot = 0; slot < members.Length; slot++)
+                if (members[slot] != null && members[slot].Index == character)
+                    return GetSlotOwner(slot);
+            return 1;
+        }
+
+        /// <summary>Player (1-4) that controls a party slot (0-3): player N has slot N-1 if N is within PlayerCount and their controller is connected.</summary>
+        public static Int32 GetSlotOwner(Int32 partySlot)
+        {
+            Int32 player = partySlot + 1;
+            if (player < 2 || player > Configuration.Multiplayer.PlayerCount)
+                return 1;
+            return IsPadConnected(player) ? player : 1;
+        }
+
+        public static Boolean IsPadConnected(Int32 player)
+        {
+            Int32 slot = GetPadSlot(player);
+            return slot >= 0 && XInputPads.Get(slot).Connected;
         }
 
         private static void RefreshConfig()
@@ -124,15 +147,6 @@ namespace Memoria.Multiplayer
                 s_pads = ParsePads(pads);
                 if (reload)
                     Log.Message($"[Multiplayer] Controller slots changed: {DescribePads()}");
-            }
-            String owners = Configuration.Multiplayer.GetPlayerCharacters(2) + "|" + Configuration.Multiplayer.GetPlayerCharacters(3) + "|" + Configuration.Multiplayer.GetPlayerCharacters(4);
-            if (owners != s_ownersSource)
-            {
-                Boolean reload = s_ownersSource != null;
-                s_ownersSource = owners;
-                s_owners = ParseOwners();
-                if (reload)
-                    Log.Message($"[Multiplayer] Character owners changed: {DescribeOwners()}");
             }
         }
 
@@ -158,28 +172,6 @@ namespace Memoria.Multiplayer
                     continue;
                 }
                 result[i] = slot;
-            }
-            return result;
-        }
-
-        private static Dictionary<CharacterId, Int32> ParseOwners()
-        {
-            Dictionary<CharacterId, Int32> result = new Dictionary<CharacterId, Int32>();
-            for (Int32 player = 2; player <= MaxPlayers; player++)
-            {
-                foreach (String name in SplitList(Configuration.Multiplayer.GetPlayerCharacters(player)))
-                {
-                    CharacterId id;
-                    if (!TryParseCharacter(name, out id))
-                    {
-                        Log.Warning($"[Multiplayer] Player{player}Characters: unknown character '{name}'");
-                        continue;
-                    }
-                    if (result.ContainsKey(id))
-                        Log.Warning($"[Multiplayer] {id} is listed for both P{result[id]} and P{player}; keeping P{result[id]}");
-                    else
-                        result[id] = player;
-                }
             }
             return result;
         }
@@ -280,14 +272,28 @@ namespace Memoria.Multiplayer
             return text;
         }
 
-        private static String DescribeOwners()
+        /// <summary>Log who controls each party slot whenever the party, the player count or a controller's connection changes.</summary>
+        private static void LogOwnershipChanges()
         {
-            if (s_owners.Count == 0)
-                return "all characters belong to P1";
+            PLAYER[] members = FF9StateSystem.Common?.FF9?.party?.member;
+            if (members == null)
+                return;
+            Int64 key = Configuration.Multiplayer.PlayerCount;
+            for (Int32 slot = 0; slot < members.Length && slot < MaxPlayers; slot++)
+                key = key * 512 + (members[slot] == null ? 511 : (Int32)members[slot].Index * 2 + (IsPadConnected(slot + 1) ? 1 : 0));
+            if (key == s_ownershipKey)
+                return;
+            s_ownershipKey = key;
             String text = "";
-            foreach (KeyValuePair<CharacterId, Int32> pair in s_owners)
-                text += (text.Length > 0 ? ", " : "") + $"{pair.Key}=P{pair.Value}";
-            return text + " (others: P1)";
+            for (Int32 slot = 0; slot < members.Length && slot < MaxPlayers; slot++)
+            {
+                if (members[slot] == null)
+                    continue;
+                Int32 owner = GetSlotOwner(slot);
+                String reason = owner == 1 && slot > 0 && slot + 1 <= Configuration.Multiplayer.PlayerCount ? $" (P{slot + 1} has no controller)" : "";
+                text += (text.Length > 0 ? ", " : "") + $"slot {slot + 1} {members[slot].Name}=P{owner}{reason}";
+            }
+            Log.Message($"[Multiplayer] Party control: {(text.Length > 0 ? text : "no party")}");
         }
     }
 }

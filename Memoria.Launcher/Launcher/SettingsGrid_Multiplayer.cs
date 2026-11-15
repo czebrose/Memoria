@@ -1,7 +1,4 @@
 using System;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
 using Memoria.Launcher.Utils;
 using Application = System.Windows.Application;
 
@@ -10,7 +7,7 @@ namespace Memoria.Launcher
     // [Multiplayer] Fork addition: the launcher's Multiplayer tab. Each control edits one value of Memoria.ini's
     // [Multiplayer] section (see Settings.Multiplayer.cs); the ini file stays the source of truth.
 
-    /// <summary>Column 1: switches and each player's controller.</summary>
+    /// <summary>Column 1: number of players, switches and each player's controller.</summary>
     public sealed class SettingsGrid_Multiplayer : UiGrid
     {
         public SettingsGrid_Multiplayer()
@@ -18,7 +15,8 @@ namespace Memoria.Launcher
             DataContext = (MainWindow)Application.Current.MainWindow;
 
             CreateHeading("Settings.Multiplayer");
-            CreateCheckbox("MultiplayerEnabled", "Settings.MultiplayerEnabled", "Settings.MultiplayerEnabled_Tooltip");
+            String[] players = { "Settings.MultiplayerPlayers1", "Settings.MultiplayerPlayers2", "Settings.MultiplayerPlayers3", "Settings.MultiplayerPlayers4" };
+            CreateCombobox("MultiplayerPlayers", ComboBoxOptions.Localized(players), 50, "Settings.MultiplayerPlayers", "Settings.MultiplayerPlayers_Tooltip");
             CreateCheckbox("MultiplayerFieldFollowers", "Settings.MultiplayerFieldFollowers", "Settings.MultiplayerFieldFollowers_Tooltip");
             CreateCheckbox("MultiplayerBattleMenus", "Settings.MultiplayerBattleMenus", "Settings.MultiplayerBattleMenus_Tooltip");
             CreateCheckbox("MultiplayerDebugOverlay", "Settings.MultiplayerDebugOverlay", "Settings.MultiplayerDebugOverlay_Tooltip");
@@ -30,52 +28,16 @@ namespace Memoria.Launcher
         }
     }
 
-    /// <summary>Column 2: which player controls each character.</summary>
+    /// <summary>Column 2: field model swaps for extra players' characters.</summary>
     public sealed class SettingsGrid_Multiplayer2 : UiGrid
     {
         public SettingsGrid_Multiplayer2()
         {
             DataContext = (MainWindow)Application.Current.MainWindow;
 
-            CreateHeading("Settings.MultiplayerCharacters");
-            String[] players = { "Settings.MultiplayerPlayer1", "Settings.MultiplayerPlayer2", "Settings.MultiplayerPlayer3", "Settings.MultiplayerPlayer4" };
-            foreach (String character in MainWindow.MultiplayerCharacters)
-                CreateCombobox("MultiplayerOwner" + character, ComboBoxOptions.Localized(players), 50, character, "Settings.MultiplayerCharacters_Tooltip");
-        }
-    }
-
-    /// <summary>Column 3: field model overrides (free text, one character per line).</summary>
-    public sealed class SettingsGrid_Multiplayer3 : UiGrid
-    {
-        public SettingsGrid_Multiplayer3()
-        {
-            DataContext = (MainWindow)Application.Current.MainWindow;
-
             CreateHeading("Settings.MultiplayerFieldModels");
-            CreateTextbloc("Settings.MultiplayerFieldModels_Help", "Settings.MultiplayerFieldModels_Tooltip");
-
-            Row++;
-            RowDefinitions.Add(new RowDefinition());
-            TextBox textBox = new TextBox
-            {
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.NoWrap,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Height = 140,
-                Margin = CommonMargin,
-                FontSize = 12,
-                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-            };
-            // Written to the ini when the box loses focus
-            textBox.SetBinding(TextBox.TextProperty, new Binding("MultiplayerFieldModels") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.LostFocus });
-            MakeTooltip(textBox, "Settings.MultiplayerFieldModels_Tooltip");
-            textBox.SetValue(RowProperty, Row);
-            textBox.SetValue(ColumnProperty, 0);
-            textBox.SetValue(ColumnSpanProperty, MaxColumns);
-            Children.Add(textBox);
-
-            CreateTextbloc("Settings.MultiplayerFieldModels_Example", "Settings.MultiplayerFieldModels_Tooltip");
+            CreateCheckbox("MultiplayerBlackWaltzModel", "Settings.MultiplayerBlackWaltzModel", "Settings.MultiplayerBlackWaltzModel_Tooltip");
+            CreateCheckbox("MultiplayerBlackMageModel", "Settings.MultiplayerBlackMageModel", "Settings.MultiplayerBlackMageModel_Tooltip");
         }
     }
 }

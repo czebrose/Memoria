@@ -12,11 +12,12 @@ upstream Memoria.
 
 - **Separate controllers.** Up to 4 XInput controllers, one per player; the keyboard belongs to player 1.
   PlayStation/Switch controllers are told apart only with Steam Input enabled for the game.
-- **Characters belong to players.** Each character is owned by a player (default: player 1).
+- **Party slots belong to players.** Player 2 controls the 2nd character in the party, player 3 the 3rd, player 4 the
+  4th. Player 1 controls the leader and any slot whose player isn't playing or has no controller connected.
 - **Battles.** A character's command menu is driven by its owner's controller. While the main menu is busy with one
   player, any other player whose character is ready gets a **compact command menu** of their own (up to 3 at once), in
   the same style and layout as the main menu.
-- **Fields.** Each extra player's first character in the party walks next to the leader with their own controller:
+- **Fields.** Each extra player's character walks next to the leader with their own controller:
   - the screen edge acts as a wall (the camera follows the leader);
   - they can **talk to NPCs**, open chests and pick up items (with their own "!" bubble), and they close the
     messages they open;
@@ -31,19 +32,21 @@ All in `Memoria.ini`, section `[Multiplayer]` (or the launcher's MULTIPLAYER tab
 | Setting | Default | What it does |
 |---|---|---|
 | `Enabled` | `0` | Turns local multiplayer on. Off = identical to upstream Memoria. |
+| `PlayerCount` | `2` | Number of players (2-4). Player N controls party slot N while their controller is connected; every other slot belongs to player 1. |
 | `PlayerPads` | `0, 1, 2, 3` | XInput controller slot (0-3) of players 1, 2, 3, 4. |
-| `Player2Characters`, `Player3Characters`, `Player4Characters` | empty | Characters each player controls, by name (`Zidane, Vivi, Garnet, Steiner, Freya, Quina, Eiko, Amarant, Cinna, Marcus, Blank, Beatrix`) or number, comma-separated. Unlisted characters belong to player 1. |
 | `FieldFollowers` | `1` | Extra players walk on fields. |
+| `BlackWaltzModel` | `0` | On fields, an extra player's Beatrix is shown as Black Waltz No. 3 (its beaten model, the only one that walks). |
+| `BlackMageModel` | `0` | On fields, an extra player's Vivi is shown as a Black Mage. |
 | `BattleMenus` | `1` | Compact battle menus for players waiting while the main menu is busy. |
-| `FieldModels` | empty | Override a character's field model: `Name=model,headHeight,idle,walk,run,turnLeft,turnRight,size[,walk/run animation speed %]`, separated by `;`. |
+| `FieldModels` | empty | Advanced: override any character's field model, `Name=model,headHeight,idle,walk,run,turnLeft,turnRight,size[,walk/run animation speed %]`, separated by `;`. Wins over the two switches above. |
 | `DebugOverlay` | `0` | Shows each player's controller, buttons and characters on screen, F10 passes control to the next player, and enables extra diagnostics in `Memoria.log` (lines starting with `[Multiplayer]`). |
 
-Example for two players, player 2 playing Vivi and Steiner:
+Example for three players (players 2 and 3 play the 2nd and 3rd characters in the party):
 
 ```ini
 [Multiplayer]
 Enabled = 1
-Player2Characters = Vivi, Steiner
+PlayerCount = 3
 ```
 
 ## Trying it (drop-in build)
@@ -54,7 +57,7 @@ changes. They must go on top of the **exact Memoria build the release names** (t
 1. Install that Memoria build with its patcher, as usual.
 2. Back up `x64\FF9_Data\Managed\` and `FF9_Launcher.exe` from the game folder.
 3. Extract the zip into the game folder (it contains `FF9_Launcher.exe` and `x64\FF9_Data\Managed\*.dll`), overwriting.
-4. Start the game, open the launcher's **MULTIPLAYER** tab, turn it on and pick who plays which character.
+4. Start the game, open the launcher's **MULTIPLAYER** tab and choose the number of players.
 
 To undo: put back the files you backed up (or re-run the Memoria patcher).
 
@@ -96,6 +99,6 @@ existing files are marked `[Multiplayer]`.
 - **Compact battle menus:** the target list has occasionally shown up blank (cause not found yet). No keyboard support
   (player 1 needs a controller for it), no battlefield target highlight, no help texts.
 - **ATB "Wait" mode** freezes everyone's gauge while the main menu is in a sub-menu, so others can't become ready then.
-- **Field models:** extra players use each character's normal field model; characters without a walking field model
-  (e.g. a mod's Black Waltz) glide unless `FieldModels` points to one that walks.
+- **Field models:** extra players use each character's normal field model (or the Black Waltz / Black Mage swaps). Mod
+  characters have no field models of their own.
 - **World map:** leader only.

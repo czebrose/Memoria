@@ -265,11 +265,6 @@
                             Margin="20,15,0,0"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Top" />
-                        <launcher:SettingsGrid_Multiplayer3 x:Name="SettingsGrid_Multiplayer3"
-                            Grid.Column="2"
-                            Margin="20,15,0,0"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Top" />
                     </Grid>
                 </Border>
             </TabItem>

@@ -31,10 +31,25 @@ namespace Memoria.Multiplayer
         private static readonly Dictionary<Int32, Follower> s_followers = new Dictionary<Int32, Follower>();
         private static FieldMap s_fieldMap;
         private static readonly HashSet<String> s_failedSpawns = new HashSet<String>();
+        private static readonly List<FieldMapActor> s_removedActors = new List<FieldMapActor>();
+
+        /// <summary>Destroy the shadows of removed characters whose FieldMapActor HonoBehaviorSystem has destroyed.</summary>
+        private static void CleanUpRemovedShadows()
+        {
+            for (Int32 i = s_removedActors.Count - 1; i >= 0; i--)
+            {
+                // Unity's == null: true once the component is destroyed; its managed fields (the shadow) are still readable
+                if (s_removedActors[i] != null)
+                    continue;
+                s_removedActors[i].DestroySelfShadow();
+                s_removedActors.RemoveAt(i);
+            }
+        }
 
         /// <summary>Called every frame from MultiplayerManager.Update (multiplayer on).</summary>
         internal static void Update()
         {
+            CleanUpRemovedShadows();
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             FieldMap fieldMap = engine?.fieldmap;
             Boolean onField = engine != null && engine.gMode == 1 && fieldMap != null && FF9StateSystem.Common?.FF9?.party != null;
@@ -49,6 +64,7 @@ namespace Memoria.Multiplayer
                 // New field map: the old followers were destroyed with the previous one
                 s_followers.Clear();
                 s_failedSpawns.Clear();
+                s_removedActors.Clear(); // their shadows belonged to the previous field map
                 s_fieldMap = fieldMap;
             }
 
@@ -372,15 +388,41 @@ namespace Memoria.Multiplayer
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             if (engine != null)
                 MultiplayerTalk.EndFor(engine, follower.Actor, "the character was removed");
-            // Only remove entries that are still ours: battles and new fields reuse these dictionaries and UIDs
-            if (FF9StateSystem.Common.FF9.charArray.TryGetValue(uid, out FF9Char ch) && ReferenceEquals(ch.evt, follower.Actor))
+            GameObject go = follower.Actor.go;
+            FieldMapActorController controller = go != null ? go.GetComponent<FieldMapActorController>() : null;
+            FieldMapActor fieldActor = go != null ? go.GetComponent<FieldMapActor>() : null;
+            if (go != null && HonoBehaviorSystem.Exists && (controller != null || fieldActor != null))
             {
-                FF9StateSystem.Common.FF9.charArray.Remove(uid);
-                FF9StateSystem.Field.FF9Field.loc.map.charStateArray.Remove(uid);
-                FF9StateSystem.Field.FF9Field.loc.map.shadowArray.Remove(uid);
+                // In the middle of a field (a party change): do what EventEngine.DisposeObj does. Unregistering from
+                // HonoBehaviorSystem with dispose drops the behaviours from its list and destroys the object at a safe
+                // point. Destroying the object directly left the destroyed controller in the list, and deleting the
+                // UID's charArray/charStateArray/shadowArray entries let its last HonoLateUpdate fail on them: either
+                // way HonoBehaviorSystem.Update threw every frame before reaching its removal list, so characters
+                // glitched and old ones were never cleaned up. Like DisposeObj, the entries are kept; the next character
+                // of this player reuses the UID and overwrites them.
+                // Its shadow is destroyed only once the FieldMapActor is gone (CleanUpRemovedShadows): it still gets one
+                // HonoLateUpdate before HonoBehaviorSystem processes its removal list, and that moves the shadow
+                if (fieldActor != null)
+                {
+                    s_removedActors.Add(fieldActor);
+                    fieldActor.UnregisterHonoBehavior(true);
+                }
+                if (controller != null)
+                    controller.UnregisterHonoBehavior(true);
             }
-            if (follower.Actor.go != null)
-                Object.Destroy(follower.Actor.go);
+            else
+            {
+                // Leaving the field (or nothing registered): only remove entries that are still ours, since battles and
+                // new fields reuse these dictionaries and UIDs
+                if (FF9StateSystem.Common.FF9.charArray.TryGetValue(uid, out FF9Char ch) && ReferenceEquals(ch.evt, follower.Actor))
+                {
+                    FF9StateSystem.Common.FF9.charArray.Remove(uid);
+                    FF9StateSystem.Field.FF9Field.loc.map.charStateArray.Remove(uid);
+                    FF9StateSystem.Field.FF9Field.loc.map.shadowArray.Remove(uid);
+                }
+                if (go != null)
+                    Object.Destroy(go);
+            }
             if (reason != null)
                 Log.Message($"[Multiplayer] P{follower.Player}'s {follower.Character} removed from the field ({reason})");
         }

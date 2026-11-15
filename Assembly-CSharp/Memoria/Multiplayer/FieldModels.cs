@@ -61,11 +61,21 @@ namespace Memoria.Multiplayer
         private static String s_overrideSource;
         private static Dictionary<CharacterId, FieldModel> s_overrides = new Dictionary<CharacterId, FieldModel>();
 
+        // Ready-made swaps, switched on by [Multiplayer] BlackWaltzModel / BlackMageModel (the launcher's checkboxes):
+        // Black Waltz No. 3 uses its beaten model, the only Black Waltz field model with a walk; the Black Mage is the
+        // Black Mage Village model (GEO_NPC_F1_BMG), whose textures the HadesWorkshop mod also uses for Duskly in battle.
+        private static readonly FieldModel BlackWaltz = new FieldModel(207, 87, 6622, 8563, 8563, 6622, 6622, 26) { MoveAnimPercent = 70 };
+        private static readonly FieldModel BlackMage = new FieldModel(53, 66, 1257, 1272, 1260, 1265, 1261, 20);
+
         public static FieldModel Get(CharacterId character)
         {
             RefreshOverrides();
             if (s_overrides.TryGetValue(character, out FieldModel custom))
                 return custom;
+            if (character == CharacterId.Beatrix && Configuration.Multiplayer.BlackWaltzModel)
+                return BlackWaltz;
+            if (character == CharacterId.Vivi && Configuration.Multiplayer.BlackMageModel)
+                return BlackMage;
             return Defaults.TryGetValue(character, out FieldModel model) ? model : null;
         }
 

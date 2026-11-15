@@ -9,6 +9,9 @@ using UnityEngine;
 
 public class HonoBehaviorSystem : MonoBehaviour
 {
+    /// <summary>[Multiplayer] Whether the system is running (Instance would create one); RemoveBehavior does nothing without it.</summary>
+    public static Boolean Exists => HonoBehaviorSystem._instance != null;
+
     public static HonoBehaviorSystem Instance
     {
         get
