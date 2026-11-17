@@ -1,5 +1,7 @@
 using Memoria.Online.Ghosts;
+using Memoria.Online.Session;
 using Memoria.Prime;
+using SimpleJSON;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -73,6 +75,14 @@ namespace Memoria.Online
         private Int32 _clamped;
         private GUIStyle _style;
 
+        // Step 2 / M1: game snapshots (debug hotkeys S, T, R, B)
+        private readonly BlobTransfer _blobs = new BlobTransfer();
+        private Byte[] _snapshot;
+        private String _snapshotSource;
+        private JSONClass _verifyTree;
+        private Boolean _verifyAsGuest;
+        private Double _verifyNotBefore;
+
         private void OnEnable()
         {
             Camera.onPreCull += OnPreCull;
@@ -115,6 +125,8 @@ namespace Memoria.Online
                         Log.Message($"[Online] The game now pumps SteamAPI_RunCallbacks; callbacks are live (overlay enabled: {SteamNative.IsOverlayEnabled(SteamNative.Utils)})");
                     }
                     _lobby.Update((Single)(now / 1000.0));
+                    if (_transport.IsActive)
+                        _blobs.Update(_transport);
                     _received.Clear();
                     _transport.Poll(_received);
                     foreach (TransportMessage msg in _received)
@@ -132,6 +144,8 @@ namespace Memoria.Online
 
                 if (_init == InitState.Ready && _peers.Count > 0)
                     PerPeerTimers(now);
+                if (_verifyTree != null && now >= _verifyNotBefore)
+                    VerifyLoadedSnapshot();
             }
             catch (Exception err)
             {
@@ -155,6 +169,7 @@ namespace Memoria.Online
             _transport.PeerJoined += OnPeerJoined;
             _transport.PeerLeft += OnPeerLeft;
             _lobby.HostChanged += owner => Log.Message($"[Online] Host is now {SteamNative.Tag(owner)}{(owner == _lobby.LocalId ? " (you)" : "")}; no host-leave policy in this phase, nothing else changes");
+            _blobs.Completed += OnSnapshotReceived;
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
 
@@ -242,6 +257,146 @@ namespace Memoria.Online
                 GhostManager.FixedDelayMs = GhostManager.FixedDelayMs < 0 ? 100 : -1;
                 Log.Message($"[Online] Ghost interpolation delay: {(GhostManager.FixedDelayMs < 0 ? "adaptive (interval + jitter, 80-250 ms)" : $"fixed {GhostManager.FixedDelayMs} ms")}");
             }
+            else if (Input.GetKeyDown(KeyCode.S))
+            {
+                CaptureCurrentSnapshot();
+            }
+            else if (Input.GetKeyDown(KeyCode.T))
+            {
+                CaptureSlotSnapshot();
+            }
+            else if (Input.GetKeyDown(KeyCode.R))
+            {
+                LoadSnapshot(now);
+            }
+            else if (Input.GetKeyDown(KeyCode.B))
+            {
+                SendSnapshotToPeers();
+            }
+        }
+
+        // ---- Step 2 / M1: snapshots (debug) ---------------------------------------------------------------------
+
+        private void CaptureCurrentSnapshot()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine == null || (engine.gMode != 1 && engine.gMode != 3))
+            {
+                Log.Message("[Online] Snapshot: only on a field or the world map (not in a battle or at the title)");
+                return;
+            }
+            Stopwatch watch = Stopwatch.StartNew();
+            Byte[] blob = GameSnapshot.CaptureCurrent(out JSONClass tree);
+            SetSnapshot(blob, $"captured on field {FF9StateSystem.Common.FF9.fldMapNo}", watch.Elapsed.TotalMilliseconds);
+        }
+
+        private void CaptureSlotSnapshot()
+        {
+            if (PersistenSingleton<UIManager>.Instance.State != UIManager.UIState.Title)
+            {
+                Log.Message("[Online] Slot snapshot: only at the title screen");
+                return;
+            }
+            Int32 slot = Math.Max(0, FF9StateSystem.latestSlot);
+            Int32 save = Math.Max(0, FF9StateSystem.latestSave);
+            Stopwatch watch = Stopwatch.StartNew();
+            GameSnapshot.CaptureSlot(slot, save, (blob, tree, error) =>
+            {
+                if (blob == null)
+                    Log.Warning($"[Online] Slot snapshot failed: {error}");
+                else
+                    SetSnapshot(blob, $"slot {slot}/{save} (latest save)", watch.Elapsed.TotalMilliseconds);
+            });
+        }
+
+        private void SetSnapshot(Byte[] blob, String source, Double captureMs)
+        {
+            _snapshot = blob;
+            _snapshotSource = source;
+            UInt32 crc = GameSnapshot.Crc32(blob, 0, blob.Length);
+            // Loopback through the chunk codec: encode every chunk (in reverse order), decode them, compare
+            BlobTransfer loopback = new BlobTransfer();
+            Boolean codecOk = false;
+            loopback.Completed += r => codecOk = r.Blob.Length == blob.Length && GameSnapshot.Crc32(r.Blob, 0, r.Blob.Length) == crc;
+            Byte[] buffer = new Byte[BlobTransfer.HeaderSize + BlobTransfer.ChunkSize];
+            Int32 count = loopback.ChunkCount(blob.Length);
+            for (Int32 i = count - 1; i >= 0; i--)
+            {
+                Int32 length = BlobTransfer.Encode(1, blob, crc, i, count, buffer);
+                Byte[] message = new Byte[length];
+                Buffer.BlockCopy(buffer, 0, message, 0, length);
+                loopback.OnMessage(0, message, length);
+            }
+            Log.Message($"[Online] Snapshot {source}: {blob.Length} bytes ({blob.Length / 1024.0:0.0} KB), {count} chunks of {BlobTransfer.ChunkSize / 1024} KB, crc {crc:X8}, made in {captureMs:0} ms; chunk codec loopback {(codecOk ? "OK" : "FAILED")}");
+        }
+
+        private void LoadSnapshot(Double now)
+        {
+            if (_snapshot == null)
+            {
+                Log.Message("[Online] Load snapshot: no snapshot yet (Ctrl+Shift+S on a field, T at the title, or receive one with B)");
+                return;
+            }
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            Boolean atTitle = ui.State == UIManager.UIState.Title;
+            Boolean onFieldWithControl = engine != null && engine.gMode == 1 && engine.fieldmap?.playerController != null && engine.GetUserControl();
+            if (!atTitle && !onFieldWithControl && !(engine != null && engine.gMode == 3))
+            {
+                Log.Message("[Online] Load snapshot: only at the title screen, on a field you can move in, or on the world map");
+                return;
+            }
+            // Loaded as a guest would: keeps this PC's options and achievements, writes no file
+            _verifyTree = GameSnapshot.Load(_snapshot, true, out String error);
+            if (_verifyTree == null)
+            {
+                Log.Warning($"[Online] Load snapshot failed: {error}");
+                return;
+            }
+            _verifyAsGuest = true;
+            _verifyNotBefore = now + 3000;
+            Log.Message($"[Online] Loading snapshot ({_snapshotSource}) from memory {(atTitle ? "from the title screen" : "in game")}; the state is compared once you can move again");
+        }
+
+        /// <summary>Once the loaded game is playable, compare its state with the snapshot that was applied.</summary>
+        private void VerifyLoadedSnapshot()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            Boolean playable = engine != null && ((engine.gMode == 1 && engine.fieldmap?.playerController != null && engine.GetUserControl()) || engine.gMode == 3);
+            if (!playable)
+                return;
+            JSONClass expected = _verifyTree;
+            _verifyTree = null;
+            GameSnapshot.CaptureCurrent(out JSONClass actual);
+            if (_verifyAsGuest)
+                GameSnapshot.PrepareForGuest(actual);
+            List<String> differences = GameSnapshot.Diff(expected, actual, 25);
+            if (differences.Count == 0)
+            {
+                Log.Message("[Online] Snapshot check: the loaded game matches the snapshot exactly (play time ignored)");
+                return;
+            }
+            Log.Message($"[Online] Snapshot check: {(differences.Count >= 25 ? "25+" : differences.Count.ToString())} difference(s) between the snapshot and the loaded game (play time ignored):");
+            foreach (String difference in differences)
+                Log.Message($"[Online]   {difference}");
+        }
+
+        private void SendSnapshotToPeers()
+        {
+            if (_snapshot == null || _transport == null || !_transport.IsActive || _transport.Peers.Count == 0)
+            {
+                Log.Message("[Online] Send snapshot: needs a snapshot (S or T) and at least one peer in the lobby");
+                return;
+            }
+            foreach (UInt64 peer in _transport.Peers)
+                _blobs.Send(peer, _snapshot);
+        }
+
+        private void OnSnapshotReceived(BlobTransfer.Received received)
+        {
+            _snapshot = received.Blob;
+            _snapshotSource = $"received from {SteamNative.Tag(received.Peer)} in {received.Milliseconds:0} ms";
+            Log.Message($"[Online] Snapshot {_snapshotSource} stored; Ctrl+Shift+R loads it");
         }
 
         // ---- Ghost state: sample the local player at 15 Hz, send to every peer --------------------------------------
@@ -349,6 +504,9 @@ namespace Memoria.Online
                     s.GhostReceived++;
                     GhostManager.OnPacket(msg.Peer, d, 0, d.Length, now); // unknown message types are counted and ignored
                     break;
+                case TransportChannel.State:
+                    _blobs.OnMessage(msg.Peer, d, d.Length);
+                    break;
             }
         }
 
@@ -366,6 +524,7 @@ namespace Memoria.Online
                 _peers.Remove(peer);
             }
             GhostManager.Remove(peer, "left the lobby");
+            _blobs.Forget(peer);
             Log.Message($"[Online] Connected to {_transport.Peers.Count} peer(s)");
         }
 
@@ -508,6 +667,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
+                text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }
             GUIContent content = new GUIContent(text.ToString());
             Vector2 size = _style.CalcSize(content);

@@ -616,6 +616,7 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
                 noSave |= this._ff9.fldMapNo == 3001 && scCounterSvr == 12000 && mapIndexSvr == 0; // Ending/AC ("Kuja...  What you did was wrong...")
                 noSave |= this._ff9.fldMapNo == 2161 && scCounterSvr == 10000 && mapIndexSvr == 32; // L. Castle/Guest Room (Zidane awakes after Mount Gulug)
                 noSave |= this.gMode == 1 && Configuration.SaveFile.AutoSaveOnlyAtMoogle && !EventEngine.IsMoogleField(this._ff9.fldMapNo, scCounterSvr, mapIndexSvr);
+                noSave |= !noSave && Memoria.Online.Session.GuestGuard.BlockAutosave(); // [Online] a guest never writes its own save files
                 if (!noSave)
                 {
                     FF9StateSystem.Settings.UpdateTickTime();
