@@ -2,8 +2,9 @@
 
 Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Online/Session/`.
 
-**Status: investigated, prototype built and installed; not yet run in game.** The blob size and the loopback result
-are filled in from the single-PC test ([How to test](#how-to-test)).
+**Status: M1 works (single-PC tests, 2026-11-16).** A save slot loaded from memory gives exactly the same game state as
+the game's own Continue; mid-game snapshots round-trip exactly; guest save files aren't written. Blob: **83 KB**.
+Two-PC transfer and the New Game decision are open.
 
 ## Summary
 
@@ -39,7 +40,7 @@ field's script places you for that entrance. Fine for a session start; positions
   once because `SharedDataBytesStorage.Save` removes `MemoriaExtraData` from the tree it's handed.
 - **Capture a slot without loading it (host "Continue"):** `GameSnapshot.CaptureSlot(slot, save)` =
   `Storage.Load(slot, save, callback)`: the decrypted, merged tree the game would load. No game state changes.
-- **Size:** *(from the test)*. No compression: SimpleJSON's compressed functions are stubbed out in this build
+- **Size:** **83 KB** (85,218 bytes for a disc 1 save; 6 chunks of 16 KB). No compression: SimpleJSON's compressed functions are stubbed out in this build
   (they need SharpZipLib, not referenced), and `System.IO.Compression` needs `MonoPosixHelper`, which the game's
   Mono doesn't ship. If the size matters, the game folder does ship `ICSharpCode.SharpZipLib.dll`, so that's the
   option to look at.
@@ -48,7 +49,8 @@ field's script places you for that entrance. Fine for a session start; positions
   → the title screen's enter-game sequence (without `ResyncNormalAchievements` on a guest). Works from the title
   screen and in game (field with control, world map).
 - **Check:** once the loaded game is playable, its state is captured again and compared with the tree that was loaded
-  (`GameSnapshot.Diff`, play time ignored); differences are logged. *(Result from the test.)*
+  (`GameSnapshot.Diff`, play time ignored); differences are logged. A second check runs right after the parse, before
+  any field script, and at the title `T` also compares the memory load with the game's own load of the same slot.
 
 ### What the guest keeps of its own
 
@@ -112,12 +114,25 @@ transfer time and CRC; guest **R** loads it.
 
 ## Results
 
+Single PC, three runs (logs in `Output/logs/m1-*.log`, not committed; no exceptions in `output_log.txt`):
+
 | Check | Result |
 |---|---|
-| Blob size (slot / mid-game) | *pending* |
-| Capture time, parse time | *pending* |
-| Chunk codec loopback | *pending* |
-| Load from title, state check | *pending* |
-| Load in game (S → R), state check | *pending* |
-| Autosave blocked, save files unchanged | *pending* |
+| Blob size | slot 0/0: 85,218 bytes (83.2 KB); mid-game (cargo ship): 85,119-85,122 bytes; 6 chunks |
+| Capture time | slot read from disk: 117-123 ms; running game: 5 ms |
+| Parse time (load) | 2-7 ms, then the normal field load |
+| Chunk codec loopback (reverse order) | OK every time |
+| **Memory load vs the game's own load of the same slot** | **identical game state** |
+| Mid-game snapshot → load in game (S → R) | identical right after parsing **and** once playable |
+| Slot snapshot loaded from the title / in game (T → R) | loads and plays; the state check shows the same differences as the game's own load (below) |
+| Autosave blocked, save files unchanged | 10 autosaves blocked; no save file written after the guest load (timestamps checked) |
 | Two-PC transfer time | *pending (after M1 is accepted)* |
+
+**Found:** a save made while a temporary character is in the party (Cinna in old slot 5, disc 1) doesn't come back
+identical even through the game's own Continue: right after loading, a fresh capture shows Quina in `players[5]`.
+That's how the game maps temporary characters between its old-format save slots and its player list; the memory load
+does exactly the same. It isn't an M1 problem, but it means **the state hash in M4 must be computed from a capture
+taken after loading on both sides**, never compared against the raw slot tree.
+
+The first run also loaded a cargo-ship snapshot taken mid-scene: within 3 s the field script moved on (504 → 507,
+scenario flags changed). That's the "mid-cutscene load" risk from the New Game section, seen for real.
