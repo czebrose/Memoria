@@ -101,6 +101,9 @@ namespace SiliconStudio
             return !Application.isEditor && Social._isAuthenticated;
         }
 
+        /// <summary>[SteamSpike] True once the social platform exists, i.e. once SceneDirector pumps the Steam callbacks.</summary>
+        public static Boolean IsCreated => Social._hasCreated;
+
         public static void ProcessCallbacks()
         {
             if (!Social._hasCreated || Application.isEditor)

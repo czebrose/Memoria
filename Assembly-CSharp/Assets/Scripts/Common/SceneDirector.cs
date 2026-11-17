@@ -197,6 +197,10 @@ namespace Assets.Scripts.Common
             gameObject.transform.parent = base.transform;
             SoundLib soundLib = gameObject.AddComponent<SoundLib>();
             SoundLibInitializer soundLibInitializer = gameObject.AddComponent<SoundLibInitializer>();
+            // [SteamSpike] Steam lobby / P2P prototype (dormant until a hotkey is used)
+            GameObject steamSpike = new GameObject("SteamSpike");
+            steamSpike.transform.parent = base.transform;
+            steamSpike.AddComponent<Memoria.Online.SteamSpike>();
         }
 
         private void Update()

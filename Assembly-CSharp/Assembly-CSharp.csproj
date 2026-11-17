@@ -361,6 +361,12 @@
     <Compile Include="Global\SPS\CommonSPSSystem.cs" />
     <Compile Include="Global\SPS\SHPEffect.cs" />
     <Compile Include="Memoria\Application\ControllerWatcher.cs" />
+    <Compile Include="Memoria\Online\ITransport.cs" />
+    <Compile Include="Memoria\Online\SteamCallbacks.cs" />
+    <Compile Include="Memoria\Online\SteamLobby.cs" />
+    <Compile Include="Memoria\Online\SteamNative.cs" />
+    <Compile Include="Memoria\Online\SteamSpike.cs" />
+    <Compile Include="Memoria\Online\SteamTransport.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />
     <Compile Include="Memoria\Assets\3DModel\FbxBone.cs" />
