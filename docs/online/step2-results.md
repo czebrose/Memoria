@@ -10,7 +10,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | | What | State |
 |---|---|---|
 | M1 | Save transfer | **Done.** A save loaded from memory gives exactly the state of the game's own Continue; 83 KB blob, 16 KB chunks with CRC; guests' save files untouched (autosave blocked). |
-| M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16). One open design point: picking for New Game (below). |
+| M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
 | M3 | Each player's leader is their own character | not started |
 | M4 | Host-authoritative party state | not started |
 | M5 | Tether and story flags | not started |
@@ -53,10 +53,24 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 
 ## Known issues / open points
 
-- **New Game party isn't known at the title screen.** The sequel's New Game has no opening cutscene: its first field
-  (cargo ship, 507) sets the real party (Clove, ...). At the title the party is still the vanilla initial one
-  (Zidane), so guests have nothing to pick for New Game. Proposal: for New Game, picking happens right after the
-  resync, on the host's real party.
+- **New Game party: declared by the mod (decided 2026-11-16).** At the title screen the game only knows the vanilla
+  initial party (Zidane); the sequel's first field builds the real one. A mod ships
+  `StreamingAssets/Data/Online/NewGameParty.txt` (read through Memoria's asset manager, so it lives in the mod folder):
+  one character per line, `characterId[, display name]`, first line = the host's character, `#` comments. Without the
+  file the lobby shows the game's initial party. Example for the sequel (IDs to confirm):
+
+      # New Game party for online play: characterId, name. First = the host's (Clove).
+      2, Clove
+      11, B.Waltz
+      10, Blank
+      1, Duskly
+
+- **Picks are by character, not party slot** (lobby data `assign` = `characterId:accountId`), so they survive party
+  reordering and the story changing the party.
+- **Planned with M3/M4 (decided 2026-11-16): in-game control changes.** Take a free character, Swap with another
+  player (they accept), Release yours to the host, Follow the host (release everything and spectate). Host-arbitrated.
+  If the story removes your character: first free character, else Follow. In-game debug panel first; a real entry in
+  FF9's main menu later.
 - **Ghosts show the sender's leader**, which is slot 1 (Clove) on every PC until M3.
 - A save made with a temporary character in the party doesn't round-trip exactly even through the game's own load
   (the game's own behaviour); M4's state hash must compare post-load captures.

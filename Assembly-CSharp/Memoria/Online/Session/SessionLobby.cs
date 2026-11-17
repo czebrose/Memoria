@@ -22,22 +22,28 @@ namespace Memoria.Online.Session
 
     public sealed class PartyEntry
     {
-        public Int32 Index;        // party slot, 0 = the host's
-        public Int32 CharacterId;  // CharacterId
+        public Int32 Index;        // position in the party list, 0 = the host's character
+        public Int32 CharacterId;  // CharacterId: what players pick
         public String Name;
     }
 
     /// <summary>
     /// Step 2 / M2: the title-screen lobby. The host picks New Game or a save; that game's party is published; each guest
-    /// picks a free party member (slot 1 is always the host's; members nobody picks are the host's); the host presses
-    /// Start and everyone enters the host's game.
+    /// picks a free character (the first one is always the host's; characters nobody picks are the host's); the host
+    /// presses Start and everyone enters the host's game.
+    ///
+    /// Picks are by character, not by party slot: party order differs between a declared list and what a script builds,
+    /// and slots shift when the story changes the party.
+    ///
+    /// The party shown for New Game: the mod's declared list (<see cref="NewGamePartyFile"/>) if it has one, since a
+    /// mod's opening script may build a party the title screen can't know; otherwise the game's initial party.
     ///
     /// State lives in Steam lobby data so it shows before P2P is up:
     ///   lobby data (host only):  "game"   label of the chosen game
-    ///                            "party"  "index:characterId:name|..."
-    ///                            "assign" "index:accountId|..."   the host's arbitration of the picks
+    ///                            "party"  "position:characterId:name|..."
+    ///                            "assign" "characterId:accountId|..."   the host's arbitration of the picks
     ///                            "started" "1" once the session has started (no joining mid-game in this step)
-    ///   member data (each user): "pick"   party index the user wants (-1 = none)
+    ///   member data (each user): "pick"   character id the user wants (-1 = none)
     ///                            "where"  "title" / "game"
     /// Start goes over P2P (control channel): MsgStart, then for Continue the snapshot via <see cref="BlobTransfer"/>.
     /// New Game: everyone runs the game's own New Game; the host resyncs everyone (MsgResync + snapshot) the first time
@@ -45,6 +51,12 @@ namespace Memoria.Online.Session
     /// </summary>
     internal sealed class SessionLobby
     {
+        /// <summary>
+        /// Optional, shipped by a mod in its StreamingAssets/Data/Online/: the New Game party, one character per line,
+        /// "characterId[, display name]", first line = the host's character; '#' starts a comment.
+        /// </summary>
+        public const String NewGamePartyFile = "Data/Online/NewGameParty.txt";
+
         public const Byte MsgStart = 4;
         public const Byte MsgResync = 5;
         private const Byte ModeNewGame = 0;
@@ -72,7 +84,7 @@ namespace Memoria.Online.Session
 
         public SessionPhase Phase { get; private set; } = SessionPhase.Idle;
         public readonly List<PartyEntry> Party = new List<PartyEntry>();
-        /// <summary>Party index → lobby member. The host's own picks are implicit (slot 0 and everything unassigned).</summary>
+        /// <summary>Character id → lobby member. The host's own characters are implicit (the first one and every unassigned one).</summary>
         public readonly Dictionary<Int32, UInt64> Assignments = new Dictionary<Int32, UInt64>();
         public String GameLabel { get; private set; } = String.Empty;
         public String Status { get; private set; } = String.Empty;
@@ -107,19 +119,21 @@ namespace Memoria.Online.Session
         public Boolean IsHost => _lobby.IsHost;
         public Boolean IsGuest => _lobby.State == SteamLobby.LobbyState.InLobby && !_lobby.IsHost;
 
-        /// <summary>The party slot this player controls (0 = the host's), or -1 if none was assigned.</summary>
-        public Int32 MyPartyIndex
+        /// <summary>The character this player controls (CharacterId), or -1 if none was assigned.</summary>
+        public Int32 MyCharacter
         {
             get
             {
                 if (IsHost)
-                    return 0;
+                    return HostCharacter;
                 foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
                     if (kv.Value == _lobby.LocalId)
                         return kv.Key;
                 return -1;
             }
         }
+
+        private Int32 HostCharacter => Party.Count > 0 ? Party[0].CharacterId : -1;
 
         private static Boolean AtTitle => PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.Title;
 
@@ -224,7 +238,7 @@ namespace Memoria.Online.Session
             {
                 // What New Game does first; Continue would replace all of it (settings included) by the save's own
                 FF9StateSystem.ReInitStateSystem();
-                PublishGame(choice);
+                PublishGame(choice, LoadDeclaredNewGameParty());
                 return;
             }
             _choiceLoading = true;
@@ -239,19 +253,58 @@ namespace Memoria.Online.Session
                 }
                 _continueBlob = blob;
                 (FF9StateSystem.Serializer.Parser as JsonParser)?.ParseToFF9StateSystem(GameSnapshot.FromBytes(blob));
-                PublishGame(choice);
+                PublishGame(choice, null);
             });
         }
 
-        private void PublishGame(GameChoice choice)
+        /// <summary>The mod's declared New Game party (see <see cref="NewGamePartyFile"/>), or null if it has none.</summary>
+        private static List<PartyEntry> LoadDeclaredNewGameParty()
+        {
+            String text = AssetManager.LoadString(NewGamePartyFile, true);
+            if (String.IsNullOrEmpty(text))
+                return null;
+            List<PartyEntry> party = new List<PartyEntry>();
+            foreach (String rawLine in text.Split('\n'))
+            {
+                String line = rawLine;
+                Int32 comment = line.IndexOf('#');
+                if (comment >= 0)
+                    line = line.Substring(0, comment);
+                line = line.Trim();
+                if (line.Length == 0)
+                    continue;
+                String[] fields = line.Split(',');
+                if (!Int32.TryParse(fields[0].Trim(), out Int32 id))
+                {
+                    Log.Warning($"[Online] {NewGamePartyFile}: '{rawLine.Trim()}' isn't 'characterId[, name]'");
+                    continue;
+                }
+                String name = fields.Length > 1 ? fields[1].Trim() : null;
+                if (String.IsNullOrEmpty(name))
+                    name = FF9StateSystem.Common.FF9.GetPlayer((CharacterId)id)?.Name ?? $"character {id}";
+                party.Add(new PartyEntry { Index = party.Count, CharacterId = id, Name = name });
+            }
+            Log.Message($"[Online] Session: New Game party declared by the mod ({NewGamePartyFile}): {party.Count} character(s)");
+            return party.Count > 0 ? party : null;
+        }
+
+        /// <param name="declared">For New Game: the mod's declared party, or null to use the game's current party.</param>
+        private void PublishGame(GameChoice choice, List<PartyEntry> declared)
         {
             Party.Clear();
-            PARTY_DATA party = FF9StateSystem.Common.FF9.party;
-            for (Int32 i = 0; party != null && party.member != null && i < party.member.Length; i++)
+            if (declared != null)
             {
-                PLAYER player = party.member[i];
-                if (player != null)
-                    Party.Add(new PartyEntry { Index = i, CharacterId = (Int32)player.info.slot_no, Name = player.Name });
+                Party.AddRange(declared);
+            }
+            else
+            {
+                PARTY_DATA party = FF9StateSystem.Common.FF9.party;
+                for (Int32 i = 0; party != null && party.member != null && i < party.member.Length; i++)
+                {
+                    PLAYER player = party.member[i];
+                    if (player != null)
+                        Party.Add(new PartyEntry { Index = Party.Count, CharacterId = (Int32)player.info.slot_no, Name = player.Name });
+                }
             }
             GameLabel = choice.Label;
             StringBuilder partyData = new StringBuilder();
@@ -264,7 +317,7 @@ namespace Memoria.Online.Session
             HostArbitrate();
         }
 
-        /// <summary>First come, first served, as the host sees the picks; a pick of a taken or unknown slot is ignored.</summary>
+        /// <summary>First come, first served, as the host sees the picks; a pick of a taken, unknown or the host's character is ignored.</summary>
         private void HostArbitrate()
         {
             HashSet<UInt64> members = new HashSet<UInt64>(_lobby.Members);
@@ -272,20 +325,20 @@ namespace Memoria.Online.Session
             foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
             {
                 Int32 pick = members.Contains(kv.Value) ? ParsePick(_lobby.GetMemberData(kv.Value, "pick")) : -1;
-                if (pick != kv.Key || !HasPartyIndex(kv.Key))
+                if (pick != kv.Key || !IsPickable(kv.Key))
                     stale.Add(kv.Key);
             }
-            foreach (Int32 index in stale)
-                Assignments.Remove(index);
+            foreach (Int32 character in stale)
+                Assignments.Remove(character);
             foreach (UInt64 member in _lobby.Members)
             {
                 if (member == _lobby.LocalId || Assignments.ContainsValue(member))
                     continue;
                 Int32 pick = ParsePick(_lobby.GetMemberData(member, "pick"));
-                if (pick >= 1 && HasPartyIndex(pick) && !Assignments.ContainsKey(pick))
+                if (IsPickable(pick) && !Assignments.ContainsKey(pick))
                 {
                     Assignments[pick] = member;
-                    Log.Message($"[Online] Session: party slot {pick + 1} ({PartyName(pick)}) goes to {SteamNative.Tag(member)}");
+                    Log.Message($"[Online] Session: {CharacterName(pick)} (character {pick}) goes to {SteamNative.Tag(member)}");
                 }
             }
             StringBuilder assign = new StringBuilder();
@@ -371,13 +424,17 @@ namespace Memoria.Online.Session
 
         // ---- Guest ------------------------------------------------------------------------------------------------
 
-        public void Pick(Int32 partyIndex)
+        /// <summary>Picks the character at this position of the party list (-1 = release).</summary>
+        public void Pick(Int32 position)
         {
             if (!IsGuest || Phase != SessionPhase.Gathering)
                 return;
-            _myPick = partyIndex;
-            _lobby.SetMemberData("pick", partyIndex.ToString());
-            Log.Message($"[Online] Session: picked party slot {(partyIndex >= 0 ? (partyIndex + 1).ToString() : "none")}");
+            Int32 character = position >= 0 && position < Party.Count ? Party[position].CharacterId : -1;
+            if (position >= 0 && character < 0)
+                return;
+            _myPick = character;
+            _lobby.SetMemberData("pick", character.ToString());
+            Log.Message($"[Online] Session: picked {(character >= 0 ? $"{CharacterName(character)} (character {character})" : "nothing")}");
         }
 
         private void ReadHostData()
@@ -394,10 +451,10 @@ namespace Memoria.Online.Session
             foreach (String part in _lobby.GetData("assign").Split('|'))
             {
                 String[] fields = part.Split(':');
-                if (fields.Length == 2 && Int32.TryParse(fields[0], out Int32 index) && UInt32.TryParse(fields[1], out UInt32 account))
+                if (fields.Length == 2 && Int32.TryParse(fields[0], out Int32 character) && UInt32.TryParse(fields[1], out UInt32 account))
                     foreach (UInt64 member in _lobby.Members)
                         if ((member & 0xFFFFFFFF) == account)
-                            Assignments[index] = member;
+                            Assignments[character] = member;
             }
         }
 
@@ -419,7 +476,7 @@ namespace Memoria.Online.Session
                 if (Phase != SessionPhase.Gathering || _startedBeforeJoin)
                     return true;
                 GuestGuard.BeginGuestSession();
-                Log.Message($"[Online] Session: the host started {(mode == ModeNewGame ? "a New Game" : GameLabel)}; you play party slot {(MyPartyIndex >= 0 ? $"{MyPartyIndex + 1} ({PartyName(MyPartyIndex)})" : "none (watching)")}");
+                Log.Message($"[Online] Session: the host started {(mode == ModeNewGame ? "a New Game" : GameLabel)}; you play {(MyCharacter >= 0 ? $"{CharacterName(MyCharacter)} (character {MyCharacter})" : "no character (watching)")}");
                 if (mode == ModeNewGame)
                 {
                     Phase = SessionPhase.Playing;
@@ -522,18 +579,21 @@ namespace Memoria.Online.Session
             _transport.Send(peer, TransportChannel.Control, message, message.Length, true);
         }
 
-        private Boolean HasPartyIndex(Int32 index)
+        /// <summary>A character a guest may pick: in the party and not the host's own.</summary>
+        private Boolean IsPickable(Int32 character)
         {
+            if (character < 0 || character == HostCharacter)
+                return false;
             foreach (PartyEntry entry in Party)
-                if (entry.Index == index)
+                if (entry.CharacterId == character)
                     return true;
             return false;
         }
 
-        private String PartyName(Int32 index)
+        private String CharacterName(Int32 character)
         {
             foreach (PartyEntry entry in Party)
-                if (entry.Index == index)
+                if (entry.CharacterId == character)
                     return entry.Name;
             return "?";
         }
@@ -585,22 +645,22 @@ namespace Memoria.Online.Session
             }
             cy += line + 4f;
 
-            GUI.Label(new Rect(cx, cy, width, line), "Party (slot 1 is the host's; slots nobody picks are the host's):");
+            GUI.Label(new Rect(cx, cy, width, line), "Party (the first is the host's; characters nobody picks are the host's):");
             cy += line;
             foreach (PartyEntry entry in Party)
             {
                 String owner;
                 if (entry.Index == 0)
                     owner = $"{SteamNative.GetName(_lobby.OwnerId)} (host)";
-                else if (Assignments.TryGetValue(entry.Index, out UInt64 member))
+                else if (Assignments.TryGetValue(entry.CharacterId, out UInt64 member))
                     owner = SteamNative.GetName(member) + (member == _lobby.LocalId ? " (you)" : "");
                 else
                     owner = "free → host";
                 GUI.Label(new Rect(cx + 10f, cy, 330f, line), $"{entry.Index + 1}. {entry.Name}: {owner}");
                 if (IsGuest && entry.Index > 0 && Phase == SessionPhase.Gathering)
                 {
-                    Boolean mine = Assignments.TryGetValue(entry.Index, out UInt64 holder) && holder == _lobby.LocalId;
-                    Boolean taken = Assignments.ContainsKey(entry.Index) && !mine;
+                    Boolean mine = Assignments.TryGetValue(entry.CharacterId, out UInt64 holder) && holder == _lobby.LocalId;
+                    Boolean taken = Assignments.ContainsKey(entry.CharacterId) && !mine;
                     if (!taken && !mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), $"Pick (F{entry.Index + 1})"))
                         Pick(entry.Index);
                     if (mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), "Release (F1)"))
