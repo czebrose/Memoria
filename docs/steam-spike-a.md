@@ -2,8 +2,38 @@
 
 Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memoria/Online/`.
 
-**Status: single-PC smoke test passed (2026-11-16, third build); two-PC test pending.** Claims still marked
-*(to verify in game)* are answered by the two-PC test in [How to test](#how-to-test). The verdict is at the end.
+**Status: two-PC test passed on everything except its length** (2026-11-16, third build): the session ran 72 s;
+the "done" bar is 5 minutes, so one longer run is still needed. The verdict is at the end.
+
+### Two-PC results (run 1, 72 s, two Steam accounts on two PCs)
+
+| | PC 1 (host) | PC 2 |
+|---|---|---|
+| Join | `Ctrl+Shift+H` (lobby created), `Ctrl+Shift+I` (overlay invite) | accepted the invite in the Steam overlay → `GameLobbyJoinRequested_t` → `JoinLobby` → `LobbyEnter_t` ~1 s later |
+| Member seen by | `LobbyChatUpdate_t` + member poll | `LobbyEnter_t` call result + member poll |
+| Host | self (owner) | PC 1 (owner) |
+| Route | direct (not relayed) | direct |
+| Pings / pongs | 72 / 72 | 72 / 72 |
+| RTT after setup | median 7.2 ms, p90 14 ms | 3-13 ms |
+| Ch 1 unreliable loss | 0.00 % (1007 received) | 0.00 % (1033 received) |
+| Ch 2 reliable order | 36 / 0 out of order | 36 / 0 out of order |
+| Stalls, send failures | 0, 0 | 0, 0 |
+| Packets | sent 1214, received 1188 | sent 1190, received 1214 |
+
+- **The whole overlay-invite flow works from inside FF9**: invite dialog opened from code on PC 1, accepted in the
+  overlay on PC 2, delivered to the game through the emulated `GameLobbyJoinRequested_t` callback.
+- **Session setup takes ~4 s**: both sides log "no pong" for 4 s after the peer appears; the first pong measures
+  1.9-3.4 s because the first pings sat in the reliable queue until the P2P connection was up. That single sample
+  is what makes the reported avg/max RTT look bad (avg 111 ms, max 3.4 s). Ghosts must tolerate a few seconds
+  between "peer joined" and "packets flow".
+- **Leaving works**: when PC 1 left, PC 2 got `LobbyChatUpdate_t` (state 0x2), closed the P2P session, and Steam made
+  PC 2 the lobby owner. Steam migrates lobby ownership on its own, so later phases must decide what a host leaving
+  means (end the session, or migrate) instead of inheriting Steam's choice.
+- Packet counts match across the two logs (PC 1 sent 1214 = PC 2 received 1214; PC 2 sent 1190 vs PC 1 received
+  1188, the difference being the last packets in flight when PC 1 left).
+- Cosmetic bug: PC 1 logged its `FINAL` summary twice, because Memoria's quit confirmation makes Unity call
+  `OnApplicationQuit` twice. Not fixed yet (would need a reinstall on both PCs for a log line).
+- Logs (not committed; they contain Steam friend names): `Output/logs/PC1-…-2016.log`, `PC2-…-2018.log`.
 
 ### Single-PC results
 
@@ -205,19 +235,23 @@ The two accounts must be Steam friends.
 Pass: steps 2-4 work from inside FF9, no stall in 5 minutes, ping/pong counts match, channel 2 has
 0 out of order.
 
-## Verdict (provisional, pending the test)
+## Verdict
 
-**Go, provisionally.** Everything the plan needs is exported by the shipped DLL, and the design leans on polling
-where it can, so only one feature (joining from an overlay invite while the game runs) depends on the riskiest piece,
-the callback emulation. If that one piece fails, the clipboard / friend-lobby fallback still covers joining.
+**Go on legacy Steam P2P for Ghosts**, pending only the 5-minute run. Lobby create, overlay invite, join, member
+tracking, host = owner, and P2P on all three channels all worked from inside FF9 between two PCs, with no loss and
+no stalls. No LiteNetLib fallback needed.
 
 Risks:
-- **Callback emulation** (vtable order, struct packing, Mono reverse-P/Invoke): checked in step 1.3. Fallback is the
-  `Ctrl+Shift+J` join; no LiteNetLib needed for that.
-- **Callback pump**: we depend on the game's pump (step 1.4); pumping ourselves before the title screen crashes
-  the game (A1). If the game's pump turns out not to call `SteamAPI_RunCallbacks`, we can pump ourselves *after*
-  `Social.IsCreated`.
-- **Invite while the game is closed** probably needs `FF9_Launcher.exe` to forward `+connect_lobby`.
+- **Native binding traps in this Mono** (A2: folded exports + per-address wrapper cache) and **the callback pump**
+  (A1: never pump before the title screen). Both found, fixed and documented; anyone adding Steam calls must reuse
+  `SteamNative` rather than bind on their own.
+- **Steam callbacks only work from the title screen on.** An invite accepted before that waits in Steam's queue until
+  then (not tested).
+- **~4 s P2P setup** after a member joins.
+- **Steam's automatic lobby owner migration** needs a policy in later phases.
+- **Invite while the game is closed** probably needs `FF9_Launcher.exe` to forward `+connect_lobby` (not tested).
+- **Only tested on a fast, direct connection.** Relay (`AllowP2PPacketRelay`) is enabled but never exercised;
+  a test across different networks would show relay latency.
 - **Legacy P2P is deprecated by Valve** (`ISteamNetworking` is "legacy" since 2020) but still served by the Steam
   client; nothing to do about it while we can't ship a newer `steam_api64.dll`.
 - **Unreliable packets ≤ 1200 bytes**; reliable sends are buffered and can stall behind a lost packet (fine for
