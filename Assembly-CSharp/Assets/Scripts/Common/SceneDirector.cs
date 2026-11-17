@@ -192,6 +192,10 @@ namespace Assets.Scripts.Common
             this.swirlCount = 0;
             this._logger = new OSDLogger();
             this._logger.Init();
+            // [Ghosts] Spike B test driver (dormant until Ctrl+Shift+G)
+            GameObject ghostSpike = new GameObject("GhostSpike");
+            ghostSpike.transform.parent = base.transform;
+            ghostSpike.AddComponent<Memoria.Online.Ghosts.GhostSpike>();
             OSDLogger.Instance = this._logger;
             GameObject gameObject = new GameObject("SoundPlayer");
             gameObject.transform.parent = base.transform;
