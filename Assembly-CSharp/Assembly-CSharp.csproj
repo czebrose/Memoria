@@ -482,6 +482,12 @@
     <Compile Include="Memoria\Scripts\DefaultStatus\PetrifyStatusScript.cs" />
     <Compile Include="Memoria\Scripts\DefaultStatus\VenomStatusScript.cs" />
     <Compile Include="Memoria\Field\IFieldScript.cs" />
+    <Compile Include="Memoria\Online\Ghosts\FieldMapActorController.Ghost.cs" />
+    <Compile Include="Memoria\Online\Ghosts\GhostActor.cs" />
+    <Compile Include="Memoria\Online\Ghosts\GhostManager.cs" />
+    <Compile Include="Memoria\Online\Ghosts\GhostModels.cs" />
+    <Compile Include="Memoria\Online\Ghosts\GhostSpike.cs" />
+    <Compile Include="Memoria\Online\Ghosts\GhostState.cs" />
     <Compile Include="Memoria\Speedrun\AutoSplitterPipe.cs" />
     <Compile Include="Memoria\Speedrun\Split.cs" />
     <Compile Include="Memoria\Speedrun\SpeedrunSettings.cs" />

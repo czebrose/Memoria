@@ -321,6 +321,11 @@ public partial class FieldMapActorController : HonoBehavior
     {
         this.cTime = 0f;
         this.isMoving = false;
+        if (this.IsGhost) // [Ghosts] another player's ghost: positioned and animated by Memoria.Online.Ghosts.GhostActor
+        {
+            this.isMoving = this.ghost.IsMoving;
+            return;
+        }
         if (this.isPlayer)
         {
             if (PersistenSingleton<EventEngine>.Instance.GetUserControl()
