@@ -42,6 +42,18 @@ namespace Memoria.Online.Session
             return ToBytes(tree);
         }
 
+        /// <summary>The most recently saved slot, from the save file's metadata (FF9StateSystem.latestSlot is only set once the save screen has read it).</summary>
+        public static void GetLatestSlot(Action<Int32, Int32> done)
+        {
+            ISharedDataStorage storage = FF9StateSystem.Serializer?.Storage;
+            if (storage == null)
+            {
+                done(-1, -1);
+                return;
+            }
+            storage.GetLatestSlotAndSave((slot, save) => done(slot, save));
+        }
+
         /// <summary>A save slot's tree, read through the game's storage (decrypted, Memoria data merged) without loading it.</summary>
         public static void CaptureSlot(Int32 slotId, Int32 saveId, Action<Byte[], JSONClass, String> done)
         {
@@ -123,6 +135,17 @@ namespace Memoria.Online.Session
             Stopwatch watch = Stopwatch.StartNew();
             parser.ParseToFF9StateSystem(tree);
             Log.Message($"[Online] Snapshot parsed into the game state in {watch.ElapsedMilliseconds} ms (mode {PersistenSingleton<FF9StateSystem>.Instance.mode}, field {FF9StateSystem.Common.FF9.fldMapNo}, entrance {FF9StateSystem.Common.FF9.fldLocNo}, world map {FF9StateSystem.Common.FF9.wldMapNo})");
+
+            // Round trip of the parser alone, before any field script runs: capture the state again and compare.
+            // (The check once the game is playable also includes what the field's scripts changed on entering.)
+            parser.ParseFromFF9StateSystem();
+            JSONClass reparsed = FromBytes(ToBytes(parser.RootNodeInParser));
+            if (asGuest)
+                PrepareForGuest(reparsed);
+            List<String> differences = Diff(tree, reparsed, 25);
+            Log.Message(differences.Count == 0
+                ? "[Online] Snapshot check right after parsing (before the field starts): the game state matches the snapshot exactly"
+                : $"[Online] Snapshot check right after parsing: {(differences.Count >= 25 ? "25+" : differences.Count.ToString())} difference(s): {String.Join("; ", differences.ToArray())}");
 
             UIManager ui = PersistenSingleton<UIManager>.Instance;
             if (ui.State == UIManager.UIState.Title)

@@ -297,15 +297,21 @@ namespace Memoria.Online
                 Log.Message("[Online] Slot snapshot: only at the title screen");
                 return;
             }
-            Int32 slot = Math.Max(0, FF9StateSystem.latestSlot);
-            Int32 save = Math.Max(0, FF9StateSystem.latestSave);
             Stopwatch watch = Stopwatch.StartNew();
-            GameSnapshot.CaptureSlot(slot, save, (blob, tree, error) =>
+            GameSnapshot.GetLatestSlot((slot, save) =>
             {
-                if (blob == null)
-                    Log.Warning($"[Online] Slot snapshot failed: {error}");
-                else
-                    SetSnapshot(blob, $"slot {slot}/{save} (latest save)", watch.Elapsed.TotalMilliseconds);
+                if (slot < 0 || save < 0)
+                {
+                    Log.Warning($"[Online] Slot snapshot: no latest save found (slot {slot}, save {save})");
+                    return;
+                }
+                GameSnapshot.CaptureSlot(slot, save, (blob, tree, error) =>
+                {
+                    if (blob == null)
+                        Log.Warning($"[Online] Slot snapshot failed: {error}");
+                    else
+                        SetSnapshot(blob, $"slot {slot}/{save} (latest save)", watch.Elapsed.TotalMilliseconds);
+                });
             });
         }
 
