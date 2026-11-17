@@ -365,7 +365,7 @@
     <Compile Include="Memoria\Online\SteamCallbacks.cs" />
     <Compile Include="Memoria\Online\SteamLobby.cs" />
     <Compile Include="Memoria\Online\SteamNative.cs" />
-    <Compile Include="Memoria\Online\SteamSpike.cs" />
+    <Compile Include="Memoria\Online\OnlineSession.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />
@@ -492,7 +492,7 @@
     <Compile Include="Memoria\Online\Ghosts\GhostActor.cs" />
     <Compile Include="Memoria\Online\Ghosts\GhostManager.cs" />
     <Compile Include="Memoria\Online\Ghosts\GhostModels.cs" />
-    <Compile Include="Memoria\Online\Ghosts\GhostSpike.cs" />
+    <Compile Include="Memoria\Online\Ghosts\ShadowGhost.cs" />
     <Compile Include="Memoria\Online\Ghosts\GhostState.cs" />
     <Compile Include="Memoria\Speedrun\AutoSplitterPipe.cs" />
     <Compile Include="Memoria\Speedrun\Split.cs" />

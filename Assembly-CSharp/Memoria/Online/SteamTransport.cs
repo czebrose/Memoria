@@ -35,7 +35,7 @@ namespace Memoria.Online
         {
             _lobby = lobby;
             Boolean relay = SteamNative.AllowP2PPacketRelay(SteamNative.Networking, true);
-            Log.Message($"[SteamSpike] AllowP2PPacketRelay(true) -> {relay}");
+            Log.Message($"[Online] AllowP2PPacketRelay(true) -> {relay}");
             _lobby.MemberJoined += OnMemberJoined;
             _lobby.MemberLeft += OnMemberLeft;
             _callbacks.Add(new SteamCallback(SteamNative.CB_P2PSessionRequest, 8, OnP2PSessionRequest));
@@ -87,7 +87,7 @@ namespace Memoria.Online
                         _droppedFromStrangers.TryGetValue(sender, out Int32 dropped);
                         _droppedFromStrangers[sender] = dropped + 1;
                         if (dropped == 0)
-                            Log.Message($"[SteamSpike] Ignoring packets from {sender}, not a lobby member (yet)");
+                            Log.Message($"[Online] Ignoring packets from {sender}, not a lobby member (yet)");
                         continue;
                     }
                     PacketsReceived++;
@@ -113,7 +113,7 @@ namespace Memoria.Online
             _peers.Add(member);
             Boolean accepted = SteamNative.AcceptP2PSessionWithUser(SteamNative.Networking, member);
             Boolean hello = Send(member, TransportChannel.Control, new Byte[] { MsgHello }, 1, true);
-            Log.Message($"[SteamSpike] Peer {SteamNative.GetName(member)} ({member}): accept={accepted}, hello sent={hello}");
+            Log.Message($"[Online] Peer {SteamNative.Tag(member)}: accept={accepted}, hello sent={hello}");
             _peerEvents.Enqueue(new KeyValuePair<UInt64, Boolean>(member, true));
         }
 
@@ -122,7 +122,7 @@ namespace Memoria.Online
             if (!_peers.Remove(member))
                 return;
             SteamNative.CloseP2PSessionWithUser(SteamNative.Networking, member);
-            Log.Message($"[SteamSpike] Peer {SteamNative.GetName(member)} ({member}) left; P2P session closed");
+            Log.Message($"[Online] Peer {SteamNative.Tag(member)} left; P2P session closed");
             _peerEvents.Enqueue(new KeyValuePair<UInt64, Boolean>(member, false));
         }
 
@@ -131,7 +131,7 @@ namespace Memoria.Online
             UInt64 remote = (UInt64)Marshal.ReadInt64(param, 0);
             Boolean member = _lobby.Members.Contains(remote);
             Boolean accepted = member && SteamNative.AcceptP2PSessionWithUser(SteamNative.Networking, remote);
-            Log.Message($"[SteamSpike] Callback P2PSessionRequest_t from {SteamNative.GetName(remote)} ({remote}): lobby member={member}, accepted={accepted}");
+            Log.Message($"[Online] Callback P2PSessionRequest_t from {SteamNative.Tag(remote)}: lobby member={member}, accepted={accepted}");
         }
 
         private void OnP2PSessionConnectFail(IntPtr param)
@@ -139,7 +139,7 @@ namespace Memoria.Online
             UInt64 remote = (UInt64)Marshal.ReadInt64(param, 0);
             Byte error = Marshal.ReadByte(param, 8);
             // EP2PSessionError: 1 NotRunningApp, 2 NoRightsToApp, 3 DestinationNotLoggedIn, 4 Timeout
-            Log.Warning($"[SteamSpike] Callback P2PSessionConnectFail_t: {SteamNative.GetName(remote)} ({remote}) error {error}");
+            Log.Warning($"[Online] Callback P2PSessionConnectFail_t: {SteamNative.Tag(remote)} error {error}");
         }
 
         public void Dispose()

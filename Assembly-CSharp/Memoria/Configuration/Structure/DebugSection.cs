@@ -12,6 +12,7 @@ namespace Memoria
             public readonly IniValue<Boolean> StartFieldCreator;
             public readonly IniValue<Boolean> RenderWalkmeshes;
             public readonly IniValue<Int32> Test;
+            public readonly IniValue<Boolean> OnlineDebug; // [Online]
 
             public DebugSection() : base(nameof(DebugSection), false)
             {
@@ -20,6 +21,7 @@ namespace Memoria
                 StartFieldCreator = BindBoolean(nameof(StartFieldCreator), false);
                 RenderWalkmeshes = BindBoolean(nameof(RenderWalkmeshes), false);
                 Test = BindInt32(nameof(Test), 100);
+                OnlineDebug = BindBoolean(nameof(OnlineDebug), false); // [Online]
             }
         }
     }

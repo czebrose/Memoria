@@ -192,19 +192,15 @@ namespace Assets.Scripts.Common
             this.swirlCount = 0;
             this._logger = new OSDLogger();
             this._logger.Init();
-            // [Ghosts] Spike B test driver (dormant until Ctrl+Shift+G)
-            GameObject ghostSpike = new GameObject("GhostSpike");
-            ghostSpike.transform.parent = base.transform;
-            ghostSpike.AddComponent<Memoria.Online.Ghosts.GhostSpike>();
             OSDLogger.Instance = this._logger;
             GameObject gameObject = new GameObject("SoundPlayer");
             gameObject.transform.parent = base.transform;
             SoundLib soundLib = gameObject.AddComponent<SoundLib>();
             SoundLibInitializer soundLibInitializer = gameObject.AddComponent<SoundLibInitializer>();
-            // [SteamSpike] Steam lobby / P2P prototype (dormant until a hotkey is used)
-            GameObject steamSpike = new GameObject("SteamSpike");
-            steamSpike.transform.parent = base.transform;
-            steamSpike.AddComponent<Memoria.Online.SteamSpike>();
+            // [Online] Online co-op session (Steam lobby, P2P, ghosts); dormant until a lobby is hosted or joined
+            GameObject onlineSession = new GameObject("OnlineSession");
+            onlineSession.transform.parent = base.transform;
+            onlineSession.AddComponent<Memoria.Online.OnlineSession>();
         }
 
         private void Update()

@@ -205,13 +205,13 @@ namespace Memoria.Online
             _module = GetModuleHandleW("steam_api64.dll");
             if (_module == IntPtr.Zero)
             {
-                Log.Warning("[SteamSpike] steam_api64.dll is not loaded in the process (has the game initialised Steam?)");
+                Log.Warning("[Online] steam_api64.dll is not loaded in the process (has the game initialised Steam?)");
                 return false;
             }
             StringBuilder path = new StringBuilder(1024);
             GetModuleFileNameW(_module, path, (UInt32)path.Capacity);
             ModulePath = path.ToString();
-            Log.Message($"[SteamSpike] Using steam_api64.dll already loaded at {ModulePath}");
+            Log.Message($"[Online] Using steam_api64.dll already loaded at {ModulePath}");
 
             D_Ptr steamClient = Get<D_Ptr>("SteamClient");
             D_Int getHSteamUser = Get<D_Int>("SteamAPI_GetHSteamUser");
@@ -223,10 +223,10 @@ namespace Memoria.Online
             Client = steamClient();
             Int32 hUser = getHSteamUser();
             Int32 hPipe = getHSteamPipe();
-            Log.Message($"[SteamSpike] SteamClient()=0x{Client.ToInt64():X} hUser={hUser} hPipe={hPipe}");
+            Log.Message($"[Online] SteamClient()=0x{Client.ToInt64():X} hUser={hUser} hPipe={hPipe}");
             if (Client == IntPtr.Zero || hUser == 0 || hPipe == 0)
             {
-                Log.Warning("[SteamSpike] Steam is not initialised in this module instance; aborting");
+                Log.Warning("[Online] Steam is not initialised in this module instance; aborting");
                 return false;
             }
 
@@ -240,10 +240,10 @@ namespace Memoria.Online
             User = getUser(Client, hUser, hPipe, Utf8(UserVersion));
             Friends = getFriends(Client, hUser, hPipe, Utf8(FriendsVersion));
             Utils = getUtils(Client, hPipe, Utf8(UtilsVersion));
-            Log.Message($"[SteamSpike] Interfaces: Networking=0x{Networking.ToInt64():X} Matchmaking=0x{Matchmaking.ToInt64():X} User=0x{User.ToInt64():X} Friends=0x{Friends.ToInt64():X} Utils=0x{Utils.ToInt64():X}");
+            Log.Message($"[Online] Interfaces: Networking=0x{Networking.ToInt64():X} Matchmaking=0x{Matchmaking.ToInt64():X} User=0x{User.ToInt64():X} Friends=0x{Friends.ToInt64():X} Utils=0x{Utils.ToInt64():X}");
             if (Networking == IntPtr.Zero || Matchmaking == IntPtr.Zero || User == IntPtr.Zero || Friends == IntPtr.Zero || Utils == IntPtr.Zero)
             {
-                Log.Warning("[SteamSpike] Could not get every Steam interface; aborting");
+                Log.Warning("[Online] Could not get every Steam interface; aborting");
                 return false;
             }
 
@@ -285,10 +285,20 @@ namespace Memoria.Online
             // Sanity check of the CSteamID-as-uint64 return convention: an individual account in the public
             // universe has universe 1 (bits 56-63) and account type 1 (bits 52-55)
             Boolean idLooksValid = (me >> 52) == 0x011;
-            Log.Message($"[SteamSpike] Local user {me} ({GetName(me)}), AppID {GetAppID(Utils)}, overlay enabled: {IsOverlayEnabled(Utils)}, SteamID check: {(idLooksValid ? "OK" : "UNEXPECTED (return-value marshalling?)")}");
+            Log.Message($"[Online] Local user {Tag(me)}, AppID {GetAppID(Utils)}, overlay enabled: {IsOverlayEnabled(Utils)}, SteamID check: {(idLooksValid ? "OK" : "UNEXPECTED (return-value marshalling?)")}");
             return true;
         }
 
+        /// <summary>
+        /// A short, log-safe tag for a Steam user: "#" + the last 4 digits of the account number. Use it in every log
+        /// line; Steam names (GetName) are for the on-screen status only, since logs get shared and quoted in docs.
+        /// </summary>
+        public static String Tag(UInt64 steamId)
+        {
+            return "#" + ((steamId & 0xFFFFFFFF) % 10000).ToString("D4");
+        }
+
+        /// <summary>The user's Steam name. On screen only, never in logs (see <see cref="Tag"/>).</summary>
         public static String GetName(UInt64 steamId)
         {
             if (!IsLoaded)
@@ -318,6 +328,7 @@ namespace Memoria.Online
             return Encoding.UTF8.GetString(bytes);
         }
 
+        // RULE (docs/online/CONTRIBUTING.md, rule 1): every native Steam call goes through these bindings.
         // Unity 5.2's Mono caches the managed-to-native wrapper of GetDelegateForFunctionPointer by function
         // address only. In steam_api64.dll the flat functions are tiny "jump to vtable slot N" stubs, and the
         // linker folded identical ones together: e.g. SteamAPI_ISteamClient_GetISteamUtils and

@@ -1,5 +1,9 @@
 # Spike A: Steam networking from Memoria — findings
 
+> Spike findings, kept as the record of why things are done this way. Since merged into `online-ghosts`: the test
+> driver `SteamSpike` became `OnlineSession`, logs use `[Online]` and player tags instead of Steam names. Rules
+> distilled from this doc: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memoria/Online/`.
 
 **Status: two-PC test passed on everything except its length** (2026-11-16, third build): the session ran 72 s;

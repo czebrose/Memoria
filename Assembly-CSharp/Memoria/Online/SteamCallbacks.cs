@@ -79,7 +79,7 @@ namespace Memoria.Online
             }
             catch (Exception err)
             {
-                Log.Error(err, $"[SteamSpike] Callback {CallbackId} handler failed");
+                Log.Error(err, $"[Online] Callback {CallbackId} handler failed");
             }
         }
 
@@ -87,7 +87,7 @@ namespace Memoria.Online
         {
             // Only used for call results; a registered callback should never land here.
             // If it does, the vtable order assumption is wrong: log loudly and still dispatch.
-            Log.Warning($"[SteamSpike] Callback {CallbackId} arrived through the call-result slot (ioFailure={ioFailure}, call={hSteamAPICall}); vtable order differs from expectations");
+            Log.Warning($"[Online] Callback {CallbackId} arrived through the call-result slot (ioFailure={ioFailure}, call={hSteamAPICall}); vtable order differs from expectations");
             OnRun(thisPtr, param);
         }
 

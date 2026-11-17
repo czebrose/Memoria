@@ -9,7 +9,7 @@ namespace Memoria.Online.Ghosts
     /// <summary>
     /// Another player's character in the local field: a detached field actor (no event-script entry) whose position,
     /// facing and animation come from received <see cref="GhostState"/>s, interpolated on a timeline delayed by
-    /// <see cref="GhostManager.InterpolationDelayMs"/>.
+    /// <see cref="DelayMs"/> (one send interval plus measured jitter, 80-250 ms).
     ///
     /// Spawned like the local-multiplayer branch's field followers (MultiplayerField.Spawn): the parameterless Actor
     /// constructor keeps it out of the event engine's object list, so the field script can't see, run or move it,
@@ -26,6 +26,10 @@ namespace Memoria.Online.Ghosts
         /// <summary>A jump between two consecutive states longer than this is a teleport (warp, ladder): snap, don't slide.</summary>
         public const Single TeleportDistance = 400f;
         private const Int32 MaxBuffered = 64;
+        /// <summary>Arrival history kept for the clock offset and jitter (~10 s at 15 Hz).</summary>
+        private const Int32 TimingWindow = 150;
+        public const Double MinDelayMs = 80;
+        public const Double MaxDelayMs = 250;
 
         public readonly UInt64 Peer;
         public readonly Int32 Uid;
@@ -41,11 +45,18 @@ namespace Memoria.Online.Ghosts
 
         // Statistics
         public Int32 Received, DroppedOld, Snaps, Hides;
+        /// <summary>95th percentile of how late states arrive compared with the earliest one in the window.</summary>
+        public Double JitterMs { get; private set; }
+        /// <summary>How far behind its newest state the ghost is drawn (adaptive unless a fixed delay is set).</summary>
+        public Double DelayMs { get; private set; } = 100;
+        public Double MaxJitterMs { get; private set; }
 
         private readonly List<GhostState> _buffer = new List<GhostState>(MaxBuffered);
         private Boolean _hasTick;
-        private Double _clockOffset; // localMs - senderMs, lowest seen (= least delayed packet)
+        private Double _clockOffset; // localMs - senderMs, lowest in the window (= least delayed packet)
         private Boolean _hasOffset;
+        private readonly List<Double> _offsets = new List<Double>(TimingWindow + 1);
+        private readonly Double[] _lateness = new Double[TimingWindow + 1];
         private UInt32 _lastSnapTick;
 
         private Vector3 _pose;
@@ -163,12 +174,7 @@ namespace Memoria.Online.Ghosts
             Newest = state;
             LastReceivedMs = nowMs;
             Received++;
-            Double offset = nowMs - state.Tick;
-            if (!_hasOffset || offset < _clockOffset)
-            {
-                _clockOffset = offset;
-                _hasOffset = true;
-            }
+            UpdateTiming(nowMs - state.Tick);
             _buffer.Add(state);
             if (_buffer.Count > MaxBuffered)
                 _buffer.RemoveAt(0);
@@ -179,16 +185,43 @@ namespace Memoria.Online.Ghosts
         public void ResetTimeline()
         {
             _buffer.Clear();
+            _offsets.Clear();
             _hasOffset = false;
         }
 
+        /// <summary>
+        /// Clock offset = the lowest (localNow - senderTick) of the last ~10 s: the least delayed state, so sender and
+        /// receiver clocks needn't agree, and a windowed minimum follows slow clock drift. Jitter = 95th percentile of
+        /// how much later than that the others arrived.
+        /// </summary>
+        private void UpdateTiming(Double offset)
+        {
+            _offsets.Add(offset);
+            if (_offsets.Count > TimingWindow)
+                _offsets.RemoveAt(0);
+            Double min = Double.MaxValue;
+            foreach (Double o in _offsets)
+                min = Math.Min(min, o);
+            _clockOffset = min;
+            _hasOffset = true;
+            Int32 n = _offsets.Count;
+            for (Int32 i = 0; i < n; i++)
+                _lateness[i] = _offsets[i] - min;
+            Array.Sort(_lateness, 0, n);
+            JitterMs = _lateness[Math.Min(n - 1, (Int32)(n * 0.95))];
+            if (n >= 30)
+                MaxJitterMs = Math.Max(MaxJitterMs, JitterMs);
+        }
+
         /// <summary>Computes the pose for this frame from the buffered states.</summary>
-        public void Update(Double nowMs, Single deltaTime, Double interpolationDelayMs, Boolean interpolate)
+        /// <param name="fixedDelayMs">Negative: adaptive delay (one send interval + jitter, 80-250 ms).</param>
+        public void Update(Double nowMs, Single deltaTime, Double sendIntervalMs, Double fixedDelayMs, Boolean interpolate)
         {
             if (!IsAlive || _buffer.Count == 0)
                 return;
 
-            Double renderTick = nowMs - _clockOffset - interpolationDelayMs;
+            DelayMs = fixedDelayMs >= 0 ? fixedDelayMs : Math.Max(MinDelayMs, Math.Min(MaxDelayMs, sendIntervalMs + JitterMs));
+            Double renderTick = nowMs - _clockOffset - DelayMs;
             // Keep one state at or before the render time, drop the older ones
             while (_buffer.Count >= 2 && _buffer[1].Tick <= renderTick)
                 _buffer.RemoveAt(0);

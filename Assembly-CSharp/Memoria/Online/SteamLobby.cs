@@ -124,10 +124,9 @@ namespace Memoria.Online
                 if (!SteamNative.GetFriendGamePlayed(SteamNative.Friends, friend, out SteamNative.FriendGameInfo info))
                     continue;
                 UInt32 appId = (UInt32)(info.GameId & 0xFFFFFF);
-                Log.Message($"[SteamSpike] Friend {SteamNative.GetName(friend)} plays app {appId}, lobby {info.SteamIdLobby}");
                 if (appId == SteamNative.FF9AppId && info.SteamIdLobby != 0)
                 {
-                    SetEvent($"Joining the lobby of {SteamNative.GetName(friend)}");
+                    SetEvent($"Joining the lobby of {SteamNative.Tag(friend)}");
                     Join(info.SteamIdLobby);
                     return true;
                 }
@@ -229,9 +228,9 @@ namespace Memoria.Online
             String mod = GetData(ModKey);
             String proto = GetData(ProtoKey);
             if (mod != ModValue || proto != ProtoValue)
-                Log.Warning($"[SteamSpike] Lobby {lobby} has mod='{mod}' proto='{proto}' (expected '{ModValue}'/'{ProtoValue}')");
+                Log.Warning($"[Online] Lobby {lobby} has mod='{mod}' proto='{proto}' (expected '{ModValue}'/'{ProtoValue}')");
             EnterLobby(lobby);
-            SetEvent($"Joined lobby {lobby}; host is {SteamNative.GetName(OwnerId)}");
+            SetEvent($"Joined lobby {lobby}; host is {SteamNative.Tag(OwnerId)}");
         }
 
         private void EnterLobby(UInt64 lobby)
@@ -252,7 +251,7 @@ namespace Memoria.Online
                 if (Members.Contains(member))
                     continue;
                 Members.Add(member);
-                Log.Message($"[SteamSpike] Lobby member joined: {SteamNative.GetName(member)} ({member})");
+                Log.Message($"[Online] Lobby member joined: {SteamNative.Tag(member)}");
                 if (member != LocalId)
                     MemberJoined?.Invoke(member);
             }
@@ -261,7 +260,7 @@ namespace Memoria.Online
                 if (current.Contains(member))
                     continue;
                 Members.Remove(member);
-                Log.Message($"[SteamSpike] Lobby member left: {SteamNative.GetName(member)} ({member})");
+                Log.Message($"[Online] Lobby member left: {SteamNative.Tag(member)}");
                 if (member != LocalId)
                     MemberLeft?.Invoke(member);
             }
@@ -269,7 +268,7 @@ namespace Memoria.Online
             if (owner != OwnerId)
             {
                 OwnerId = owner;
-                Log.Message($"[SteamSpike] Lobby owner (host) is now {SteamNative.GetName(owner)} ({owner}){(owner == LocalId ? " (you)" : String.Empty)}");
+                Log.Message($"[Online] Lobby owner (host) is now {SteamNative.Tag(owner)}{(owner == LocalId ? " (you)" : String.Empty)}");
                 HostChanged?.Invoke(owner);
             }
         }
@@ -278,7 +277,7 @@ namespace Memoria.Online
         {
             UInt64 lobby = (UInt64)Marshal.ReadInt64(param, 0);
             UInt64 friend = (UInt64)Marshal.ReadInt64(param, 8);
-            Log.Message($"[SteamSpike] Callback GameLobbyJoinRequested_t: lobby {lobby} from {SteamNative.GetName(friend)} ({friend})");
+            Log.Message($"[Online] Callback GameLobbyJoinRequested_t: lobby {lobby} from {SteamNative.Tag(friend)}");
             Join(lobby);
         }
 
@@ -287,7 +286,7 @@ namespace Memoria.Online
             UInt64 lobby = (UInt64)Marshal.ReadInt64(param, 0);
             UInt64 changed = (UInt64)Marshal.ReadInt64(param, 8);
             UInt32 change = (UInt32)Marshal.ReadInt32(param, 24);
-            Log.Message($"[SteamSpike] Callback LobbyChatUpdate_t: lobby {lobby}, {SteamNative.GetName(changed)} ({changed}) state change 0x{change:X}");
+            Log.Message($"[Online] Callback LobbyChatUpdate_t: lobby {lobby}, {SteamNative.Tag(changed)} state change 0x{change:X}");
             if (lobby == LobbyId && State == LobbyState.InLobby)
                 RefreshMembers();
         }
@@ -296,18 +295,18 @@ namespace Memoria.Online
         {
             UInt64 lobby = (UInt64)Marshal.ReadInt64(param, 0);
             UInt32 response = (UInt32)Marshal.ReadInt32(param, 16);
-            Log.Message($"[SteamSpike] Callback LobbyEnter_t: lobby {lobby}, response {response}");
+            Log.Message($"[Online] Callback LobbyEnter_t: lobby {lobby}, response {response}");
         }
 
         private void OnGameOverlayActivated(IntPtr param)
         {
-            Log.Message($"[SteamSpike] Callback GameOverlayActivated_t: active={Marshal.ReadByte(param, 0) != 0}");
+            Log.Message($"[Online] Callback GameOverlayActivated_t: active={Marshal.ReadByte(param, 0) != 0}");
         }
 
         private void SetEvent(String message)
         {
             LastEvent = message;
-            Log.Message($"[SteamSpike] {message}");
+            Log.Message($"[Online] {message}");
         }
 
         public void Dispose()

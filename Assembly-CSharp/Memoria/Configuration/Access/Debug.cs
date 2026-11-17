@@ -14,6 +14,8 @@ namespace Memoria
             public static Boolean StartBattle => LaunchOptions.Battle.HasValue;
             public static Boolean RenderWalkmeshes => Instance._debug.RenderWalkmeshes;
             public static Int32 Test => Instance._debug.Test;
+            /// <summary>[Online] Debug hotkeys for online play: the shadow ghost, network simulation, ghost model/interpolation overrides.</summary>
+            public static Boolean OnlineDebug => Instance._debug.OnlineDebug;
         }
     }
 }

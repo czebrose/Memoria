@@ -1,5 +1,9 @@
 # Spike B: Ghost actors in fields — findings
 
+> Spike findings, kept as the record of why things are done this way. Since merged into `online-ghosts`: the test
+> driver `GhostSpike` became `OnlineSession` + `ShadowGhost` (debug), and the interpolation delay is adaptive. Rules
+> distilled from this doc: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Branch `spike-b-ghosts` (off `main` at `c716e1fa`, like Spike A). Code: `Assembly-CSharp/Memoria/Online/Ghosts/`.
 
 **Status: in-game test passed (2026-11-16, one PC, shadow ghost).** Statements still marked *(to verify)* weren't

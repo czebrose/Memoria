@@ -25,7 +25,11 @@ namespace Memoria.Online.Ghosts
         public const Int32 MaxGhosts = 4;
         public const Double StaleMs = 5000;
 
-        public static Double InterpolationDelayMs = 100;
+        /// <summary>Ghost states are sent at 15 Hz (10 Hz was visibly worse in spike B).</summary>
+        public const Int32 SendRateHz = 15;
+        public static Double SendIntervalMs = 1000.0 / SendRateHz;
+        /// <summary>Debug: a fixed interpolation delay; negative = adaptive (one send interval + jitter, 80-250 ms).</summary>
+        public static Double FixedDelayMs = -1;
         public static Boolean Interpolate = true;
         /// <summary>Debug: draw every ghost with this model instead of its sender's (null = the sender's model).</summary>
         public static GhostModel ModelOverride;
@@ -66,6 +70,11 @@ namespace Memoria.Online.Ghosts
             if (ghost != null && !ghost.IsAlive)
             {
                 Forget(peer, ghost);
+                ghost = null;
+            }
+            if (ghost != null && ModelOverride == null && state.FieldId == (UInt16)FF9StateSystem.Common.FF9.fldMapNo && state.Model != ghost.Model.Model)
+            {
+                Remove(peer, $"its player's field leader is now model {state.Model}"); // respawned below with the new model
                 ghost = null;
             }
             if (ghost == null)
@@ -115,10 +124,10 @@ namespace Memoria.Online.Ghosts
                 if (show != ghost.Visible)
                 {
                     ghost.SetVisible(show);
-                    Log.Message($"[Ghosts] {ghost} {(show ? "shown again" : stale ? $"hidden: no state for {(nowMs - ghost.LastReceivedMs) / 1000:0.0}s" : $"hidden: its player is in field {ghost.Newest.FieldId}")}");
+                    Log.Message($"[Ghosts] {ghost} {(show ? "shown again" : stale ? $"hidden: no state for {(nowMs - ghost.LastReceivedMs) / 1000:0.0}s" : ghost.Newest.FieldId == GhostState.NotOnField ? "hidden: its player is not on a field (battle, menu, world map...)" : $"hidden: its player is in field {ghost.Newest.FieldId}")}");
                 }
                 if (show)
-                    ghost.Update(nowMs, deltaTime, InterpolationDelayMs, Interpolate);
+                    ghost.Update(nowMs, deltaTime, SendIntervalMs, FixedDelayMs, Interpolate);
             }
             if (dead != null)
                 foreach (UInt64 peer in dead)
@@ -166,7 +175,7 @@ namespace Memoria.Online.Ghosts
                 Log.Warning($"[Ghosts] No free UID in {FirstUid}-{FirstUid + MaxGhosts - 1} on field {state.FieldId} (used by the field script?); ghost {peer:X} not shown");
                 return null;
             }
-            GhostModel model = ModelOverride ?? GhostModels.Find(state.Model) ?? GhostModels.All[0];
+            GhostModel model = ModelOverride ?? GhostModels.Find(state.Model) ?? GhostModels.FromState(state);
             try
             {
                 GhostActor ghost = GhostActor.Spawn(peer, uid, model, fieldMap, state);

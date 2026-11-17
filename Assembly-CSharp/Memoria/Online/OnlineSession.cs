@@ -1,0 +1,540 @@
+using Memoria.Online.Ghosts;
+using Memoria.Prime;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text;
+using UnityEngine;
+
+namespace Memoria.Online
+{
+    /// <summary>
+    /// Online co-op, "Ghosts" phase: owns the Steam lobby, the P2P transport and the ghosts, ticked once per frame.
+    /// Attached in SceneDirector.Awake; dormant until a lobby is hosted or joined.
+    ///
+    /// Traffic per peer:
+    ///   ch 0 (control, reliable): ping every second (echoed; RTT), "ghost states sent to you" every 5 s (loss)
+    ///   ch 1 (movement, unreliable): the local player's 23-byte <see cref="GhostState"/> at 15 Hz, always (with
+    ///        <see cref="GhostState.NotOnField"/> while in a battle / menu / world map), so ghosts hide at once
+    ///
+    /// Hotkeys (Ctrl+Shift): H host, I invite (Steam overlay), J join (lobby id in the clipboard, else a friend's FF9
+    /// lobby), L leave, O status box. With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
+    /// G shadow ghost (replays you ~1 s behind), P pause its feed 6 s, K network simulation (10% loss, 0-80 ms jitter),
+    /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay.
+    /// </summary>
+    public sealed class OnlineSession : MonoBehaviour
+    {
+        private const Byte MsgPing = 1;
+        private const Byte MsgPong = 2;
+        private const Byte MsgSentCount = 3;
+        private const Double StallMs = 5000;
+
+        private static readonly Stopwatch Clock = Stopwatch.StartNew();
+        private static Double NowMs => Clock.Elapsed.TotalMilliseconds;
+
+        private enum InitState { Waiting, Ready, NoSteam }
+
+        private sealed class PeerStats
+        {
+            public UInt64 Id;
+            public String Tag;
+            public Double JoinedAt, LastReceived;
+            public Boolean Stalled;
+            public Int32 Stalls;
+            public UInt32 PingSeq;
+            public Int32 PingsSent, PongsReceived;
+            public Double LastRtt = -1, MinRtt = Double.MaxValue, MaxRtt, SumRtt;
+            public Int32 SecondPongs;
+            public Double SecondSumRtt;
+            public UInt32 GhostSent, GhostReceived;
+            public UInt32 TheirSentToUs, ReceivedWhenReported;
+            public Boolean Relay, SessionActive;
+
+            public Double AvgRtt => PongsReceived > 0 ? SumRtt / PongsReceived : -1;
+            public Double LossPercent => TheirSentToUs > 0 ? Math.Max(0, 100.0 * (1.0 - ReceivedWhenReported / (Double)TheirSentToUs)) : 0;
+        }
+
+        private InitState _init = InitState.Waiting;
+        private Boolean _gamePumps;
+        private Boolean _debug;
+        private SteamLobby _lobby;
+        private SteamTransport _transport;
+        private readonly Dictionary<UInt64, PeerStats> _peers = new Dictionary<UInt64, PeerStats>();
+        private readonly List<TransportMessage> _received = new List<TransportMessage>();
+        private readonly Byte[] _ghostBuffer = new Byte[GhostState.Size];
+        private readonly Byte[] _controlBuffer = new Byte[13];
+        private GhostState _local;
+        private Double _nextGhostSend, _nextPing, _nextSentCount, _nextSummary;
+        private UInt32 _ghostStatesSampled;
+        private readonly ShadowGhost _shadow = new ShadowGhost();
+        private Int32 _modelOverrideIndex = -1;
+        private Boolean _showStatus = true;
+        private Boolean _finalLogged;
+        private Int32 _clamped;
+        private GUIStyle _style;
+
+        private void OnEnable()
+        {
+            Camera.onPreCull += OnPreCull;
+        }
+
+        private void OnDisable()
+        {
+            Camera.onPreCull -= OnPreCull;
+        }
+
+        private static void OnPreCull(Camera camera)
+        {
+            try
+            {
+                GhostManager.ApplyRender();
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, "[Online] Ghost rendering failed");
+            }
+        }
+
+        private void Update()
+        {
+            try
+            {
+                if (_init == InitState.Waiting)
+                    TryInitialize();
+                Double now = NowMs;
+                HandleHotkeys(now);
+
+                if (_init == InitState.Ready)
+                {
+                    // RULE 2 (docs/online/CONTRIBUTING.md): Steam callbacks only run once the game pumps them
+                    // (title screen on). Pumping SteamAPI_RunCallbacks ourselves before that crashes the game in
+                    // steamwrapper.dll's stats handler; until then, everything here is polled.
+                    if (!_gamePumps && SiliconStudio.Social.IsCreated)
+                    {
+                        _gamePumps = true;
+                        Log.Message($"[Online] The game now pumps SteamAPI_RunCallbacks; callbacks are live (overlay enabled: {SteamNative.IsOverlayEnabled(SteamNative.Utils)})");
+                    }
+                    _lobby.Update((Single)(now / 1000.0));
+                    _received.Clear();
+                    _transport.Poll(_received);
+                    foreach (TransportMessage msg in _received)
+                        HandleMessage(msg, now);
+                }
+
+                Boolean sending = (_transport != null && _transport.IsActive && _transport.Peers.Count > 0) || _shadow.Enabled;
+                if (sending && now >= _nextGhostSend)
+                {
+                    _nextGhostSend = Math.Max(_nextGhostSend + GhostManager.SendIntervalMs, now - GhostManager.SendIntervalMs);
+                    SendGhostState(now);
+                }
+                _shadow.Deliver(now);
+                GhostManager.Update(now, Time.deltaTime);
+
+                if (_init == InitState.Ready && _peers.Count > 0)
+                    PerPeerTimers(now);
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, "[Online] Update failed");
+            }
+        }
+
+        private void TryInitialize()
+        {
+            _debug = Configuration.Debug.OnlineDebug;
+            if (!SteamSdkWrapper.IsInitialized)
+                return;
+            if (!SteamNative.TryLoad())
+            {
+                _init = InitState.NoSteam;
+                Log.Warning("[Online] Steam unavailable: online play is off" + (_debug ? " (the debug shadow ghost still works)" : ""));
+                return;
+            }
+            _lobby = new SteamLobby();
+            _transport = new SteamTransport(_lobby);
+            _transport.PeerJoined += OnPeerJoined;
+            _transport.PeerLeft += OnPeerLeft;
+            _lobby.HostChanged += owner => Log.Message($"[Online] Host is now {SteamNative.Tag(owner)}{(owner == _lobby.LocalId ? " (you)" : "")}; no host-leave policy in this phase, nothing else changes");
+            _init = InitState.Ready;
+            Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
+
+            // Steam starts the game with "+connect_lobby <id>" when an invite is accepted while it isn't running
+            // (out of scope: FF9_Launcher.exe may not pass it on; logged to find out)
+            String[] args = Environment.GetCommandLineArgs();
+            Boolean connectLobby = false;
+            for (Int32 i = 0; i + 1 < args.Length; i++)
+            {
+                if (args[i] == "+connect_lobby" && UInt64.TryParse(args[i + 1], out UInt64 lobbyId))
+                {
+                    connectLobby = true;
+                    _lobby.Join(lobbyId);
+                }
+            }
+            Log.Message($"[Online] +connect_lobby on the command line: {(connectLobby ? "yes, joining" : "no")}");
+        }
+
+        private void HandleHotkeys(Double now)
+        {
+            Boolean ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            Boolean shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            if (!ctrl || !shift)
+                return;
+            if (Input.GetKeyDown(KeyCode.O))
+            {
+                _showStatus = !_showStatus;
+                return;
+            }
+            if (_init == InitState.Ready)
+            {
+                if (Input.GetKeyDown(KeyCode.H))
+                {
+                    _lobby.Create();
+                }
+                else if (Input.GetKeyDown(KeyCode.I))
+                {
+                    _lobby.OpenInviteOverlay();
+                }
+                else if (Input.GetKeyDown(KeyCode.J))
+                {
+                    String clipboard = String.Empty;
+                    try { clipboard = GUIUtility.systemCopyBuffer?.Trim() ?? String.Empty; } catch { }
+                    if (UInt64.TryParse(clipboard, out UInt64 lobbyId) && (lobbyId >> 52) == 0x018) // universe 1, account type 8 (lobby)
+                        _lobby.Join(lobbyId);
+                    else
+                        _lobby.JoinFriendLobby();
+                }
+                else if (Input.GetKeyDown(KeyCode.L))
+                {
+                    _lobby.Leave(); // members leave → PeerLeft → ghosts removed, sending stops
+                }
+            }
+            if (!_debug)
+                return;
+            if (Input.GetKeyDown(KeyCode.G))
+            {
+                _shadow.SetEnabled(!_shadow.Enabled);
+            }
+            else if (Input.GetKeyDown(KeyCode.P))
+            {
+                _shadow.Pause(now);
+            }
+            else if (Input.GetKeyDown(KeyCode.K))
+            {
+                _shadow.NetworkSimulation = !_shadow.NetworkSimulation;
+                Log.Message($"[Online] Shadow network simulation (10% loss, 0-80 ms jitter) {(_shadow.NetworkSimulation ? "on" : "off")}");
+            }
+            else if (Input.GetKeyDown(KeyCode.M))
+            {
+                _modelOverrideIndex++;
+                if (_modelOverrideIndex >= GhostModels.All.Length)
+                    _modelOverrideIndex = -1;
+                GhostManager.ModelOverride = _modelOverrideIndex >= 0 ? GhostModels.All[_modelOverrideIndex] : null;
+                GhostManager.RemoveAll("model override changed"); // they come back with the new model on their next state
+                Log.Message($"[Online] Ghost model: {(GhostManager.ModelOverride != null ? GhostManager.ModelOverride.ToString() : "the sender's field leader")}");
+            }
+            else if (Input.GetKeyDown(KeyCode.N))
+            {
+                GhostManager.Interpolate = !GhostManager.Interpolate;
+                Log.Message($"[Online] Ghost interpolation {(GhostManager.Interpolate ? "on" : "off")}");
+            }
+            else if (Input.GetKeyDown(KeyCode.D))
+            {
+                GhostManager.FixedDelayMs = GhostManager.FixedDelayMs < 0 ? 100 : -1;
+                Log.Message($"[Online] Ghost interpolation delay: {(GhostManager.FixedDelayMs < 0 ? "adaptive (interval + jitter, 80-250 ms)" : $"fixed {GhostManager.FixedDelayMs} ms")}");
+            }
+        }
+
+        // ---- Ghost state: sample the local player at 15 Hz, send to every peer --------------------------------------
+
+        private void SendGhostState(Double now)
+        {
+            SampleLocal(now);
+            Int32 length = _local.Serialize(_ghostBuffer, 0);
+            _ghostStatesSampled++;
+            if (_transport != null && _transport.IsActive)
+            {
+                foreach (UInt64 peer in _transport.Peers)
+                {
+                    if (!_transport.Send(peer, TransportChannel.Movement, _ghostBuffer, length, false))
+                        continue;
+                    if (_peers.TryGetValue(peer, out PeerStats stats))
+                        stats.GhostSent++;
+                }
+            }
+            _shadow.Feed(_ghostBuffer, length, now);
+        }
+
+        private void SampleLocal(Double now)
+        {
+            _local.Tick = (UInt32)now;
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            FieldMapActorController leader = engine?.fieldmap?.playerController;
+            Actor actor = leader?.originalActor;
+            if (engine == null || engine.gMode != 1 || actor == null || leader.IsGhost)
+            {
+                _local.FieldId = GhostState.NotOnField;
+                _local.Model = 0;
+                _local.X = _local.Y = _local.Z = 0;
+                _local.Tri = -1;
+                _local.Facing = 0;
+                _local.Anim = 0;
+                _local.AnimFrame = 0;
+                _local.Motion = GhostMotion.Idle;
+                return;
+            }
+            _local.FieldId = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            _local.Model = actor.model;
+            _local.X = ToInt16(leader.curPos.x);
+            _local.Y = ToInt16(leader.curPos.y);
+            _local.Z = ToInt16(leader.curPos.z);
+            _local.Tri = (Int16)Mathf.Clamp(leader.activeTri, -1, Int16.MaxValue);
+            _local.FacingDegrees = actor.rotAngle[1];
+            _local.Anim = actor.anim;
+            _local.AnimFrame = actor.animFrame;
+            _local.Motion = actor.anim == actor.idle ? GhostMotion.Idle
+                : actor.anim == actor.walk ? GhostMotion.Walk
+                : actor.anim == actor.run ? GhostMotion.Run
+                : GhostMotion.Other;
+        }
+
+        private Int16 ToInt16(Single value)
+        {
+            Int32 rounded = Mathf.RoundToInt(value);
+            if (rounded >= Int16.MinValue && rounded <= Int16.MaxValue)
+                return (Int16)rounded;
+            if (_clamped++ == 0)
+                Log.Warning($"[Online] Field coordinate {value} doesn't fit in 16 bits (field {FF9StateSystem.Common.FF9.fldMapNo})");
+            return (Int16)Mathf.Clamp(rounded, Int16.MinValue, Int16.MaxValue);
+        }
+
+        // ---- Received messages ------------------------------------------------------------------------------------
+
+        private void HandleMessage(TransportMessage msg, Double now)
+        {
+            if (!_peers.TryGetValue(msg.Peer, out PeerStats s))
+                return;
+            s.LastReceived = now;
+            if (s.Stalled)
+            {
+                s.Stalled = false;
+                Log.Message($"[Online] {s.Tag}: traffic resumed");
+            }
+            Byte[] d = msg.Data;
+            switch (msg.Channel)
+            {
+                case TransportChannel.Control:
+                    if (d.Length == 13 && d[0] == MsgPing)
+                    {
+                        d[0] = MsgPong;
+                        _transport.Send(msg.Peer, TransportChannel.Control, d, d.Length, true);
+                    }
+                    else if (d.Length == 13 && d[0] == MsgPong)
+                    {
+                        Double rtt = (Clock.ElapsedTicks - ReadInt64(d, 5)) * 1000.0 / Stopwatch.Frequency;
+                        s.PongsReceived++;
+                        s.LastRtt = rtt;
+                        s.SumRtt += rtt;
+                        s.MinRtt = Math.Min(s.MinRtt, rtt);
+                        s.MaxRtt = Math.Max(s.MaxRtt, rtt);
+                        s.SecondPongs++;
+                        s.SecondSumRtt += rtt;
+                    }
+                    else if (d.Length == 5 && d[0] == MsgSentCount)
+                    {
+                        s.TheirSentToUs = ReadUInt32(d, 1);
+                        s.ReceivedWhenReported = s.GhostReceived;
+                    }
+                    break;
+                case TransportChannel.Movement:
+                    s.GhostReceived++;
+                    GhostManager.OnPacket(msg.Peer, d, 0, d.Length, now); // unknown message types are counted and ignored
+                    break;
+            }
+        }
+
+        private void OnPeerJoined(UInt64 peer)
+        {
+            _peers[peer] = new PeerStats { Id = peer, Tag = SteamNative.Tag(peer), JoinedAt = NowMs, LastReceived = NowMs };
+            Log.Message($"[Online] Connected to {_transport.Peers.Count} peer(s); +{SteamNative.Tag(peer)} (its ghost appears with its first state)");
+        }
+
+        private void OnPeerLeft(UInt64 peer)
+        {
+            if (_peers.TryGetValue(peer, out PeerStats s))
+            {
+                LogSummary(s, "LEFT");
+                _peers.Remove(peer);
+            }
+            GhostManager.Remove(peer, "left the lobby");
+            Log.Message($"[Online] Connected to {_transport.Peers.Count} peer(s)");
+        }
+
+        // ---- Pings, loss reports, stall detection, logs -------------------------------------------------------------
+
+        private void PerPeerTimers(Double now)
+        {
+            if (now >= _nextPing)
+            {
+                _nextPing = now + 1000;
+                LogSecond(now);
+                foreach (PeerStats s in _peers.Values)
+                {
+                    s.PingSeq++;
+                    s.PingsSent++;
+                    _controlBuffer[0] = MsgPing;
+                    WriteUInt32(_controlBuffer, 1, s.PingSeq);
+                    WriteInt64(_controlBuffer, 5, Clock.ElapsedTicks);
+                    _transport.Send(s.Id, TransportChannel.Control, _controlBuffer, 13, true);
+                }
+            }
+            if (now >= _nextSentCount)
+            {
+                _nextSentCount = now + 5000;
+                foreach (PeerStats s in _peers.Values)
+                {
+                    _controlBuffer[0] = MsgSentCount;
+                    WriteUInt32(_controlBuffer, 1, s.GhostSent);
+                    _transport.Send(s.Id, TransportChannel.Control, _controlBuffer, 5, true);
+                }
+            }
+            if (now >= _nextSummary)
+            {
+                if (_nextSummary > 0)
+                    foreach (PeerStats s in _peers.Values)
+                        LogSummary(s, "SUMMARY");
+                _nextSummary = now + 30000;
+            }
+        }
+
+        private void LogSecond(Double now)
+        {
+            StringBuilder line = new StringBuilder($"[Online] Connected to {_transport.Peers.Count} peer(s), host {SteamNative.Tag(_transport.HostPeer)}{(_lobby.IsHost ? " (you)" : "")}");
+            foreach (PeerStats s in _peers.Values)
+            {
+                SteamNative.P2PSessionState session = _transport.GetSessionState(s.Id);
+                s.Relay = session.UsingRelay != 0;
+                s.SessionActive = session.ConnectionActive != 0;
+                if (!s.Stalled && now - s.LastReceived > StallMs)
+                {
+                    s.Stalled = true;
+                    s.Stalls++;
+                    Log.Warning($"[Online] {s.Tag}: STALLED, no packet for {(now - s.LastReceived) / 1000:0.0}s (session active={s.SessionActive}, error={session.P2PSessionError}, queued={session.PacketsQueuedForSend})");
+                }
+                String rtt = s.SecondPongs > 0 ? $"{s.SecondSumRtt / s.SecondPongs:0.0}ms" : "no pong";
+                line.Append($" | {s.Tag}: rtt {rtt}, {(s.Relay ? "relay" : "direct")}, ghost loss {s.LossPercent:0.0}%, up {(now - s.JoinedAt) / 1000:0}s{(s.Stalled ? ", STALLED" : "")}");
+                if (TryGetGhost(s.Id, out GhostActor ghost))
+                    line.Append($", ghost {(ghost.Visible ? "shown" : "hidden")} delay {ghost.DelayMs:0}ms jitter {ghost.JitterMs:0}ms");
+                s.SecondPongs = 0;
+                s.SecondSumRtt = 0;
+            }
+            Log.Message(line.ToString());
+        }
+
+        private void LogSummary(PeerStats s, String tag)
+        {
+            String ghostInfo = "no ghost";
+            if (TryGetGhost(s.Id, out GhostActor ghost))
+                ghostInfo = $"ghost {ghost.Model.Name}: received {ghost.Received}, dropped as old {ghost.DroppedOld}, snaps {ghost.Snaps}, hidden {ghost.Hides}x, delay {ghost.DelayMs:0}ms, jitter {ghost.JitterMs:0}ms (max {ghost.MaxJitterMs:0}ms)";
+            Log.Message($"[Online] {tag} {s.Tag}: up {(NowMs - s.JoinedAt) / 1000:0}s, pings {s.PingsSent}/pongs {s.PongsReceived}, " +
+                $"rtt min/avg/max {(s.PongsReceived > 0 ? s.MinRtt : 0):0.0}/{s.AvgRtt:0.0}/{s.MaxRtt:0.0}ms, {(s.Relay ? "relay" : "direct")}, stalls {s.Stalls}, " +
+                $"ghost states sent {s.GhostSent} / received {s.GhostReceived} (they reported {s.TheirSentToUs} sent: loss {s.LossPercent:0.00}%), " +
+                $"{ghostInfo}, ignored other-field {GhostManager.IgnoredOtherField}, bad packets {GhostManager.IgnoredBadPacket}, spawn failures {GhostManager.SpawnFailures}");
+        }
+
+        private static Boolean TryGetGhost(UInt64 peer, out GhostActor ghost)
+        {
+            foreach (GhostActor g in GhostManager.All)
+            {
+                if (g.Peer == peer)
+                {
+                    ghost = g;
+                    return true;
+                }
+            }
+            ghost = null;
+            return false;
+        }
+
+        private void OnApplicationQuit()
+        {
+            // Memoria's quit confirmation can make Unity call this twice; log once, and dispose nothing in case the
+            // quit is cancelled (Steam leaves the lobby itself when the game exits)
+            if (_finalLogged || _init != InitState.Ready)
+                return;
+            _finalLogged = true;
+            foreach (PeerStats s in _peers.Values)
+                LogSummary(s, "FINAL");
+        }
+
+        // ---- Status box -----------------------------------------------------------------------------------------
+
+        private void OnGUI()
+        {
+            if (!_showStatus || _init == InitState.Waiting)
+                return;
+            if (_style == null)
+            {
+                _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14, wordWrap = false };
+                _style.normal.textColor = Color.white;
+            }
+            StringBuilder text = new StringBuilder();
+            if (_init == InitState.NoSteam)
+            {
+                text.Append("Online: Steam unavailable");
+            }
+            else
+            {
+                text.Append($"Online  lobby: {_lobby.State}");
+                if (_lobby.LobbyId != 0)
+                    text.Append($"  host: {SteamNative.GetName(_lobby.OwnerId)}{(_lobby.IsHost ? " (you)" : "")}");
+                text.Append($"\nPeers: {_transport.Peers.Count}");
+                if (!_gamePumps)
+                    text.Append("  (Steam callbacks start at the title screen)");
+                foreach (PeerStats s in _peers.Values)
+                    text.Append($"\n  {SteamNative.GetName(s.Id)}: rtt {(s.LastRtt >= 0 ? $"{s.LastRtt:0}ms" : "-")} (avg {s.AvgRtt:0}), {(s.Relay ? "relay" : "direct")}, loss {s.LossPercent:0.0}%{(s.Stalled ? "  STALLED" : "")}");
+                if (!String.IsNullOrEmpty(_lobby.LastEvent))
+                    text.Append($"\n{_lobby.LastEvent}");
+            }
+            Int32 shown = 0;
+            foreach (GhostActor g in GhostManager.All)
+                if (g.Visible)
+                    shown++;
+            text.Append($"\nGhosts: {shown} shown / {GhostManager.Count}");
+            foreach (GhostActor g in GhostManager.All)
+                text.Append($"\n  {(g.Peer == ShadowGhost.Peer ? "shadow" : SteamNative.GetName(g.Peer))} ({g.Model.Name}): {(g.Visible ? "shown" : "hidden")}, delay {g.DelayMs:0}ms, jitter {g.JitterMs:0}ms");
+            if (_init == InitState.Ready && _lobby.State == SteamLobby.LobbyState.None)
+                text.Append("\nCtrl+Shift: H host, I invite, J join, L leave, O hide");
+            if (_debug)
+            {
+                text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
+                text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
+            }
+            GUIContent content = new GUIContent(text.ToString());
+            Vector2 size = _style.CalcSize(content);
+            GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
+        }
+
+        // ---- Byte helpers ----------------------------------------------------------------------------------------
+
+        private static void WriteUInt32(Byte[] b, Int32 o, UInt32 v)
+        {
+            b[o] = (Byte)v; b[o + 1] = (Byte)(v >> 8); b[o + 2] = (Byte)(v >> 16); b[o + 3] = (Byte)(v >> 24);
+        }
+
+        private static UInt32 ReadUInt32(Byte[] b, Int32 o)
+        {
+            return b[o] | ((UInt32)b[o + 1] << 8) | ((UInt32)b[o + 2] << 16) | ((UInt32)b[o + 3] << 24);
+        }
+
+        private static void WriteInt64(Byte[] b, Int32 o, Int64 v)
+        {
+            WriteUInt32(b, o, (UInt32)v);
+            WriteUInt32(b, o + 4, (UInt32)(v >> 32));
+        }
+
+        private static Int64 ReadInt64(Byte[] b, Int32 o)
+        {
+            return (Int64)(ReadUInt32(b, o) | ((UInt64)ReadUInt32(b, o + 4) << 32));
+        }
+    }
+}

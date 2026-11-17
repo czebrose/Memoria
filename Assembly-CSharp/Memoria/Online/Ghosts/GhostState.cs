@@ -32,6 +32,8 @@ namespace Memoria.Online.Ghosts
     {
         public const Byte MessageType = 0x10;
         public const Int32 Size = 23;
+        /// <summary>FieldId sent while the player isn't on a field (battle, world map, menus): receivers hide the ghost at once.</summary>
+        public const UInt16 NotOnField = 0xFFFF;
 
         public UInt32 Tick;
         public UInt16 FieldId;

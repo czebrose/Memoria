@@ -52,6 +52,15 @@ namespace Memoria.Online.Ghosts
                 ByModel[model.Model] = model;
         }
 
+        /// <summary>
+        /// A model the table doesn't know (e.g. the sequel's Clove): drawn with the sender's own animation ids, which
+        /// the ghost plays exactly since it uses the same model; its idle/walk/run fallbacks are the current one.
+        /// </summary>
+        public static GhostModel FromState(GhostState state)
+        {
+            return new GhostModel($"model {state.Model}", state.Model, 90, state.Anim, state.Anim, state.Anim, 20);
+        }
+
         public static GhostModel Find(UInt16 model)
         {
             return ByModel.TryGetValue(model, out GhostModel result) ? result : null;
