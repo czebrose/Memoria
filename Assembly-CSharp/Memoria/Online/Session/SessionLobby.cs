@@ -83,6 +83,7 @@ namespace Memoria.Online.Session
         private Byte[] _continueBlob;
         private Boolean _choiceLoading;
         private Boolean _awaitingNewGameResync;
+        private FieldMap _fieldMapAtStart; // the resync waits for a field map loaded after Start (the old one lingers)
         private String _publishedAssign;
 
         // Guest
@@ -156,7 +157,8 @@ namespace Memoria.Online.Session
                     ReadHostData();
             }
 
-            if (IsHost && _awaitingNewGameResync && Phase == SessionPhase.Playing && IsPlayableOnField())
+            if (IsHost && _awaitingNewGameResync && Phase == SessionPhase.Playing && IsPlayableOnField()
+                && !ReferenceEquals(PersistenSingleton<EventEngine>.Instance.fieldmap, _fieldMapAtStart) && !PersistenSingleton<SceneDirector>.Instance.IsFading)
                 SendResync();
             if (!IsHost && _pending != null)
                 TryLoadPending();
@@ -338,6 +340,7 @@ namespace Memoria.Online.Session
                     SendControl(peer, MsgStart, ModeNewGame, 0, 0);
                 Log.Message($"[Online] Session started: New Game on every PC; the host resyncs everyone once it has control");
                 _awaitingNewGameResync = true;
+                _fieldMapAtStart = PersistenSingleton<EventEngine>.Instance?.fieldmap;
                 StartNewGame();
                 return;
             }
@@ -563,7 +566,7 @@ namespace Memoria.Online.Session
             GUI.Box(new Rect(x, y, width, rows * line + 24f), "", _style);
             Single cx = x + 12f, cy = y + 10f;
 
-            GUI.Label(new Rect(cx, cy, width, line), $"Online session — host: {SteamNative.GetName(_lobby.OwnerId)}{(IsHost ? " (you)" : "")}", _style);
+            GUI.Label(new Rect(cx, cy, width, line), $"Online session — host: {SteamNative.GetName(_lobby.OwnerId)}{(IsHost ? " (you)" : "")}");
             cy += line + 4f;
             if (_startedBeforeJoin)
             {
