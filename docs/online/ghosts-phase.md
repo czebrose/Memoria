@@ -3,7 +3,7 @@
 Branch `online-ghosts` (from `main` at `c716e1fa`, merging `steam-spike-a` and `spike-b-ghosts`). Code:
 `Assembly-CSharp/Memoria/Online/`. Rules for contributors: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Status: first two-PC session done (2026-11-16): T1 quality, T2, T3, T5 pass; T4 and parts of T1/T6 still to run.** Results are in the test table below.
+**Status: first two-PC session done (2026-11-16): T1 quality, T2, T3, T5 pass; T4 dropped; a 5-minute T1 and the rest of T6 still to run.** Results are in the test table below.
 
 ## What changed (from the two spikes)
 
@@ -82,8 +82,7 @@ needed. Both load a save **in the same field**.
    (the host) leaves and PC 2 sees itself become host in its log/status box; PC 1 rejoins with Ctrl+Shift+J.
 7. **T6b:** walk both into a field with lots of background layers (pillars, foreground objects) and, if handy, an FMV
    or mini-game field; note how the ghost looks.
-8. **T4 (relay):** switch PC 2 to a phone hotspot, restart its game, connect again (step 1), walk around 2-3 minutes.
-   Status box says `relay` or `direct`; note RTT, and whether the ghost is still smooth.
+8. ~~**T4 (relay)**~~: dropped, see the table.
 9. Quit both games normally; send both `Memoria.log` files.
 
 | # | Setup | Pass | Result |
@@ -91,7 +90,7 @@ needed. Both load a save **in the same field**.
 | T1 | same network, ≥ 5 min, same field | ghosts smooth, same model as their leader; no `STALLED`; ping/loss fine | **Pass on quality, short on time.** Tester: "it looked great". Direct connection, RTT 2-7 ms, ghost delay 80 ms (jitter 7 ms), ~3480 states each way with ~0% loss, no `STALLED`, both ghosts the sender's leader (model 202). Longest connection 233 s (not ≥ 5 min), and it included T2/T3, so not 5 min in one field. |
 | T2 | field changes ×3 | ghost hides when the other leaves, back ~1 s after both are in the same field; no leftovers | **Pass.** Cargo ship 502/504/505/507 and Alexandria 100/101/112, both directions: hidden as soon as the other's states named another field, dropped with the old map, respawned 1-3 s after both were in the same field. Brief 1-3 s "not on a field" hides at each transition (the sender is between fields). |
 | T3 | battle | ghost gone during the battle, back after | **Pass.** PC 2's battle 09:18:39-09:19:33: PC 1 hid PC 2's ghost at once (`NotOnField`) and showed it again after; PC 2's ghost of PC 1 went with PC 2's field map and respawned after the battle. |
-| T4 | relay (phone hotspot) | works; relay reported or not; RTT, jitter, adaptive delay; ghost smooth | **Not run yet.** Both logs say `direct` for the whole session and show no game restart. |
+| T4 | relay (phone hotspot) | works; relay reported or not; RTT, jitter, adaptive delay; ghost smooth | **Dropped (decision, 2026-11-16).** Not a target for this project: players are expected on decent connections, so a poor-connection / relay test isn't worth running. Untested consequence: relay latency and jitter beyond what the adaptive delay (80-250 ms) hides. The delay and jitter stay logged every second if it ever comes up. |
 | T5 | leave / rejoin both ways | ghosts removed on leave, back on rejoin; owner change logged; no crash | **Pass.** Guest left (Ctrl+Shift+L): ghost removed on both sides; rejoined via Ctrl+Shift+J's friend-lobby lookup, ghost back 4 s later. Host left: Steam made the guest owner (logged on both), host rejoined, ghosts back. A P2P request from the departed player was refused (not a lobby member). Found: the setup backlog (~3.5 s of queued states) counted as jitter and pinned the delay at 250 ms for ~10 s after each rejoin; **fixed** after the test (states > 1 s late are ignored for jitter). |
 | T6 | ladders/jumps, layered field, FMV/mini-game | noted (documented, not fixed) | **Partly.** Layered fields (Alexandria main street and alleys) looked right. Ladders/jumps and FMV/mini-game fields not checked. Overlay invite (`GameLobbyJoinRequested_t`) and the friend-lobby fallback both used successfully. |
 
@@ -111,8 +110,7 @@ either PC's `output_log.txt`.
 
 **Not done yet, close.** Everything run so far passes (T1 quality, T2, T3, T5, layered fields). Missing before the
 Ghosts phase can be called done:
-- **T4 (relay)**: never exercised; this is where the adaptive delay matters.
 - **T1 length**: one uninterrupted ≥ 5 min stretch in one field.
 - **T6 rest**: a ladder or jump with the same model; an FMV or mini-game field.
 
-One more two-PC session covers all three (with the post-test backlog fix installed on both PCs).
+One more two-PC session covers both (with the post-test backlog fix installed on both PCs).
