@@ -23,10 +23,17 @@ Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memori
   `SiliconStudio.Social.ProcessCallbacks()` → `SteamLocalUser.ProcessCallbacks()` →
   `steamwrapper!ProcessCallbacks_Internal` (presumably `SteamAPI_RunCallbacks`), `FPSManager.MainLoopUpdateCount`
   times per frame. **But only after `Social.InitializeSocialPlatform()`**, which `TitleUI` calls on the title screen
-  (`Social._hasCreated`). Before that, nothing pumps callbacks. The spike pumps `SteamAPI_RunCallbacks` itself only
-  while the game doesn't (`Social.IsCreated`, a one-line accessor added to `SiliconStudio/Social.cs`), so there's
-  never a double pump. *(to verify in game: that `ProcessCallbacks_Internal` really runs `SteamAPI_RunCallbacks`; if
-  callbacks stop firing after the title screen, it doesn't.)*
+  (`Social._hasCreated`). Before that, nothing pumps callbacks, **and nothing may**: the second test run pumped
+  `SteamAPI_RunCallbacks` from the spike before the title screen and crashed in `steamwrapper.dll+0x1555`. That code
+  (`mov cl,1; call [rsi+10h]`) is Square Enix's stats-received handler calling the game's C# delegate with `true`,
+  with no null check; the delegate is only registered by `Social.Authenticate` at the title screen. So the spike
+  never pumps; it only logs when the game starts (`Social.IsCreated`, a one-line accessor added to
+  `SiliconStudio/Social.cs`). Consequence: Steam callbacks (overlay invites, logging callbacks) only work from the
+  title screen on. Call results, membership and packets are polled, so they work from startup.
+  *(to verify in game: that `ProcessCallbacks_Internal` really runs `SteamAPI_RunCallbacks`; if no callback ever
+  fires after the title screen, it doesn't.)*
+- `ISteamUtils::IsOverlayEnabled` returned `False` at startup on the first successful run (the overlay hooks the
+  renderer a little later); it's logged again when callbacks go live and when the invite dialog opens.
 - **Two copies of `steam_api64.dll`**, byte-identical (md5 `34c73cab…`): `x64/steam_api64.dll` and
   `x64/FF9_Data/Plugins/steam_api64.dll`. Also a 32-bit `Plugins/steam_api.dll` (unused: Memoria is x64 only).
   This matters: a plain `[DllImport("steam_api64")]` from C# could make Mono load the `Plugins` copy as a *second*
@@ -156,13 +163,12 @@ Second PC: it needs the same Memoria build (the upstream Canary matching `main` 
 1. Start the game through Steam. The status box appears top-left once Steam is up.
 2. In `Memoria.log`, check: `Using steam_api64.dll already loaded at …`, `Interfaces: …` (no zeros),
    `SteamID check: OK`, `overlay enabled: True`.
-3. Press **Shift+Tab** twice: expect `Callback GameOverlayActivated_t: active=True` / `False`. This proves the
-   callback emulation.
-4. Press **Ctrl+Shift+H**: expect `Lobby … created; you are the host` and `Lobby member joined: <you>`.
-5. Press **Ctrl+Shift+I**: the Steam overlay's invite dialog should open.
-6. Get past the title screen and load a save; check the log says `SteamAPI_RunCallbacks is now pumped by the game`,
-   then press Shift+Tab again and check the `GameOverlayActivated_t` lines still come. If they don't,
-   `ProcessCallbacks_Internal` doesn't pump `SteamAPI_RunCallbacks`.
+3. Wait for the title screen: the log says `The game now pumps SteamAPI_RunCallbacks; callbacks are live`.
+4. Press **Shift+Tab** twice: expect `Callback GameOverlayActivated_t: active=True` / `False`. This proves the
+   callback emulation and that the game's pump runs `SteamAPI_RunCallbacks`.
+5. Press **Ctrl+Shift+H**: expect `Lobby … created; you are the host` and `Lobby member joined: <you>`.
+6. Press **Ctrl+Shift+I**: the Steam overlay's invite dialog should open.
+7. Load a save and repeat step 4 in a field.
 
 Send me `Memoria.log` if any of these fail.
 
@@ -194,8 +200,9 @@ the callback emulation. If that one piece fails, the clipboard / friend-lobby fa
 Risks:
 - **Callback emulation** (vtable order, struct packing, Mono reverse-P/Invoke): checked in step 1.3. Fallback is the
   `Ctrl+Shift+J` join; no LiteNetLib needed for that.
-- **Callback pump after the title screen**: depends on what `steamwrapper!ProcessCallbacks_Internal` does
-  (step 1.6). If it doesn't call `SteamAPI_RunCallbacks`, we pump ourselves always; that's a one-line change.
+- **Callback pump**: we depend on the game's pump (step 1.4); pumping ourselves before the title screen crashes
+  the game (A1). If the game's pump turns out not to call `SteamAPI_RunCallbacks`, we can pump ourselves *after*
+  `Social.IsCreated`.
 - **Invite while the game is closed** probably needs `FF9_Launcher.exe` to forward `+connect_lobby`.
 - **Legacy P2P is deprecated by Valve** (`ISteamNetworking` is "legacy" since 2020) but still served by the Steam
   client; nothing to do about it while we can't ship a newer `steam_api64.dll`.

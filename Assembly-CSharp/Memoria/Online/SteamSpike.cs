@@ -58,7 +58,7 @@ namespace Memoria.Online
         }
 
         private InitState _init = InitState.Waiting;
-        private Boolean _pumpingOurselves;
+        private Boolean _gamePumps;
         private SteamLobby _lobby;
         private SteamTransport _transport;
         private readonly Dictionary<UInt64, PeerStats> _stats = new Dictionary<UInt64, PeerStats>();
@@ -80,17 +80,16 @@ namespace Memoria.Online
                 if (_init != InitState.Ready)
                     return;
 
-                // The game only pumps SteamAPI_RunCallbacks (SceneDirector.Update -> Social.ProcessCallbacks ->
-                // steamwrapper!ProcessCallbacks_Internal) once the title screen has created the social platform.
-                // Before that, pump ourselves; never both.
-                Boolean gamePumps = SiliconStudio.Social.IsCreated;
-                if (gamePumps == _pumpingOurselves)
+                // The game pumps SteamAPI_RunCallbacks (SceneDirector.Update -> Social.ProcessCallbacks ->
+                // steamwrapper!ProcessCallbacks_Internal) only once the title screen has created the social platform.
+                // Never pump it ourselves: steamwrapper's own stats callback calls the game's C# delegate without a
+                // null check, and that delegate is only registered at the title screen, so an earlier pump crashes
+                // the game. Until then, registered callbacks just wait; call results and packets are polled anyway.
+                if (!_gamePumps && SiliconStudio.Social.IsCreated)
                 {
-                    _pumpingOurselves = !gamePumps;
-                    Log.Message($"[SteamSpike] SteamAPI_RunCallbacks is now pumped by {(_pumpingOurselves ? "SteamSpike" : "the game")}");
+                    _gamePumps = true;
+                    Log.Message($"[SteamSpike] The game now pumps SteamAPI_RunCallbacks; callbacks are live (overlay enabled: {SteamNative.IsOverlayEnabled(SteamNative.Utils)})");
                 }
-                if (_pumpingOurselves)
-                    SteamNative.RunCallbacks();
 
                 HandleHotkeys();
                 _lobby.Update((Single)Now);
@@ -344,6 +343,8 @@ namespace Memoria.Online
                 if (_lobby.LobbyId != 0)
                     text.Append($" {_lobby.LobbyId}  host: {SteamNative.GetName(_lobby.OwnerId)}{(_lobby.IsHost ? " (you)" : "")}");
                 text.Append($"\nConnected to {_transport.Peers.Count} peer(s)");
+                if (!_gamePumps)
+                    text.Append("  (Steam callbacks start at the title screen)");
                 foreach (KeyValuePair<UInt64, PeerStats> kv in _stats)
                 {
                     PeerStats s = kv.Value;
