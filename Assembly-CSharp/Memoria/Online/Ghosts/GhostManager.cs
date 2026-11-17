@@ -1,6 +1,7 @@
 using Memoria.Prime;
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Memoria.Online.Ghosts
 {
@@ -35,6 +36,8 @@ namespace Memoria.Online.Ghosts
         public static GhostModel ModelOverride;
 
         public static Int32 IgnoredOtherField, IgnoredBadPacket, SpawnFailures;
+        /// <summary>The local field leader's model scale; ghosts use it (fields that shrink characters only shrink their own).</summary>
+        public static Vector3 LeaderScale = Vector3.one;
 
         private static readonly Dictionary<UInt64, GhostActor> Ghosts = new Dictionary<UInt64, GhostActor>();
         private static readonly List<Pending> PendingRemovals = new List<Pending>();
@@ -107,6 +110,8 @@ namespace Memoria.Online.Ghosts
                 return;
             }
             CheckFieldMap(fieldMap);
+            GameObject leaderModel = fieldMap.playerController?.originalActor?.go;
+            LeaderScale = leaderModel != null ? leaderModel.transform.localScale : Vector3.one;
 
             UInt16 localField = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             List<UInt64> dead = null;

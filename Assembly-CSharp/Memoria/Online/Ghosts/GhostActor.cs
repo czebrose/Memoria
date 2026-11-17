@@ -269,6 +269,10 @@ namespace Memoria.Online.Ghosts
             Transform transform = Actor.go.transform;
             transform.localPosition = _pose;
             transform.localRotation = Quaternion.AngleAxis(_facing, Vector3.up);
+            // Some fields shrink their characters to fit the background (SetObjectSize, opcode 0x9F, e.g. the cargo
+            // ship's engine room). The script only does it to its own objects; a ghost takes the local leader's size,
+            // since both players are in the same field.
+            transform.localScale = GhostManager.LeaderScale;
             if (_animation == null)
                 return;
             String name = FF9DBAll.AnimationDB.GetValue(_anim);
