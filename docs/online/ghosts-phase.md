@@ -3,7 +3,7 @@
 Branch `online-ghosts` (from `main` at `c716e1fa`, merging `steam-spike-a` and `spike-b-ghosts`). Code:
 `Assembly-CSharp/Memoria/Online/`. Rules for contributors: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Status: first two-PC session done (2026-11-16): T1 quality, T2, T3, T5 pass; T4 dropped; a 5-minute T1 and the rest of T6 still to run.** Results are in the test table below.
+**Status: done (2026-11-16).** T1, T2, T3, T5 pass on two PCs; T4 dropped and the rest of T6 deferred by decision. Results are in the test table below.
 
 ## What changed (from the two spikes)
 
@@ -87,12 +87,12 @@ needed. Both load a save **in the same field**.
 
 | # | Setup | Pass | Result |
 |---|---|---|---|
-| T1 | same network, ≥ 5 min, same field | ghosts smooth, same model as their leader; no `STALLED`; ping/loss fine | **Pass on quality, short on time.** Tester: "it looked great". Direct connection, RTT 2-7 ms, ghost delay 80 ms (jitter 7 ms), ~3480 states each way with ~0% loss, no `STALLED`, both ghosts the sender's leader (model 202). Longest connection 233 s (not ≥ 5 min), and it included T2/T3, so not 5 min in one field. |
+| T1 | same network, ≥ 5 min, same field | ghosts smooth, same model as their leader; no `STALLED`; ping/loss fine | **Pass.** Tester: "it looked great". Direct connection, RTT 2-7 ms, ghost delay 80 ms (jitter 7 ms), ~3480 states each way with ~0% loss, no `STALLED`, both ghosts the sender's leader (model 202). Longest connection 233 s, including T2/T3, accepted in place of 5 min in one field (decision, 2026-11-16): constant traffic keeps the P2P session from idling out and the delay is re-measured over a rolling 10 s window, so the extra minute would test nothing new. Long-session growth (memory, slowdown) would need ~30 min to be meaningful; not tested. |
 | T2 | field changes ×3 | ghost hides when the other leaves, back ~1 s after both are in the same field; no leftovers | **Pass.** Cargo ship 502/504/505/507 and Alexandria 100/101/112, both directions: hidden as soon as the other's states named another field, dropped with the old map, respawned 1-3 s after both were in the same field. Brief 1-3 s "not on a field" hides at each transition (the sender is between fields). |
 | T3 | battle | ghost gone during the battle, back after | **Pass.** PC 2's battle 09:18:39-09:19:33: PC 1 hid PC 2's ghost at once (`NotOnField`) and showed it again after; PC 2's ghost of PC 1 went with PC 2's field map and respawned after the battle. |
 | T4 | relay (phone hotspot) | works; relay reported or not; RTT, jitter, adaptive delay; ghost smooth | **Dropped (decision, 2026-11-16).** Not a target for this project: players are expected on decent connections, so a poor-connection / relay test isn't worth running. Untested consequence: relay latency and jitter beyond what the adaptive delay (80-250 ms) hides. The delay and jitter stay logged every second if it ever comes up. |
 | T5 | leave / rejoin both ways | ghosts removed on leave, back on rejoin; owner change logged; no crash | **Pass.** Guest left (Ctrl+Shift+L): ghost removed on both sides; rejoined via Ctrl+Shift+J's friend-lobby lookup, ghost back 4 s later. Host left: Steam made the guest owner (logged on both), host rejoined, ghosts back. A P2P request from the departed player was refused (not a lobby member). Found: the setup backlog (~3.5 s of queued states) counted as jitter and pinned the delay at 250 ms for ~10 s after each rejoin; **fixed** after the test (states > 1 s late are ignored for jitter). |
-| T6 | ladders/jumps, layered field, FMV/mini-game | noted (documented, not fixed) | **Partly.** Layered fields (Alexandria main street and alleys) looked right. Ladders/jumps and FMV/mini-game fields not checked. Overlay invite (`GameLobbyJoinRequested_t`) and the friend-lobby fallback both used successfully. |
+| T6 | ladders/jumps, layered field, FMV/mini-game | noted (documented, not fixed) | **Partly; rest deferred (decision, 2026-11-16).** Layered fields (Alexandria main street and alleys) looked right. Ladders/jumps and FMV/mini-game fields not checked: minor, to be fixed if and when they show up. Overlay invite (`GameLobbyJoinRequested_t`) and the friend-lobby fallback both used successfully. |
 
 Logs: `Output/logs/PC1-online-2026-11-16-2121.log`, `PC2-online-2026-11-16-2121.log` (not committed). No exceptions in
 either PC's `output_log.txt`.
@@ -108,9 +108,14 @@ either PC's `output_log.txt`.
 
 ## Verdict
 
-**Not done yet, close.** Everything run so far passes (T1 quality, T2, T3, T5, layered fields). Missing before the
-Ghosts phase can be called done:
-- **T1 length**: one uninterrupted ≥ 5 min stretch in one field.
-- **T6 rest**: a ladder or jump with the same model; an FMV or mini-game field.
+**The Ghosts phase is done.** Two players on two PCs see each other's field leader walking and running in the same
+field, smoothly, through field changes, battles and leave/rejoin, from inside FF9 with Memoria. T1, T2, T3 and T5 pass;
+T4 (relay) was dropped and the rest of T6 deferred by decision. The setup-backlog jitter fix was made after the test
+and builds clean, but hasn't run in game yet.
 
-One more two-PC session covers both (with the post-test backlog fix installed on both PCs).
+Carried forward:
+- ladders/jumps (exact animations) and FMV/mini-game fields: fix if they come up;
+- a ghost keeps showing during the local player's cutscenes;
+- the host-leave policy (Steam migrates lobby ownership; nothing depends on the host yet);
+- `+connect_lobby` when the game is closed;
+- poor connections / relay: untested by decision.
