@@ -2,8 +2,26 @@
 
 Branch `spike-b-ghosts` (off `main` at `c716e1fa`, like Spike A). Code: `Assembly-CSharp/Memoria/Online/Ghosts/`.
 
-**Status: built and installed, not yet run in game.** Statements marked *(to verify)* depend on the in-game test in
-[How to test](#how-to-test).
+**Status: in-game test passed (2026-11-16, one PC, shadow ghost).** Statements still marked *(to verify)* weren't
+covered by that run. The verdict is at the end.
+
+### Test results (2026-11-16, ~6 minutes, cargo ship fields 504/505/507 + the Black Waltz No. 3 battle)
+
+Tester: "didn't notice anything" wrong visually (floor contact, animations, smoothness, lighting, shadow, depth,
+walking through it, NPCs and the field's script). From `Memoria.log` (saved as
+`Output/logs/Memoria-shadow-test-2026-11-16-2046.log`, not committed) and Unity's `output_log.txt` (no exceptions):
+
+| Check | Result |
+|---|---|
+| Spawn | on the first state for the field, 1 s after you could move, on the right floor (e.g. field 504, tri 38, floor 2) |
+| 15 Hz / 10 Hz | ~3600 states sampled; no visible snapping at either rate; interpolation off shows the steps (as expected) |
+| Feed paused 6 s | hidden exactly 5.0 s after the last state, shown again 2 s later at the new position |
+| Network sim (10% loss, 0-80 ms jitter) | 116 states lost, 12 late ones dropped as old, still smooth |
+| Field changes | 504 ↔ 505 ↔ 507 four times: ghost hidden as soon as its states name the other field, dropped with the old map, respawned in the new one; no leftovers, 1 snap (a > 400-unit jump at a field entrance) |
+| Battle | ghost gone with the field at battle start, respawned after the battle (08:46:05) |
+| Errors | none in `Memoria.log` or `output_log.txt` |
+
+Not exercised in this run: `Ctrl+Shift+M` (other models, and the "same as you" model's exact animations on ladders).
 
 Much of B1/B2 was already worked out by the local-multiplayer branch (`multiplayer`), whose "field followers" are
 extra characters spawned from C# in any field (`Memoria/Multiplayer/MultiplayerField.cs`, notes in
@@ -170,3 +188,14 @@ exceptions only go there).
   little.
 - **Interpolation delay** is 100 ms: fine for 15 Hz on a direct connection (spike A: 3-14 ms RTT, no loss); relay or
   jittery links may need more.
+
+## Verdict
+
+**Spawning ghosts outside the field script works**, generically, with ~20 lines of marked engine edits and no
+per-field script changes. The 23-byte `GhostState` at 10-15 Hz with 100 ms of interpolation looks smooth on a direct
+connection, survives loss, reordering and a 6 s outage, and ghosts clean up and come back across field changes and
+battles. Ready to wire to Spike A's transport.
+
+Still open: the model switch and exact-animation path (ladders, jumps) with the "same as you" model; fields with
+heavy background layering; FMV/mini-game fields; a real network link (relay or jitter beyond 80 ms may need a
+longer interpolation delay).
