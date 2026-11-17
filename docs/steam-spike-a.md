@@ -104,7 +104,7 @@ The approach, in order of what it relies on:
 
 The same mechanism also registers `LobbyChatUpdate_t`, `LobbyEnter_t`, `GameOverlayActivated_t`,
 `P2PSessionRequest_t` and `P2PSessionConnectFail_t`, for logging/diagnostics. `GameOverlayActivated_t` fires on
-Shift+Tab, which makes it the cheapest single-PC proof that callbacks work. *(to verify in game)*
+the overlay shortcut, which makes it the cheapest single-PC proof that callbacks work. (confirmed in the single-PC test)
 
 Limits: x64 only (x86 would need real `thiscall` thunks; Memoria dropped x86 anyway). Struct offsets are read by
 hand with the Windows pack-8 layout (`LobbyEnter_t.m_EChatRoomEnterResponse` at +16, etc.).
