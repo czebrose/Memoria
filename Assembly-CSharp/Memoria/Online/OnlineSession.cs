@@ -77,6 +77,7 @@ namespace Memoria.Online
 
         // Step 2 / M1: game snapshots (debug hotkeys S, T, R, B)
         private readonly BlobTransfer _blobs = new BlobTransfer();
+        private SessionLobby _session; // Step 2: title-screen lobby, character pick, start
         private Byte[] _snapshot;
         private String _snapshotSource;
         private JSONClass _verifyTree;
@@ -131,6 +132,7 @@ namespace Memoria.Online
                     _transport.Poll(_received);
                     foreach (TransportMessage msg in _received)
                         HandleMessage(msg, now);
+                    _session.Update(now);
                 }
 
                 Boolean sending = (_transport != null && _transport.IsActive && _transport.Peers.Count > 0) || _shadow.Enabled;
@@ -169,7 +171,9 @@ namespace Memoria.Online
             _transport.PeerJoined += OnPeerJoined;
             _transport.PeerLeft += OnPeerLeft;
             _lobby.HostChanged += owner => Log.Message($"[Online] Host is now {SteamNative.Tag(owner)}{(owner == _lobby.LocalId ? " (you)" : "")}; no host-leave policy in this phase, nothing else changes");
+            _session = new SessionLobby(_lobby, _transport, _blobs, IsConnected);
             _blobs.Completed += OnSnapshotReceived;
+            _blobs.Completed += _session.OnBlob;
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
 
@@ -198,6 +202,22 @@ namespace Memoria.Online
             {
                 _showStatus = !_showStatus;
                 return;
+            }
+            if (_session != null)
+            {
+                // Step 2 lobby (title screen): F1 release, F2-F4 pick party slot 2-4, F5 next game (host), F6 start (host)
+                if (Input.GetKeyDown(KeyCode.F1))
+                    _session.Pick(-1);
+                else if (Input.GetKeyDown(KeyCode.F2))
+                    _session.Pick(1);
+                else if (Input.GetKeyDown(KeyCode.F3))
+                    _session.Pick(2);
+                else if (Input.GetKeyDown(KeyCode.F4))
+                    _session.Pick(3);
+                else if (Input.GetKeyDown(KeyCode.F5))
+                    _session.NextChoice();
+                else if (Input.GetKeyDown(KeyCode.F6))
+                    _session.Start();
             }
             if (_init == InitState.Ready)
             {
@@ -486,6 +506,8 @@ namespace Memoria.Online
             switch (msg.Channel)
             {
                 case TransportChannel.Control:
+                    if (_session != null && _session.OnControlMessage(msg.Peer, d))
+                        break;
                     if (d.Length == 13 && d[0] == MsgPing)
                     {
                         d[0] = MsgPong;
@@ -680,6 +702,12 @@ namespace Memoria.Online
             GUIContent content = new GUIContent(text.ToString());
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
+            _session?.OnGUI();
+        }
+
+        private Boolean IsConnected(UInt64 peer)
+        {
+            return _peers.TryGetValue(peer, out PeerStats s) && s.PongsReceived > 0;
         }
 
         // ---- Byte helpers ----------------------------------------------------------------------------------------

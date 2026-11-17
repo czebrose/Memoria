@@ -152,6 +152,28 @@ namespace Memoria.Online
             return SteamNative.FromUtf8(SteamNative.GetLobbyData(SteamNative.Matchmaking, LobbyId, SteamNative.Utf8(key)));
         }
 
+        /// <summary>Lobby-wide data; only the owner can set it (Steam ignores anyone else).</summary>
+        public Boolean SetData(String key, String value)
+        {
+            if (LobbyId == 0)
+                return false;
+            return SteamNative.SetLobbyData(SteamNative.Matchmaking, LobbyId, SteamNative.Utf8(key), SteamNative.Utf8(value ?? String.Empty));
+        }
+
+        /// <summary>This user's own data in the lobby, visible to every member.</summary>
+        public void SetMemberData(String key, String value)
+        {
+            if (LobbyId != 0)
+                SteamNative.SetLobbyMemberData(SteamNative.Matchmaking, LobbyId, SteamNative.Utf8(key), SteamNative.Utf8(value ?? String.Empty));
+        }
+
+        public String GetMemberData(UInt64 member, String key)
+        {
+            if (LobbyId == 0)
+                return String.Empty;
+            return SteamNative.FromUtf8(SteamNative.GetLobbyMemberData(SteamNative.Matchmaking, LobbyId, member, SteamNative.Utf8(key)));
+        }
+
         private void StartCall(UInt64 call, Int32 callbackId, Int32 size, LobbyState state)
         {
             if (call == 0) // k_uAPICallInvalid

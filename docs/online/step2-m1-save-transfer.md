@@ -4,7 +4,7 @@ Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Onl
 
 **Status: M1 works (single-PC tests, 2026-11-16).** A save slot loaded from memory gives exactly the same game state as
 the game's own Continue; mid-game snapshots round-trip exactly; guest save files aren't written. Blob: **83 KB**.
-Two-PC transfer and the New Game decision are open.
+Two-PC transfer is open. New Game: every client runs it, then one resync (decided).
 
 ## Summary
 
@@ -74,7 +74,7 @@ field's script places you for that entrance. Fine for a session start; positions
   each other). The receiver reassembles by index (any order), checks the CRC, and drops a corrupt or malformed blob.
 - Each capture also runs a local loopback through the codec (chunks encoded in reverse order and decoded).
 
-## New Game — recommendation (your call)
+## New Game — decided (2026-11-16): every client runs New Game, then one resync
 
 The brief prefers "host starts New Game, sends the state once on the first field". The problem: New Game starts with
 the opening (FMV, then the Prima Vista cutscene) with no player control for a long time, and a snapshot taken

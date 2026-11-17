@@ -1,0 +1,641 @@
+using Assets.Scripts.Common;
+using Memoria.Data;
+using Memoria.Prime;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+
+namespace Memoria.Online.Session
+{
+    public enum SessionPhase
+    {
+        /// <summary>Not in a lobby.</summary>
+        Idle,
+        /// <summary>In a lobby at the title screen: the host picks the game, guests pick characters.</summary>
+        Gathering,
+        /// <summary>Guest: the host pressed Start; waiting for the game snapshot.</summary>
+        Starting,
+        /// <summary>Everyone is in the host's game.</summary>
+        Playing,
+    }
+
+    public sealed class PartyEntry
+    {
+        public Int32 Index;        // party slot, 0 = the host's
+        public Int32 CharacterId;  // CharacterId
+        public String Name;
+    }
+
+    /// <summary>
+    /// Step 2 / M2: the title-screen lobby. The host picks New Game or a save; that game's party is published; each guest
+    /// picks a free party member (slot 1 is always the host's; members nobody picks are the host's); the host presses
+    /// Start and everyone enters the host's game.
+    ///
+    /// State lives in Steam lobby data so it shows before P2P is up:
+    ///   lobby data (host only):  "game"   label of the chosen game
+    ///                            "party"  "index:characterId:name|..."
+    ///                            "assign" "index:accountId|..."   the host's arbitration of the picks
+    ///                            "started" "1" once the session has started (no joining mid-game in this step)
+    ///   member data (each user): "pick"   party index the user wants (-1 = none)
+    ///                            "where"  "title" / "game"
+    /// Start goes over P2P (control channel): MsgStart, then for Continue the snapshot via <see cref="BlobTransfer"/>.
+    /// New Game: everyone runs the game's own New Game; the host resyncs everyone (MsgResync + snapshot) the first time
+    /// it has control on a field.
+    /// </summary>
+    internal sealed class SessionLobby
+    {
+        public const Byte MsgStart = 4;
+        public const Byte MsgResync = 5;
+        private const Byte ModeNewGame = 0;
+        private const Byte ModeContinue = 1;
+
+        private sealed class GameChoice
+        {
+            public Boolean NewGame;
+            public Int32 Slot, Save;
+            public String Label;
+            public Double Timestamp;
+        }
+
+        private sealed class PendingLoad
+        {
+            public UInt32 TransferId;
+            public UInt32 Crc;
+            public Boolean IsResync;
+        }
+
+        private readonly SteamLobby _lobby;
+        private readonly SteamTransport _transport;
+        private readonly BlobTransfer _blobs;
+        private readonly Func<UInt64, Boolean> _isConnected;
+
+        public SessionPhase Phase { get; private set; } = SessionPhase.Idle;
+        public readonly List<PartyEntry> Party = new List<PartyEntry>();
+        /// <summary>Party index → lobby member. The host's own picks are implicit (slot 0 and everything unassigned).</summary>
+        public readonly Dictionary<Int32, UInt64> Assignments = new Dictionary<Int32, UInt64>();
+        public String GameLabel { get; private set; } = String.Empty;
+        public String Status { get; private set; } = String.Empty;
+
+        // Host
+        private readonly List<GameChoice> _choices = new List<GameChoice>();
+        private Int32 _choiceIndex = -1;
+        private Byte[] _continueBlob;
+        private Boolean _choiceLoading;
+        private Boolean _awaitingNewGameResync;
+        private String _publishedAssign;
+
+        // Guest
+        private PendingLoad _pending;
+        private readonly Dictionary<UInt32, Byte[]> _receivedBlobs = new Dictionary<UInt32, Byte[]>();
+        private Int32 _myPick = -1;
+        private Boolean _startedBeforeJoin;
+
+        private Double _nextPoll;
+        private String _where;
+        private GUIStyle _style;
+
+        public SessionLobby(SteamLobby lobby, SteamTransport transport, BlobTransfer blobs, Func<UInt64, Boolean> isConnected)
+        {
+            _lobby = lobby;
+            _transport = transport;
+            _blobs = blobs;
+            _isConnected = isConnected;
+        }
+
+        public Boolean IsHost => _lobby.IsHost;
+        public Boolean IsGuest => _lobby.State == SteamLobby.LobbyState.InLobby && !_lobby.IsHost;
+
+        /// <summary>The party slot this player controls (0 = the host's), or -1 if none was assigned.</summary>
+        public Int32 MyPartyIndex
+        {
+            get
+            {
+                if (IsHost)
+                    return 0;
+                foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
+                    if (kv.Value == _lobby.LocalId)
+                        return kv.Key;
+                return -1;
+            }
+        }
+
+        private static Boolean AtTitle => PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.Title;
+
+        // ---- Per frame ---------------------------------------------------------------------------------------------
+
+        public void Update(Double nowMs)
+        {
+            if (_lobby.State != SteamLobby.LobbyState.InLobby)
+            {
+                if (Phase != SessionPhase.Idle)
+                    Reset("left the lobby");
+                return;
+            }
+            if (Phase == SessionPhase.Idle)
+            {
+                Phase = SessionPhase.Gathering;
+                _startedBeforeJoin = !IsHost && _lobby.GetData("started") == "1";
+                Log.Message($"[Online] Session: {(IsHost ? "hosting" : "joined")} a lobby{(_startedBeforeJoin ? " whose session has already started (joining mid-game isn't supported yet)" : "")}");
+                if (IsHost)
+                    RefreshChoices();
+            }
+
+            if (nowMs >= _nextPoll)
+            {
+                _nextPoll = nowMs + 250;
+                String where = AtTitle ? "title" : "game";
+                if (where != _where)
+                {
+                    _where = where;
+                    _lobby.SetMemberData("where", where);
+                }
+                if (IsHost)
+                    HostArbitrate();
+                else
+                    ReadHostData();
+            }
+
+            if (IsHost && _awaitingNewGameResync && Phase == SessionPhase.Playing && IsPlayableOnField())
+                SendResync();
+            if (!IsHost && _pending != null)
+                TryLoadPending();
+        }
+
+        // ---- Host: game choice, party, picks ---------------------------------------------------------------------
+
+        private void RefreshChoices()
+        {
+            _choices.Clear();
+            _choices.Add(new GameChoice { NewGame = true, Label = "New Game" });
+            _choiceIndex = 0;
+            GameSnapshot.GetLatestSlot((slot, save) =>
+            {
+                if (slot < 0)
+                {
+                    ApplyChoice();
+                    return;
+                }
+                FF9StateSystem.Serializer.Storage.LoadSlotPreview(slot, (slotId, previews) =>
+                {
+                    if (previews != null)
+                    {
+                        for (Int32 i = 0; i < previews.Count; i++)
+                        {
+                            SharedDataPreviewSlot preview = previews[i];
+                            if (preview == null || !preview.HasData || preview.IsPreviewCorrupted)
+                                continue;
+                            String leader = preview.CharacterInfoList != null && preview.CharacterInfoList.Count > 0 && preview.CharacterInfoList[0] != null ? $"{preview.CharacterInfoList[0].Name} Lv{preview.CharacterInfoList[0].Level}, " : "";
+                            TimeSpan played = TimeSpan.FromSeconds(preview.PlayDuration);
+                            _choices.Add(new GameChoice
+                            {
+                                Slot = slotId,
+                                Save = i,
+                                Timestamp = preview.Timestamp,
+                                Label = $"Continue {slotId + 1}-{i + 1}: {preview.Location} ({leader}{(Int32)played.TotalHours}:{played.Minutes:D2})",
+                            });
+                        }
+                    }
+                    _choices.Sort((a, b) => a.NewGame ? -1 : b.NewGame ? 1 : b.Timestamp.CompareTo(a.Timestamp));
+                    _choiceIndex = _choices.Count > 1 ? 1 : 0; // the latest save if there is one
+                    ApplyChoice();
+                });
+            });
+        }
+
+        public void NextChoice()
+        {
+            if (!IsHost || Phase != SessionPhase.Gathering || _choices.Count == 0 || _choiceLoading)
+                return;
+            _choiceIndex = (_choiceIndex + 1) % _choices.Count;
+            ApplyChoice();
+        }
+
+        /// <summary>Puts the chosen game in the host's state (at the title screen) to read its party.</summary>
+        private void ApplyChoice()
+        {
+            if (_choiceIndex < 0 || _choiceIndex >= _choices.Count || !AtTitle)
+                return;
+            GameChoice choice = _choices[_choiceIndex];
+            _continueBlob = null;
+            if (choice.NewGame)
+            {
+                // What New Game does first; Continue would replace all of it (settings included) by the save's own
+                FF9StateSystem.ReInitStateSystem();
+                PublishGame(choice);
+                return;
+            }
+            _choiceLoading = true;
+            GameSnapshot.CaptureSlot(choice.Slot, choice.Save, (blob, tree, error) =>
+            {
+                _choiceLoading = false;
+                if (blob == null)
+                {
+                    Status = $"Can't read that save: {error}";
+                    Log.Warning($"[Online] Session: {Status}");
+                    return;
+                }
+                _continueBlob = blob;
+                (FF9StateSystem.Serializer.Parser as JsonParser)?.ParseToFF9StateSystem(GameSnapshot.FromBytes(blob));
+                PublishGame(choice);
+            });
+        }
+
+        private void PublishGame(GameChoice choice)
+        {
+            Party.Clear();
+            PARTY_DATA party = FF9StateSystem.Common.FF9.party;
+            for (Int32 i = 0; party != null && party.member != null && i < party.member.Length; i++)
+            {
+                PLAYER player = party.member[i];
+                if (player != null)
+                    Party.Add(new PartyEntry { Index = i, CharacterId = (Int32)player.info.slot_no, Name = player.Name });
+            }
+            GameLabel = choice.Label;
+            StringBuilder partyData = new StringBuilder();
+            foreach (PartyEntry entry in Party)
+                partyData.Append($"{entry.Index}:{entry.CharacterId}:{entry.Name.Replace("|", "").Replace(":", "")}|");
+            _lobby.SetData("game", GameLabel);
+            _lobby.SetData("party", partyData.ToString());
+            Status = String.Empty;
+            Log.Message($"[Online] Session: game {GameLabel}, party {partyData}");
+            HostArbitrate();
+        }
+
+        /// <summary>First come, first served, as the host sees the picks; a pick of a taken or unknown slot is ignored.</summary>
+        private void HostArbitrate()
+        {
+            HashSet<UInt64> members = new HashSet<UInt64>(_lobby.Members);
+            List<Int32> stale = new List<Int32>();
+            foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
+            {
+                Int32 pick = members.Contains(kv.Value) ? ParsePick(_lobby.GetMemberData(kv.Value, "pick")) : -1;
+                if (pick != kv.Key || !HasPartyIndex(kv.Key))
+                    stale.Add(kv.Key);
+            }
+            foreach (Int32 index in stale)
+                Assignments.Remove(index);
+            foreach (UInt64 member in _lobby.Members)
+            {
+                if (member == _lobby.LocalId || Assignments.ContainsValue(member))
+                    continue;
+                Int32 pick = ParsePick(_lobby.GetMemberData(member, "pick"));
+                if (pick >= 1 && HasPartyIndex(pick) && !Assignments.ContainsKey(pick))
+                {
+                    Assignments[pick] = member;
+                    Log.Message($"[Online] Session: party slot {pick + 1} ({PartyName(pick)}) goes to {SteamNative.Tag(member)}");
+                }
+            }
+            StringBuilder assign = new StringBuilder();
+            foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
+                assign.Append($"{kv.Key}:{kv.Value & 0xFFFFFFFF}|");
+            String value = assign.ToString();
+            if (value != _publishedAssign)
+            {
+                _publishedAssign = value;
+                _lobby.SetData("assign", value);
+            }
+        }
+
+        public String StartBlocker()
+        {
+            if (!IsHost)
+                return "only the host starts";
+            if (Phase != SessionPhase.Gathering)
+                return "already started";
+            if (!AtTitle)
+                return "the host must be at the title screen";
+            if (_choiceLoading || Party.Count == 0)
+                return "reading the save...";
+            if (_choiceIndex > 0 && _continueBlob == null)
+                return "the save couldn't be read";
+            foreach (UInt64 member in _lobby.Members)
+            {
+                if (member == _lobby.LocalId)
+                    continue;
+                if (_lobby.GetMemberData(member, "where") != "title")
+                    return $"{SteamNative.GetName(member)} isn't at the title screen";
+                if (!_isConnected(member))
+                    return $"connecting to {SteamNative.GetName(member)}...";
+            }
+            return null;
+        }
+
+        public void Start()
+        {
+            String blocker = StartBlocker();
+            if (blocker != null)
+            {
+                Status = $"Can't start: {blocker}";
+                return;
+            }
+            GameChoice choice = _choices[_choiceIndex];
+            _lobby.SetData("started", "1");
+            Phase = SessionPhase.Playing;
+            if (choice.NewGame)
+            {
+                foreach (UInt64 peer in _transport.Peers)
+                    SendControl(peer, MsgStart, ModeNewGame, 0, 0);
+                Log.Message($"[Online] Session started: New Game on every PC; the host resyncs everyone once it has control");
+                _awaitingNewGameResync = true;
+                StartNewGame();
+                return;
+            }
+            UInt32 crc = GameSnapshot.Crc32(_continueBlob, 0, _continueBlob.Length);
+            foreach (UInt64 peer in _transport.Peers)
+            {
+                UInt32 transferId = _blobs.Send(peer, _continueBlob);
+                SendControl(peer, MsgStart, ModeContinue, transferId, crc);
+            }
+            Log.Message($"[Online] Session started: {choice.Label} ({_continueBlob.Length} bytes to {_transport.Peers.Count} guest(s))");
+            GameSnapshot.Load(_continueBlob, false, out String error);
+            if (error != null)
+                Log.Warning($"[Online] Session: the host's own load failed: {error}");
+        }
+
+        private void SendResync()
+        {
+            _awaitingNewGameResync = false;
+            Byte[] blob = GameSnapshot.CaptureCurrent(out _);
+            UInt32 crc = GameSnapshot.Crc32(blob, 0, blob.Length);
+            foreach (UInt64 peer in _transport.Peers)
+            {
+                UInt32 transferId = _blobs.Send(peer, blob);
+                SendControl(peer, MsgResync, 0, transferId, crc);
+            }
+            Log.Message($"[Online] Session: New Game resync sent from field {FF9StateSystem.Common.FF9.fldMapNo} ({blob.Length} bytes)");
+        }
+
+        // ---- Guest ------------------------------------------------------------------------------------------------
+
+        public void Pick(Int32 partyIndex)
+        {
+            if (!IsGuest || Phase != SessionPhase.Gathering)
+                return;
+            _myPick = partyIndex;
+            _lobby.SetMemberData("pick", partyIndex.ToString());
+            Log.Message($"[Online] Session: picked party slot {(partyIndex >= 0 ? (partyIndex + 1).ToString() : "none")}");
+        }
+
+        private void ReadHostData()
+        {
+            GameLabel = _lobby.GetData("game");
+            Party.Clear();
+            foreach (String part in _lobby.GetData("party").Split('|'))
+            {
+                String[] fields = part.Split(':');
+                if (fields.Length == 3 && Int32.TryParse(fields[0], out Int32 index) && Int32.TryParse(fields[1], out Int32 character))
+                    Party.Add(new PartyEntry { Index = index, CharacterId = character, Name = fields[2] });
+            }
+            Assignments.Clear();
+            foreach (String part in _lobby.GetData("assign").Split('|'))
+            {
+                String[] fields = part.Split(':');
+                if (fields.Length == 2 && Int32.TryParse(fields[0], out Int32 index) && UInt32.TryParse(fields[1], out UInt32 account))
+                    foreach (UInt64 member in _lobby.Members)
+                        if ((member & 0xFFFFFFFF) == account)
+                            Assignments[index] = member;
+            }
+        }
+
+        /// <summary>Control-channel messages for the session; false if the message isn't one.</summary>
+        public Boolean OnControlMessage(UInt64 peer, Byte[] data)
+        {
+            if (data.Length != 10 || (data[0] != MsgStart && data[0] != MsgResync))
+                return false;
+            if (peer != _lobby.OwnerId)
+            {
+                Log.Warning($"[Online] Session: ignored a start/resync from {SteamNative.Tag(peer)}, who isn't the host");
+                return true;
+            }
+            Byte mode = data[1];
+            UInt32 transferId = ReadU32(data, 2);
+            UInt32 crc = ReadU32(data, 6);
+            if (data[0] == MsgStart)
+            {
+                if (Phase != SessionPhase.Gathering || _startedBeforeJoin)
+                    return true;
+                GuestGuard.BeginGuestSession();
+                Log.Message($"[Online] Session: the host started {(mode == ModeNewGame ? "a New Game" : GameLabel)}; you play party slot {(MyPartyIndex >= 0 ? $"{MyPartyIndex + 1} ({PartyName(MyPartyIndex)})" : "none (watching)")}");
+                if (mode == ModeNewGame)
+                {
+                    Phase = SessionPhase.Playing;
+                    StartNewGame();
+                    return true;
+                }
+                Phase = SessionPhase.Starting;
+                _pending = new PendingLoad { TransferId = transferId, Crc = crc };
+                Status = "Receiving the host's game...";
+            }
+            else
+            {
+                _pending = new PendingLoad { TransferId = transferId, Crc = crc, IsResync = true };
+                Log.Message("[Online] Session: the host is resyncing everyone (after New Game)");
+            }
+            TryLoadPending();
+            return true;
+        }
+
+        /// <summary>A complete blob from the transfer layer.</summary>
+        public void OnBlob(BlobTransfer.Received received)
+        {
+            if (received.Peer != _lobby.OwnerId)
+                return;
+            _receivedBlobs[received.TransferId] = received.Blob;
+            TryLoadPending();
+        }
+
+        private void TryLoadPending()
+        {
+            if (_pending == null || !_receivedBlobs.TryGetValue(_pending.TransferId, out Byte[] blob))
+                return;
+            PendingLoad pending = _pending;
+            _pending = null;
+            _receivedBlobs.Clear();
+            if (GameSnapshot.Crc32(blob, 0, blob.Length) != pending.Crc)
+            {
+                Status = "The host's game arrived damaged";
+                Log.Warning($"[Online] Session: snapshot {pending.TransferId} doesn't match the start message's checksum");
+                return;
+            }
+            GameSnapshot.Load(blob, true, out String error);
+            if (error != null)
+            {
+                Status = $"Loading the host's game failed: {error}";
+                Log.Warning($"[Online] Session: {Status}");
+                return;
+            }
+            Phase = SessionPhase.Playing;
+            Status = String.Empty;
+            Log.Message($"[Online] Session: loaded the host's game{(pending.IsResync ? " (New Game resync)" : "")}");
+        }
+
+        // ---- Shared ---------------------------------------------------------------------------------------------
+
+        private static void StartNewGame()
+        {
+            // As TitleUI.OnNewGameButtonClick
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            ui.TitleScene.Hide(() =>
+            {
+                FF9StateSystem.ReInitStateSystem();
+                SceneDirector.Replace("FieldMap", SceneTransition.FadeOutToBlack_FadeIn, true);
+                ui.TitleScene.SplashScreenEnabled = true;
+                SoundLib.StopMovieMusic("FMV000", true);
+            });
+        }
+
+        private static Boolean IsPlayableOnField()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            return engine != null && engine.gMode == 1 && engine.fieldmap?.playerController != null && engine.GetUserControl();
+        }
+
+        private void Reset(String reason)
+        {
+            Log.Message($"[Online] Session ended ({reason})");
+            Phase = SessionPhase.Idle;
+            Party.Clear();
+            Assignments.Clear();
+            _choices.Clear();
+            _choiceIndex = -1;
+            _continueBlob = null;
+            _pending = null;
+            _receivedBlobs.Clear();
+            _awaitingNewGameResync = false;
+            _publishedAssign = null;
+            _myPick = -1;
+            _where = null;
+            Status = String.Empty;
+        }
+
+        private void SendControl(UInt64 peer, Byte type, Byte mode, UInt32 transferId, UInt32 crc)
+        {
+            Byte[] message = new Byte[10];
+            message[0] = type;
+            message[1] = mode;
+            WriteU32(message, 2, transferId);
+            WriteU32(message, 6, crc);
+            _transport.Send(peer, TransportChannel.Control, message, message.Length, true);
+        }
+
+        private Boolean HasPartyIndex(Int32 index)
+        {
+            foreach (PartyEntry entry in Party)
+                if (entry.Index == index)
+                    return true;
+            return false;
+        }
+
+        private String PartyName(Int32 index)
+        {
+            foreach (PartyEntry entry in Party)
+                if (entry.Index == index)
+                    return entry.Name;
+            return "?";
+        }
+
+        private static Int32 ParsePick(String value) => Int32.TryParse(value, out Int32 pick) ? pick : -1;
+
+        private static void WriteU32(Byte[] b, Int32 o, UInt32 v)
+        {
+            b[o] = (Byte)v; b[o + 1] = (Byte)(v >> 8); b[o + 2] = (Byte)(v >> 16); b[o + 3] = (Byte)(v >> 24);
+        }
+
+        private static UInt32 ReadU32(Byte[] b, Int32 o) => b[o] | ((UInt32)b[o + 1] << 8) | ((UInt32)b[o + 2] << 16) | ((UInt32)b[o + 3] << 24);
+
+        // ---- Lobby panel (title screen) ---------------------------------------------------------------------------
+
+        /// <summary>Debug-styled panel shown at the title screen while gathering. Buttons work with the mouse; the
+        /// same actions are on Ctrl+Shift+F1-F6.</summary>
+        public void OnGUI()
+        {
+            if (Phase == SessionPhase.Idle || Phase == SessionPhase.Playing || !AtTitle)
+                return;
+            if (_style == null)
+            {
+                _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 16, wordWrap = false, padding = new RectOffset(10, 10, 8, 8) };
+                _style.normal.textColor = Color.white;
+            }
+            Single width = 560f, line = 26f;
+            Single x = Screen.width - width - 16f, y = 16f;
+            Int32 rows = 6 + Math.Max(1, Party.Count) + _lobby.Members.Count;
+            GUI.Box(new Rect(x, y, width, rows * line + 24f), "", _style);
+            Single cx = x + 12f, cy = y + 10f;
+
+            GUI.Label(new Rect(cx, cy, width, line), $"Online session — host: {SteamNative.GetName(_lobby.OwnerId)}{(IsHost ? " (you)" : "")}", _style);
+            cy += line + 4f;
+            if (_startedBeforeJoin)
+            {
+                GUI.Label(new Rect(cx, cy, width, line), "This session has already started; joining mid-game isn't supported yet.");
+                return;
+            }
+            if (IsHost)
+            {
+                if (GUI.Button(new Rect(cx, cy, 120f, line - 2f), "Change (F5)"))
+                    NextChoice();
+                GUI.Label(new Rect(cx + 130f, cy, width - 150f, line), $"Game: {(String.IsNullOrEmpty(GameLabel) ? "..." : GameLabel)}");
+            }
+            else
+            {
+                GUI.Label(new Rect(cx, cy, width, line), $"Game: {(String.IsNullOrEmpty(GameLabel) ? "(the host is choosing)" : GameLabel)}");
+            }
+            cy += line + 4f;
+
+            GUI.Label(new Rect(cx, cy, width, line), "Party (slot 1 is the host's; slots nobody picks are the host's):");
+            cy += line;
+            foreach (PartyEntry entry in Party)
+            {
+                String owner;
+                if (entry.Index == 0)
+                    owner = $"{SteamNative.GetName(_lobby.OwnerId)} (host)";
+                else if (Assignments.TryGetValue(entry.Index, out UInt64 member))
+                    owner = SteamNative.GetName(member) + (member == _lobby.LocalId ? " (you)" : "");
+                else
+                    owner = "free → host";
+                GUI.Label(new Rect(cx + 10f, cy, 330f, line), $"{entry.Index + 1}. {entry.Name}: {owner}");
+                if (IsGuest && entry.Index > 0 && Phase == SessionPhase.Gathering)
+                {
+                    Boolean mine = Assignments.TryGetValue(entry.Index, out UInt64 holder) && holder == _lobby.LocalId;
+                    Boolean taken = Assignments.ContainsKey(entry.Index) && !mine;
+                    if (!taken && !mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), $"Pick (F{entry.Index + 1})"))
+                        Pick(entry.Index);
+                    if (mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), "Release (F1)"))
+                        Pick(-1);
+                }
+                cy += line;
+            }
+            if (Party.Count == 0)
+            {
+                GUI.Label(new Rect(cx + 10f, cy, width, line), "(waiting for the host's game)");
+                cy += line;
+            }
+
+            cy += 4f;
+            GUI.Label(new Rect(cx, cy, width, line), "Players:");
+            cy += line;
+            foreach (UInt64 member in _lobby.Members)
+            {
+                String where = member == _lobby.LocalId ? (AtTitle ? "title" : "game") : _lobby.GetMemberData(member, "where");
+                Boolean connected = member == _lobby.LocalId || _isConnected(member);
+                GUI.Label(new Rect(cx + 10f, cy, width, line), $"{SteamNative.GetName(member)}{(member == _lobby.OwnerId ? " (host)" : "")}: {(String.IsNullOrEmpty(where) ? "?" : where)}{(connected ? "" : ", connecting...")}");
+                cy += line;
+            }
+
+            cy += 4f;
+            if (IsHost)
+            {
+                String blocker = StartBlocker();
+                GUI.enabled = blocker == null;
+                if (GUI.Button(new Rect(cx, cy, 160f, line - 2f), "Start (F6)"))
+                    Start();
+                GUI.enabled = true;
+                GUI.Label(new Rect(cx + 170f, cy, width - 190f, line), blocker ?? Status);
+            }
+            else
+            {
+                GUI.Label(new Rect(cx, cy, width, line), String.IsNullOrEmpty(Status) ? (Phase == SessionPhase.Starting ? "Receiving the host's game..." : "Waiting for the host to start") : Status);
+            }
+        }
+    }
+}

@@ -87,6 +87,8 @@ namespace Memoria.Online
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
         public delegate Boolean D_SetLobbyData(IntPtr self, UInt64 lobby, Byte[] key, Byte[] value);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate IntPtr D_GetLobbyData(IntPtr self, UInt64 lobby, Byte[] key);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void D_SetLobbyMemberData(IntPtr self, UInt64 lobby, Byte[] key, Byte[] value);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate IntPtr D_GetLobbyMemberData(IntPtr self, UInt64 lobby, UInt64 user, Byte[] key);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
         public delegate Boolean D_SteamIdIntBool(IntPtr self, UInt64 steamId, Int32 value);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
@@ -177,6 +179,8 @@ namespace Memoria.Online
         public static D_SteamIdToU64 GetLobbyOwner;
         public static D_SetLobbyData SetLobbyData;
         public static D_GetLobbyData GetLobbyData;
+        public static D_SetLobbyMemberData SetLobbyMemberData;
+        public static D_GetLobbyMemberData GetLobbyMemberData;
         public static D_SteamIdIntBool SetLobbyMemberLimit;
         public static D_SteamIdIntBool SetLobbyType;
         public static D_SteamId2Bool InviteUserToLobby;
@@ -263,6 +267,8 @@ namespace Memoria.Online
             GetLobbyOwner = Get<D_SteamIdToU64>("SteamAPI_ISteamMatchmaking_GetLobbyOwner");
             SetLobbyData = Get<D_SetLobbyData>("SteamAPI_ISteamMatchmaking_SetLobbyData");
             GetLobbyData = Get<D_GetLobbyData>("SteamAPI_ISteamMatchmaking_GetLobbyData");
+            SetLobbyMemberData = Get<D_SetLobbyMemberData>("SteamAPI_ISteamMatchmaking_SetLobbyMemberData");
+            GetLobbyMemberData = Get<D_GetLobbyMemberData>("SteamAPI_ISteamMatchmaking_GetLobbyMemberData");
             SetLobbyMemberLimit = Get<D_SteamIdIntBool>("SteamAPI_ISteamMatchmaking_SetLobbyMemberLimit");
             SetLobbyType = Get<D_SteamIdIntBool>("SteamAPI_ISteamMatchmaking_SetLobbyType");
             InviteUserToLobby = Get<D_SteamId2Bool>("SteamAPI_ISteamMatchmaking_InviteUserToLobby");

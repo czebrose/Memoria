@@ -369,6 +369,7 @@
     <Compile Include="Memoria\Online\Session\BlobTransfer.cs" />
     <Compile Include="Memoria\Online\Session\GameSnapshot.cs" />
     <Compile Include="Memoria\Online\Session\GuestGuard.cs" />
+    <Compile Include="Memoria\Online\Session\SessionLobby.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />
