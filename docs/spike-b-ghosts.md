@@ -14,7 +14,7 @@ walking through it, NPCs and the field's script). From `Memoria.log` (saved as
 | Check | Result |
 |---|---|
 | Spawn | on the first state for the field, 1 s after you could move, on the right floor (e.g. field 504, tri 38, floor 2) |
-| 15 Hz / 10 Hz | ~3600 states sampled; no visible snapping at either rate; interpolation off shows the steps (as expected) |
+| 15 Hz / 10 Hz | ~3600 states sampled; no snapping at either rate, but **10 Hz looks noticeably worse than 15 Hz** (tester); interpolation off shows the steps (as expected) |
 | Feed paused 6 s | hidden exactly 5.0 s after the last state, shown again 2 s later at the new position |
 | Network sim (10% loss, 0-80 ms jitter) | 116 states lost, 12 late ones dropped as old, still smooth |
 | Field changes | 504 ↔ 505 ↔ 507 four times: ghost hidden as soon as its states name the other field, dropped with the old map, respawned in the new one; no leftovers, 1 snap (a > 400-unit jump at a field entrance) |
@@ -192,9 +192,12 @@ exceptions only go there).
 ## Verdict
 
 **Spawning ghosts outside the field script works**, generically, with ~20 lines of marked engine edits and no
-per-field script changes. The 23-byte `GhostState` at 10-15 Hz with 100 ms of interpolation looks smooth on a direct
+per-field script changes. The 23-byte `GhostState` at 15 Hz with 100 ms of interpolation looks smooth on a direct
 connection, survives loss, reordering and a 6 s outage, and ghosts clean up and come back across field changes and
 battles. Ready to wire to Spike A's transport.
+
+**Decision: send ghost state at 15 Hz.** 10 Hz was visibly worse in the test. At 23 bytes that's ~350 bytes/s per
+peer before Steam's overhead, trivial next to what spike A carried (48-byte packets at 15 Hz, no loss).
 
 Still open: the model switch and exact-animation path (ladders, jumps) with the "same as you" model; fields with
 heavy background layering; FMV/mini-game fields; a real network link (relay or jitter beyond 80 ms may need a
