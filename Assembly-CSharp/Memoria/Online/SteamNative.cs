@@ -41,6 +41,20 @@ namespace Memoria.Online
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         private static extern UInt32 GetModuleFileNameW(IntPtr module, StringBuilder fileName, UInt32 size);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr VirtualAlloc(IntPtr address, UIntPtr size, UInt32 allocationType, UInt32 protect);
+
+        [DllImport("kernel32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern Boolean VirtualProtect(IntPtr address, UIntPtr size, UInt32 newProtect, out UInt32 oldProtect);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern Boolean FlushInstructionCache(IntPtr process, IntPtr address, UIntPtr size);
         #endregion
 
         #region Delegate types
@@ -304,12 +318,45 @@ namespace Memoria.Online
             return Encoding.UTF8.GetString(bytes);
         }
 
+        // Unity 5.2's Mono caches the managed-to-native wrapper of GetDelegateForFunctionPointer by function
+        // address only. In steam_api64.dll the flat functions are tiny "jump to vtable slot N" stubs, and the
+        // linker folded identical ones together: e.g. SteamAPI_ISteamClient_GetISteamUtils and
+        // SteamAPI_ISteamUtils_GetAppID (and 14 others) share one address. Binding both directly makes the
+        // second call reuse the first one's marshalling (byte[] argument and all) and crashes the game.
+        // So each binding gets its own address: a 16-byte stub "jmp qword ptr [rip+0]; dq target".
+        private const Int32 StubSize = 16;
+        private const Int32 StubPageSize = 4096;
+        private static IntPtr _stubPage;
+        private static Int32 _stubOffset = StubPageSize;
+
+        private static IntPtr MakeStub(IntPtr target)
+        {
+            if (_stubOffset + StubSize > StubPageSize)
+            {
+                _stubPage = VirtualAlloc(IntPtr.Zero, (UIntPtr)StubPageSize, 0x3000 /* MEM_COMMIT|MEM_RESERVE */, 0x04 /* PAGE_READWRITE */);
+                if (_stubPage == IntPtr.Zero)
+                    throw new OutOfMemoryException("VirtualAlloc failed for the Steam call stubs");
+                _stubOffset = 0;
+            }
+            IntPtr stub = new IntPtr(_stubPage.ToInt64() + _stubOffset);
+            _stubOffset += StubSize;
+            VirtualProtect(_stubPage, (UIntPtr)StubPageSize, 0x04 /* PAGE_READWRITE */, out _);
+            Marshal.WriteByte(stub, 0, 0xFF); // jmp qword ptr [rip+0]
+            Marshal.WriteByte(stub, 1, 0x25);
+            Marshal.WriteInt32(stub, 2, 0);
+            Marshal.WriteInt64(stub, 6, target.ToInt64());
+            Marshal.WriteInt16(stub, 14, unchecked((Int16)0xCCCC)); // int3 padding
+            VirtualProtect(_stubPage, (UIntPtr)StubPageSize, 0x20 /* PAGE_EXECUTE_READ */, out _);
+            FlushInstructionCache(GetCurrentProcess(), stub, (UIntPtr)StubSize);
+            return stub;
+        }
+
         private static T Get<T>(String name) where T : class
         {
             IntPtr proc = GetProcAddress(_module, name);
             if (proc == IntPtr.Zero)
                 throw new EntryPointNotFoundException($"steam_api64.dll has no export '{name}'");
-            return Marshal.GetDelegateForFunctionPointer(proc, typeof(T)) as T;
+            return Marshal.GetDelegateForFunctionPointer(MakeStub(proc), typeof(T)) as T;
         }
     }
 }

@@ -49,6 +49,14 @@ Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memori
   `EP2PSend` is an `Int32`. Strings are passed as null-terminated UTF-8 `Byte[]`, returned `const char*` decoded as
   UTF-8. A startup sanity check verifies the local SteamID has universe 1 / account type 1, which would fail if the
   `uint64` return convention were wrong. *(to verify in game: log line `SteamID check: OK`)*
+- **Gotcha found in game (first run crashed):** the flat functions in this `steam_api64.dll` are tiny "jump to
+  vtable slot N" stubs, and the linker folded identical ones together, so many exports share one address (e.g.
+  `SteamAPI_ISteamClient_GetISteamUtils`, `SteamAPI_ISteamUtils_GetAppID` and 14 others are all at RVA `0x21F0`).
+  Unity 5.2's Mono caches the native-call wrapper of `Marshal.GetDelegateForFunctionPointer` **by address only**,
+  so calling `GetAppID` reused the `GetISteamUtils` wrapper (with its `byte[]` argument) and crashed in
+  `mono_array_to_lparray`. Fix: every binding goes through its own 16-byte `jmp [rip+0]` stub in executable memory
+  (`SteamNative.MakeStub`), so every function has a unique address. Any future native binding in this codebase via
+  `GetDelegateForFunctionPointer` has the same trap.
 - `AllowP2PPacketRelay(true)` is called once (`SteamTransport` constructor).
 - Channels: 0 control (reliable), 1 movement (unreliable, ≤1200 bytes), 2 state (reliable). Receiving is pure polling
   (`IsP2PPacketAvailable` / `ReadP2PPacket` per channel), no callbacks needed. *(to verify in game)*
@@ -121,6 +129,8 @@ checked). A peer silent for 5 s is logged as `STALLED`. A `SUMMARY` line per pee
   Mono would actually load the second copy; `GetProcAddress` makes it moot.
 - **Registering call results with `SteamAPI_RegisterCallResult`:** possible with the same vtable trick, but polling
   `IsAPICallCompleted` is simpler and doesn't depend on the game pumping callbacks.
+- **`GetDelegateForFunctionPointer` straight on the exports:** crashed the game (folded exports + Mono's
+  per-address wrapper cache, see A2). Fixed with per-function stubs.
 - **`RequestLobbyList` as the join fallback:** friends-only lobbies aren't listed; would need a public lobby.
 
 ## How to test
