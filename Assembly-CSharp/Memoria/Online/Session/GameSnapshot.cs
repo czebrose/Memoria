@@ -72,6 +72,36 @@ namespace Memoria.Online.Session
             });
         }
 
+        /// <summary>
+        /// Debug, title screen only: is loading this slot's blob from memory the same as the game's own load of the
+        /// slot? Loads the slot with the game's serializer (FF9StateSystem.Serializer.Load, what Continue does), captures
+        /// the resulting state, then parses the blob the way <see cref="Load"/> does and captures again; logs the
+        /// differences. Changes the game state, so it's only for the title screen (Continue would replace it anyway).
+        /// </summary>
+        public static void CompareWithGameLoad(Int32 slotId, Int32 saveId, Byte[] blob)
+        {
+            JsonParser parser = Parser;
+            FF9StateSystem.Serializer.Load(slotId, saveId, null, (errNo, slot, save, success) =>
+            {
+                if (!success)
+                {
+                    Log.Warning($"[Online] Load-path check: the game's own load of slot {slotId}/{saveId} failed ({errNo})");
+                    return;
+                }
+                parser.ParseFromFF9StateSystem();
+                JSONClass gameLoaded = FromBytes(ToBytes(parser.RootNodeInParser));
+
+                parser.ParseToFF9StateSystem(FromBytes(blob));
+                parser.ParseFromFF9StateSystem();
+                JSONClass memoryLoaded = FromBytes(ToBytes(parser.RootNodeInParser));
+
+                List<String> differences = Diff(gameLoaded, memoryLoaded, 25);
+                Log.Message(differences.Count == 0
+                    ? $"[Online] Load-path check: loading slot {slotId}/{saveId} from memory gives exactly the same game state as the game's own load"
+                    : $"[Online] Load-path check: {(differences.Count >= 25 ? "25+" : differences.Count.ToString())} difference(s) between the game's own load and the memory load: {String.Join("; ", differences.ToArray())}");
+            });
+        }
+
         public static Byte[] ToBytes(JSONNode tree)
         {
             using (MemoryStream stream = new MemoryStream())

@@ -309,8 +309,10 @@ namespace Memoria.Online
                 {
                     if (blob == null)
                         Log.Warning($"[Online] Slot snapshot failed: {error}");
-                    else
-                        SetSnapshot(blob, $"slot {slot}/{save} (latest save)", watch.Elapsed.TotalMilliseconds);
+                    if (blob == null)
+                        return;
+                    SetSnapshot(blob, $"slot {slot}/{save} (latest save)", watch.Elapsed.TotalMilliseconds);
+                    GameSnapshot.CompareWithGameLoad(slot, save, blob);
                 });
             });
         }
