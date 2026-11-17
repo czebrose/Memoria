@@ -15,10 +15,9 @@ Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memori
   the emulated `CCallbackBase`, in slot 1 (no "call-result slot" warning), so the reversed vtable order is right and
   the game's pump does run `SteamAPI_RunCallbacks`.
 - `Ctrl+Shift+I`: `ActivateGameOverlayInviteDialog` opened the Steam overlay's invite dialog.
-- **Shift+Tab does not open the overlay**, even though the overlay is injected (`gameoverlayrenderer64.dll` is
-  loaded) and works when opened from code. Memoria's `WindowProc` hook passes every message on, so it's not obviously
-  the spike. Not a blocker: inviting goes through `Ctrl+Shift+I`, and the invitee can accept from the Steam client
-  outside the game. Open question: does Shift+Tab work in this install without the spike?
+- The overlay is injected (`gameoverlayrenderer64.dll` is loaded) and works both from code and from its hotkey.
+  (Shift+Tab is only Steam's default; the tester's shortcut is Alt+Caps Lock. Use whatever Steam → Settings →
+  In Game says.)
 
 ## A1. How FF9 already talks to Steam
 
@@ -179,7 +178,7 @@ Second PC: it needs the same Memoria build (the upstream Canary matching `main` 
 2. In `Memoria.log`, check: `Using steam_api64.dll already loaded at …`, `Interfaces: …` (no zeros),
    `SteamID check: OK`, `overlay enabled: True`.
 3. Wait for the title screen: the log says `The game now pumps SteamAPI_RunCallbacks; callbacks are live`.
-4. Press **Shift+Tab** twice: expect `Callback GameOverlayActivated_t: active=True` / `False`. This proves the
+4. Press the Steam overlay shortcut (Shift+Tab by default) twice: expect `Callback GameOverlayActivated_t: active=True` / `False`. This proves the
    callback emulation and that the game's pump runs `SteamAPI_RunCallbacks`.
 5. Press **Ctrl+Shift+H**: expect `Lobby … created; you are the host` and `Lobby member joined: <you>`.
 6. Press **Ctrl+Shift+I**: the Steam overlay's invite dialog should open.
