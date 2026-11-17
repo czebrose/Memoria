@@ -30,6 +30,8 @@ namespace Memoria.Online.Ghosts
         private const Int32 TimingWindow = 150;
         public const Double MinDelayMs = 80;
         public const Double MaxDelayMs = 250;
+        /// <summary>States later than this are connection-setup backlog, not jitter (see UpdateTiming).</summary>
+        public const Double BacklogMs = 1000;
 
         public readonly UInt64 Peer;
         public readonly Int32 Uid;
@@ -192,7 +194,9 @@ namespace Memoria.Online.Ghosts
         /// <summary>
         /// Clock offset = the lowest (localNow - senderTick) of the last ~10 s: the least delayed state, so sender and
         /// receiver clocks needn't agree, and a windowed minimum follows slow clock drift. Jitter = 95th percentile of
-        /// how much later than that the others arrived.
+        /// how much later than that the others arrived, ignoring states more than <see cref="BacklogMs"/> late: those are
+        /// the backlog queued while a P2P connection was being set up (~3.5 s, two-PC test), not jitter, and counting
+        /// them pinned the delay at its 250 ms maximum for ~10 s after every (re)join.
         /// </summary>
         private void UpdateTiming(Double offset)
         {
@@ -204,11 +208,12 @@ namespace Memoria.Online.Ghosts
                 min = Math.Min(min, o);
             _clockOffset = min;
             _hasOffset = true;
-            Int32 n = _offsets.Count;
-            for (Int32 i = 0; i < n; i++)
-                _lateness[i] = _offsets[i] - min;
+            Int32 n = 0;
+            foreach (Double o in _offsets)
+                if (o - min <= BacklogMs)
+                    _lateness[n++] = o - min;
             Array.Sort(_lateness, 0, n);
-            JitterMs = _lateness[Math.Min(n - 1, (Int32)(n * 0.95))];
+            JitterMs = n > 0 ? _lateness[Math.Min(n - 1, (Int32)(n * 0.95))] : 0;
             if (n >= 30)
                 MaxJitterMs = Math.Max(MaxJitterMs, JitterMs);
         }
