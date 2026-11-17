@@ -209,6 +209,35 @@ What it costs:
 - Adding a new action means adding it to the list (and giving every character one).
 - Under D, unconverted fields still go through C's table, so converting is never required, only better.
 
+## 9. Player-focused scenes vs. cast scenes
+
+How the 47 fields address the player body (from other entries and from itself; scratch scan, 2026-11-17):
+
+| Addressed as | Uses | Fields | Mostly |
+|---|---|---|---|
+| object 250, "the player" | 358 | 45 | NPCs turning to face the player (207), running the player's functions (151) |
+| Clove's entry by its UID | 49 | 16 | running its functions (scene choreography) |
+| itself | 51 | 17 | `SetObjectSize` |
+| team slots 251-254 | 0 | 0 | |
+
+So the scripts mostly talk to "the player", but in the sequel **the player and Clove are the same object**, and a
+script has no way to say which one it means. That's the gap behind two kinds of scene:
+
+- **Player scenes** (exploring, examining, NPCs talking to you): each PC shows its own character on the player entry.
+- **Cast scenes** (several characters acting a story beat): every PC shows the same bodies: Clove's entry is Clove,
+  B.Waltz's entry is B.Waltz, whoever controls whom.
+
+Proposal:
+- Two modes, **Player** (default) and **Cast**. Switching rebuilds the player entry's body (local character ↔ its
+  authored body), the one place a body changes on a live object, done while control is off, ideally under a fade.
+- **Player mode, duplicates:** if the local character also has its own entry on screen (14 fields have companions),
+  that entry gets the player entry's authored body (Clove) on that PC: the two bodies trade places, so nobody
+  appears twice or goes missing.
+- **Cast mode, ghosts:** a ghost whose character is on screen as a cast member is hidden.
+- **Who decides:** with the convention, the script says it (`SetSceneMode(Cast)` / `SetSceneMode(Player)`, a new
+  Memoria opcode). Without it, a fallback guess: Cast while control is off and another entry is running Clove's
+  entry's functions by UID (the 49 uses above are where to look first). The guess can be wrong; the marker is exact.
+
 Technical note: how the values are encoded (reserved system-variable numbers like Memoria's 191, or a small new
 Memoria opcode) is decided when building it; either way Hades Workshop shows a number/name in the expression.
 
