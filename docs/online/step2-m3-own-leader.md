@@ -93,7 +93,7 @@ sequel can move to B field by field; C remains the safety net for anything not c
 
 ## 5. Common to every approach
 
-- **Body data per playable character** (the core asset): model, head height, size, stand/walk/run/turn/jump/land, and
+- **Body data per playable character** (the core asset; list in section 7): model, head height, size, stand/walk/run/turn/jump/land, and
   equivalents for the special actions. Vanilla characters can be read from vanilla scripts; the sequel's from its
   own (the scanner can list every body the scripts use). Stored as a mod data file
   (`StreamingAssets/Data/Online/CharacterBodies.txt` or similar), like the New Game party.
@@ -106,15 +106,111 @@ sequel can move to B field by field; C remains the safety net for anything not c
 - **World map**: same mechanism as fields; check its player entries with the scanner once world map scripts are in
   scope.
 
-## 6. Open questions for you
+## 6. Questions and answers
 
-1. **B, C or D?** I recommend D.
-2. **Body data**: does each sequel character have (or will have) its own versions of Clove's special animations
-   (the 6030x set)? If not, which ones matter (the rest fall back to stand)?
-3. **Sequel convention**: are you open to the player entries in new fields using variables (B) as a house rule for
-   the sequel? It removes the animation map for those fields.
-4. **Vanilla support**: is vanilla FF9 co-op a goal, or only the sequel? (Decides whether A is worth a compatibility
-   mode.)
+1. **B, C or D?** I recommend D. *Open.*
+2. **Body data**: does each sequel character have its own versions of Clove's special animations?
+   *Answer (2026-11-17): "If we had a list of animations that every character needed to have, we could do that."*
+   The list is in section 7.
+3. **Sequel convention**: would the sequel's player entries use variables (B) as a house rule?
+   *Answer: open to it, but wants to understand it better.* Explained in section 8.
+4. **Vanilla support**: *Answer: vanilla FF9 co-op would be great, but can be cut if it overcomplicates things.*
+   So A isn't built now. The body data format covers vanilla characters too (their actions already exist under
+   vanilla ids), so vanilla stays possible later at little cost.
+
+## 7. The actions every playable character needs
+
+Measured with `tools/online/list_player_animations.py`: every animation the 47 field scripts play on Clove's player
+body (the body's own opcodes, plus `RunAnimationEx` from other entries aimed at the player).
+
+| Action | Clove's animation (id) | Used | Notes |
+|---|---|---|---|
+| Stand | `F4_GRN_IDLE` (2670) | every field | |
+| Walk | `F4_GRN_WALK` (2655) | every field | |
+| Run | `F4_GRN_RUN` (2672) | every field | |
+| Turn left | `F4_GRN_TURN_L` (2667) | every field | |
+| Turn right | `F4_GRN_TURN_R` (2661) | every field | |
+| Kneel down | `F3_GRN_HIZA_1` (60305) | 22 fields | examine/pick up: down, hold, up |
+| Kneeling (hold) | `F3_GRN_HIZA_2` (60309) | 22 fields | set as the stand animation while kneeling |
+| Stand up from kneeling | `F3_GRN_HIZA_3` (60306) | 22 fields | |
+| Open door | `F3_GRN_OPEN_DOOR1` (60304) | 7 fields | |
+| Ladder: get on | `F3_GRN_LADDER_1_1` (60301) | 4 fields | |
+| Ladder: climb (loop) | `F3_GRN_LADDER_1_2` (60302) | 4 fields | |
+| Ladder: get off at the top | `F3_GRN_LADDER_1_3` (60303) | 4 fields | |
+| Ladder: get on going down | `F3_GRN_LADDER_2_1` (60307) | 4 fields | |
+| Ladder: get off at the bottom | `F3_GRN_LADDER_2_3` (60308) | 4 fields | |
+
+Those 14 cover nearly all of it. Used only in one or two fields, so per-scene rather than core (falling back to
+Stand is acceptable at first): battle stance `KAMAE_1`/`KAMAE_2` (60310/60311), pleading `F4_GRN_ONEGAI_1/8/9`
+(2646, 2664, 2668), in the cage `IN_CAGE1`/`IN_CAGE2` (60313/60314).
+
+Also found: Clove's entry contains vanilla **Zidane** animations (door, peek, think, disappointed, ladder, kneel) and
+Blank's sword set in 1-4 fields each. They're probably branches kept from the vanilla scripts those fields were built
+from; worth checking whether they can run, since on Clove's model they'd play nothing useful.
+
+Vanilla characters already have all 14 (Zidane: `ZDN_HIZA_1-3`, `ZDN_OPEN_DOOR1`, `ZDN_LADDER_*`, and so on), so
+their body entries just point at existing ids.
+
+Proposed data file (one per mod, read like `NewGameParty.txt`), `StreamingAssets/Data/Online/CharacterBodies.txt`:
+
+    # character id: model, head height, then action = animation id
+    2  Clove:  model 202, head 72, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661,
+               KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304,
+               LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308
+    11 B.Waltz: model ..., Stand ..., ...
+
+## 8. The convention (B), explained
+
+**What a player entry looks like today.** Clove's identity is written into the field script as constants, for
+example the kneel sequence used in 22 fields (Hades Workshop-style):
+
+    SetModel( 202, 72 )                 // created as Clove
+    SetStandAnimation( 2670 )
+    ...
+    RunAnimation( 60305 )               // kneel down
+    WaitAnimation
+    SetStandAnimation( 60309 )          // stay kneeling
+    ...
+    RunAnimation( 60306 )               // stand up
+    SetStandAnimation( 2670 )
+
+**Option C (engine only)** leaves this as it is. While running the player's entry on a guest's PC, the engine
+sees "play 60305", looks it up (60305 = KneelDown for Clove), and plays the local character's KneelDown instead.
+That needs one table, Clove's ids → action names, and it must be updated whenever the mod gives Clove a new
+animation. An id missing from the table plays Stand.
+
+**Option B (the convention)** writes the action instead of Clove's id:
+
+    SetModel( PlayerModel, PlayerHeadHeight )
+    SetStandAnimation( PlayerAnim_Stand )
+    ...
+    RunAnimation( PlayerAnim_KneelDown )
+    WaitAnimation
+    SetStandAnimation( PlayerAnim_Kneeling )
+    ...
+    RunAnimation( PlayerAnim_KneelUp )
+    SetStandAnimation( PlayerAnim_Stand )
+
+`PlayerModel`, `PlayerAnim_KneelDown` and so on are values the engine fills in **on each PC** from
+`CharacterBodies.txt`: on the host they give Clove's ids, on a guest playing B.Waltz they give his. In single-player
+(no online session) they give the party leader's body, so the field still works offline as it does today. The
+script logic is identical on every PC; only the body differs.
+
+What it gives over C:
+- **No lookup table to maintain**: the script names the action, so a new Clove animation can't silently fall back
+  to Stand online.
+- **Scripts can know who's playing**: a `PlayerCharacter` value lets a field branch (`if PlayerCharacter == Blank`
+  → his line, his reaction). With C the scripts always believe they're Clove.
+- **Clear intent** in the scripts for anyone reading them later.
+
+What it costs:
+- Writing `PlayerAnim_X` instead of a number in player entries. Existing fields can be converted by a tool (the
+  scanner already finds every site), so the cost is mostly a habit for new fields.
+- Adding a new action means adding it to the list (and giving every character one).
+- Under D, unconverted fields still go through C's table, so converting is never required, only better.
+
+Technical note: how the values are encoded (reserved system-variable numbers like Memoria's 191, or a small new
+Memoria opcode) is decided when building it; either way Hades Workshop shows a number/name in the expression.
 
 ## Appendix: running the scanner
 
