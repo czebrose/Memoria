@@ -2,8 +2,23 @@
 
 Branch `steam-spike-a` (off `main` at `c716e1fa`). Code: `Assembly-CSharp/Memoria/Online/`.
 
-**Status: desk research and prototype done, builds clean. Not yet run in game.** Every claim below marked
-*(to verify in game)* is answered by the test in [How to test](#how-to-test). The verdict is at the end.
+**Status: single-PC smoke test passed (2026-11-16, third build); two-PC test pending.** Claims still marked
+*(to verify in game)* are answered by the two-PC test in [How to test](#how-to-test). The verdict is at the end.
+
+### Single-PC results
+
+- Bindings: all interfaces non-null, `SteamID check: OK`, AppID 377840, `AllowP2PPacketRelay(true)` → true.
+- The game's pump starts at the title screen ~1 s after Steam init; `IsOverlayEnabled` is `False` at startup and
+  `True` from then on.
+- `Ctrl+Shift+H`: `CreateLobby` call result polled fine; lobby created, owner = self, member list correct.
+- **Callback emulation works:** `LobbyEnter_t` and `GameOverlayActivated_t` (active true/false) arrived through
+  the emulated `CCallbackBase`, in slot 1 (no "call-result slot" warning), so the reversed vtable order is right and
+  the game's pump does run `SteamAPI_RunCallbacks`.
+- `Ctrl+Shift+I`: `ActivateGameOverlayInviteDialog` opened the Steam overlay's invite dialog.
+- **Shift+Tab does not open the overlay**, even though the overlay is injected (`gameoverlayrenderer64.dll` is
+  loaded) and works when opened from code. Memoria's `WindowProc` hook passes every message on, so it's not obviously
+  the spike. Not a blocker: inviting goes through `Ctrl+Shift+I`, and the invitee can accept from the Steam client
+  outside the game. Open question: does Shift+Tab work in this install without the spike?
 
 ## A1. How FF9 already talks to Steam
 
