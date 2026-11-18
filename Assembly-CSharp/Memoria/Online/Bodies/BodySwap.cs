@@ -71,6 +71,8 @@ namespace Memoria.Online.Bodies
         /// <summary>Called every frame by OnlineSession while a session plays (lead = the host's character), else with lead -1.</summary>
         public static void SetSession(Int32 lead, Int32 local, IDictionary<Int32, Int32> controllers, IDictionary<UInt64, Int32> peerCharacters)
         {
+            if (lead >= 0 && _lead < 0 && CharacterBodies.FromFile == 0)
+                Log.Warning($"[Online] Bodies: no {CharacterBodies.File} in the mods: only vanilla bodies (a mod's characters keep the host's body). Was the mod folder redeployed?");
             _lead = lead;
             _local = local;
             Controllers.Clear();
@@ -630,6 +632,8 @@ namespace Memoria.Online.Bodies
             Int32 acting = ActingCharacter(lead, local);
             Int32 scope = ReadScriptDictionary(KeySceneScope);
             StringBuilder text = new StringBuilder();
+            if (CharacterBodies.FromFile == 0)
+                text.Append($"bodies: NO {CharacterBodies.File} (vanilla bodies only)").Append('\n');
             text.Append($"bodies: lead {NameOf(lead)}, you {NameOf(local)}{(_lead < 0 ? " (debug)" : "")}, acting {NameOf(acting)}{(ReadScriptDictionary(KeyActor) > 0 ? " (script)" : "")}, ");
             text.Append($"{Mode} mode{(_modeByScript ? " (script)" : "")}{(scope != 0 ? $", scope {(scope == 2 ? "shared" : "personal")}" : "")}");
             foreach (Entry e in Entries.Values)

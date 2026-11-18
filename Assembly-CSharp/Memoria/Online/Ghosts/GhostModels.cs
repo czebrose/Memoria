@@ -65,7 +65,7 @@ namespace Memoria.Online.Ghosts
         public static GhostModel FromCharacterBody(UInt16 model)
         {
             Bodies.CharacterBody body = Bodies.CharacterBodies.ForModel(model);
-            return body == null ? null : new GhostModel(body.Name, body.Model, body.HeadHeight, body.Get("Stand"), body.Get("Walk"), body.Get("Run"), 20);
+            return body == null ? null : new GhostModel(body.Name, model, body.HeadHeight, body.Get("Stand"), body.Get("Walk"), body.Get("Run"), 20); // the sender's exact model (Clove: 9004 or 202), or the ghost is respawned on every state
         }
 
         public static GhostModel Find(UInt16 model)
