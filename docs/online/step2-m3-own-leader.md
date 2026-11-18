@@ -305,6 +305,12 @@ Open:
 - Model 9004 (`GEO_MAIN_F0_904`, used by the tram station's Clove entry in one branch) isn't a known body: that
   branch isn't swapped.
 - Take / Swap / Release / Follow (in-game control changes), planned with M4.
+- **Scene toolkit (section 11), phase 1 tested on one PC (2026-11-17):** F8 acting character, F7 Cast, C local
+  character, tram as Duskly/B.Waltz: bodies and animations right. Unity's log had 5 isolated NullReferenceExceptions in
+  `WalkMesh.BGI_findAccessibleTriangle` (collision while moving) in the run that first used B.Waltz (battle model 278
+  on a field); not reproduced or explained yet. Watch `x64/FF9_Data/output_log.txt` in the next tests.
+- **Ghosts play only stand/walk/run.** For personal actions watched through a ghost (phase 2: someone else kneels,
+  opens a door, climbs), ghosts must play the sender's other animations too.
 
 ## 11. One shared world: the scene toolkit (decided 2026-11-17)
 
