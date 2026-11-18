@@ -50,9 +50,10 @@ namespace Memoria.Online.Bodies
         public const Int32 KeySceneMode = 100;                // 0 automatic, 1 Player, 2 Cast
         public const Int32 KeySceneScope = 101;               // 0 automatic, 1 personal, 2 shared (used from phase 2)
         public const Int32 KeyActor = 102;                    // 0 automatic, else character + 1
-        public const Int32 KeyBindBase = 20000;               // + uid: 0 automatic, character + 1, or BindAuthored
+        public const Int32 KeyBindBase = 20000;               // + uid: 0 automatic, character + 1, BindAuthored or BindNotCharacter
         public const Int32 KeyVisibilityBase = 30000;         // + character: 0 automatic, 1 show, 2 hide
         public const Int32 BindAuthored = 255;
+        public const Int32 BindNotCharacter = 254;
         public const Int32 ControllerNone = 0, ControllerThisPC = 1, ControllerOther = 2;
 
         public static SceneMode Mode { get; private set; } = SceneMode.Player;
@@ -141,6 +142,8 @@ namespace Memoria.Online.Bodies
             public Boolean LoggedNoBody;
 
             public Boolean IsSwapped => !ReferenceEquals(Shown, Authored);
+            /// <summary>Takes part in "who is who": it shows a party character and no script marked it "not a character".</summary>
+            public Boolean IsCharacter => Shown.IsCharacter && ReadScriptDictionary(KeyBindBase + Po.uid) != BindNotCharacter;
             public override String ToString() => $"entry {Po.sid} (uid {Po.uid}) {Authored.Name}{(IsSwapped ? $" as {Shown.Name}" : "")}{(Hidden ? ", hidden" : "")}";
         }
 
@@ -154,11 +157,11 @@ namespace Memoria.Online.Bodies
         private static CharacterBody DesiredBody(Entry e, Boolean rolesActive, Int32 lead, Int32 acting)
         {
             Int32 bind = ReadScriptDictionary(KeyBindBase + e.Po.uid);
-            if (bind == BindAuthored)
+            if (bind == BindAuthored || bind == BindNotCharacter)
                 return e.Authored;
             if (bind > 0)
                 return BodyOrAuthored(e, bind - 1);
-            if (!rolesActive || Mode == SceneMode.Cast)
+            if (!rolesActive || Mode == SceneMode.Cast || !e.Authored.IsCharacter)
                 return e.Authored;
             if (e.Authored.CharacterId == lead && acting >= 0 && acting != lead)
                 return BodyOrAuthored(e, acting);
@@ -189,15 +192,19 @@ namespace Memoria.Online.Bodies
                 if (engine.gMode != 1)
                     return;
                 CheckField(engine.fieldmap);
-                CharacterBody authored = modelIsExpression ? null : CharacterBodies.ForModel(po.model);
-                if (authored == null)
-                    return; // not a character, or the script chose the model itself (an expression): never touched
+                if (modelIsExpression)
+                    return; // the script chose the model itself: never touched
+                // Every entry with a model is tracked, so a script can bind it; one whose model isn't a character's
+                // (or is borrowed) gets a stand-in body and is left alone unless a script binds it
+                CharacterBody authored = CharacterBodies.ForModel(po.model) ?? CharacterBodies.ForUnknownModel(po.model, (Byte)Math.Max(0, Math.Min(255, -po.eye / 4)));
                 Entry e = new Entry { Po = po, Authored = authored, AuthoredModel = po.model, Shown = authored };
                 Entries[po] = e;
                 Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out _);
                 CharacterBody desired = DesiredBody(e, rolesActive, lead, ActingCharacter(lead, local));
                 if (!ReferenceEquals(desired, authored))
                 {
+                    if (!(po is Actor))
+                        return;
                     e.Shown = desired;
                     po.model = desired.Model;
                     po.eye = (Int16)(-4 * desired.HeadHeight);
@@ -368,6 +375,11 @@ namespace Memoria.Online.Bodies
             List<Entry> extras = new List<Entry>();
             foreach (Entry e in Entries.Values)
             {
+                if (!e.IsCharacter)
+                {
+                    e.Hidden = false; // not a party character: shown as the field shows it, never counted
+                    continue;
+                }
                 Int32 character = e.Shown.CharacterId;
                 Int32 forced = ReadScriptDictionary(KeyVisibilityBase + character);
                 Boolean primary = !rolesActive || Mode == SceneMode.Cast || e.IsSwapped
@@ -621,8 +633,8 @@ namespace Memoria.Online.Bodies
             text.Append($"bodies: lead {NameOf(lead)}, you {NameOf(local)}{(_lead < 0 ? " (debug)" : "")}, acting {NameOf(acting)}{(ReadScriptDictionary(KeyActor) > 0 ? " (script)" : "")}, ");
             text.Append($"{Mode} mode{(_modeByScript ? " (script)" : "")}{(scope != 0 ? $", scope {(scope == 2 ? "shared" : "personal")}" : "")}");
             foreach (Entry e in Entries.Values)
-                if (e.IsSwapped || e.Hidden)
-                    text.Append($"\n  {e}");
+                if (e.IsSwapped || e.Hidden || (e.Authored.IsCharacter && !e.IsCharacter))
+                    text.Append($"\n  {e}{(e.Authored.IsCharacter && !e.IsCharacter ? " (not a character: script)" : "")}");
             foreach (Int32 c in HiddenGhostCharacters)
                 text.Append($"\n  ghost of {NameOf(c)} hidden");
             return text.ToString();

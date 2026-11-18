@@ -7,6 +7,9 @@
 #   Model        the model the body is created with; more "Model" entries = other models the field scripts use for
 #                this character (recognised as this character, never created)
 #   Head         SetModel's head height (dialog box height)
+#   Borrowed 1   optional: the models are someone else's (a stand-in). They give this character its body, but don't
+#                identify field entries as this character: entries drawn with them are left alone (scripts can still
+#                bind one to the character, see script-toolkit.md)
 #   Actions      every character should have these 14 (missing ones play Stand):
 #                Stand, Walk, Run, TurnLeft, TurnRight,
 #                KneelDown, Kneeling, KneelUp, OpenDoor,
@@ -26,6 +29,8 @@
 2 Clove: Model 9004, Model 202, Head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661, KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304, LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308, Stance 60311, StanceStart 60310
 
 # Duskly: vanilla Vivi's field model (9002 is battle only). Vivi has all 14 actions.
+# The fields' Vivi-looking extras count as Duskly (hidden while Duskly is on screen). If they're Vivi, not Duskly,
+# add "Borrowed 1" to this line.
 1 Duskly: Model 8, Head 61, Stand 148, Walk 571, Run 419, TurnLeft 917, TurnRight 918, KneelDown 7019, Kneeling 7023, KneelUp 7021, OpenDoor 2157, LadderOn 10280, LadderClimb 10276, LadderOffTop 10278, LadderOnDown 10436, LadderOffBottom 10434
 
 # Vayle (3): no field model yet (9003 is battle only). Add a line when there is one. (The fields' Steiner entries are

@@ -39,7 +39,7 @@ LadderOn, LadderClimb, LadderOffTop, LadderOnDown, LadderOffBottom. A body witho
 | 100 | 0 automatic, 1 Player, 2 Cast | **Scene mode.** Cast: every entry shows the body it was written with (a story beat with the field's cast). Player: the player entry shows the acting character, each player's character appears once. Automatic: Player, and Cast while another entry directs the player entry by its UID with control off. |
 | 101 | 0 automatic, 1 personal, 2 shared | **Scene scope**: personal = only the acting player's PC runs it, the others watch their ghost; shared = everyone sees it. *Recorded and readable now; acted on from M4/M5 (networking).* |
 | 102 | 0 automatic, c + 1 | **Acting character**: who performs the player entry's actions (automatic: this PC's player). For a shared scene a player started, every PC sets the same actor. |
-| 20000 + uid | 0 automatic, c + 1, 255 | **Bind an entry** (by its object UID) to character c: it takes c's body and its animations are translated by action. 255: its own written body, whatever the defaults. |
+| 20000 + uid | 0 automatic, c + 1, 255, 254 | **Bind an entry** (by its object UID) to character c: it takes c's body and its animations are translated by action. 255: its own written body, whatever the defaults. 254: **not a party character**: own body, left as the field shows it, never counted as anyone (for an extra that only looks like a party member). |
 | 30000 + c | 0 automatic, 1 show, 2 hide | **Show or hide character c** in this scene, wherever it's shown (an entry or its player's ghost). |
 
 Defaults (automatic everywhere): the player entry (written with the lead's body, Clove) shows the acting character.
@@ -48,6 +48,11 @@ whole cast in Cast mode), then other players' ghosts on this field, then the fie
 is hidden only if its character is already shown that way; a character the script doesn't mention is otherwise left
 where the field put it. A character the script hides (30000 + c = 2) is hidden everywhere. A `SetModel` whose model is an expression
 is the script's own choice: never swapped, bound or hidden.
+
+**Who is who** comes from the model an entry is created with (`CharacterBodies.txt`). A body marked `Borrowed 1` (a
+stand-in model that belongs to someone else, like Duskly using Vivi's) doesn't identify entries: they're left alone
+unless a script binds them. Per scene, `20000 + uid = 254` does the same for one entry, and `20000 + uid = c + 1` makes
+any entry (known model or not) character c.
 
 ## Examples
 
@@ -65,6 +70,14 @@ is the script's own choice: never swapped, bound or hidden.
 **Clove has nothing to do with this scene:**
 
     dict[9900][30000 + 2] = 2                 // hide Clove (her entry or her player's ghost)
+
+**This Vivi-looking extra is Vivi, not Duskly** (entry uid 14):
+
+    dict[9900][20000 + 14] = 254              // not a party character: shown as the field shows it
+
+**This extra is Duskly** (when Duskly's body is marked Borrowed, entries drawn with it aren't Duskly by default):
+
+    dict[9900][20000 + 14] = 1 + 1            // entry 14 is Duskly (character 1)
 
 **React to who is playing:**
 

@@ -17,6 +17,10 @@ namespace Memoria.Online.Bodies
         public UInt16 Model;
         /// <summary>Other models the field scripts use for this character (recognised, never created).</summary>
         public readonly List<UInt16> OtherModels = new List<UInt16>();
+        /// <summary>"Borrowed 1": its models belong to someone else (a stand-in); they don't identify field entries as this character.</summary>
+        public Boolean Borrowed;
+        /// <summary>A party character (false: the stand-in body of an entry whose model isn't a character's).</summary>
+        public Boolean IsCharacter => CharacterId >= 0;
         public Byte HeadHeight; // SetModel's 2nd argument
         public readonly Dictionary<String, UInt16> Actions = new Dictionary<String, UInt16>(StringComparer.OrdinalIgnoreCase);
         /// <summary>Animation id → action name (the first action declared with that id).</summary>
@@ -83,6 +87,16 @@ namespace Memoria.Online.Bodies
             return _byModel.TryGetValue(model, out CharacterBody body) ? body : null;
         }
 
+        private static readonly Dictionary<UInt16, CharacterBody> Unknown = new Dictionary<UInt16, CharacterBody>();
+
+        /// <summary>The body of an entry whose model isn't a character's (no actions: it's never swapped unless a script binds it).</summary>
+        public static CharacterBody ForUnknownModel(UInt16 model, Byte headHeight)
+        {
+            if (!Unknown.TryGetValue(model, out CharacterBody body))
+                Unknown[model] = body = new CharacterBody { CharacterId = -1, Name = $"model {model}", Model = model, HeadHeight = headHeight };
+            return body;
+        }
+
         public static IEnumerable<CharacterBody> All
         {
             get
@@ -103,6 +117,8 @@ namespace Memoria.Online.Bodies
             _byModel = new Dictionary<UInt16, CharacterBody>();
             foreach (CharacterBody body in _byCharacter.Values)
             {
+                if (body.Borrowed)
+                    continue; // its models identify nobody: entries using them are left alone unless a script binds them
                 if (!_byModel.ContainsKey(body.Model))
                     _byModel[body.Model] = body;
                 foreach (UInt16 model in body.OtherModels)
@@ -209,6 +225,10 @@ namespace Memoria.Online.Bodies
                     else
                         body.Model = value;
                     hasModel = true;
+                }
+                else if (String.Equals(kv[0], "Borrowed", StringComparison.OrdinalIgnoreCase))
+                {
+                    body.Borrowed = value != 0;
                 }
                 else if (String.Equals(kv[0], "Head", StringComparison.OrdinalIgnoreCase))
                 {
