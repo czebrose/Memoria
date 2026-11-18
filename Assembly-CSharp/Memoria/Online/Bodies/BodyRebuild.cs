@@ -37,6 +37,11 @@ namespace Memoria.Online.Bodies
             String oldName = oldGo.name; // "Player" for the player (looked up by name), else "obj<uid>"
             Transform oldParent = oldGo.transform.parent; // not the field when attached to something (the tram)
             Vector3 localPosition = oldGo.transform.localPosition;
+            // Attached to another object (AttachObject: the tram)? Redone through the engine on the new body, with the
+            // position and size to restore at DetachObject (kept by the body's controller)
+            Boolean attached = oldParent != null && oldParent != fieldMap.transform && actor.attachTargetUid >= 0;
+            Vector3 posBeforeAttach = oldController != null ? oldController.curPosBeforeAttach : position;
+            Vector3 scaleBeforeAttach = oldController != null ? oldController.localScaleBeforeAttach : scale;
             // Objects attached to this body's bones (AttachObject): moved to the same bones of the new body
             List<KeyValuePair<Transform, String>> carried = new List<KeyValuePair<Transform, String>>();
             foreach (FieldMapActor other in oldGo.GetComponentsInChildren<FieldMapActor>(true))
@@ -102,13 +107,23 @@ namespace Memoria.Online.Bodies
             fieldMap.AddFieldChar(go, position, rotation, isPlayer, actor, false);
             if (actor.fieldMapActorController != null)
                 actor.fieldMapActorController.radius = radius;
-            if (oldParent != null && oldParent != fieldMap.transform)
+            Obj carrier = attached ? engine.FindObjByUID(actor.attachTargetUid) : null;
+            if (carrier?.go != null && actor.fieldMapActorController != null)
             {
-                go.transform.parent = oldParent;
-                go.transform.localPosition = localPosition;
-                go.transform.localRotation = rotation;
+                FF9.geo.geoAttach(go, carrier.go, actor.attachTargetBoneIndex);
+                actor.fieldMapActorController.curPosBeforeAttach = posBeforeAttach;
+                actor.fieldMapActorController.localScaleBeforeAttach = scaleBeforeAttach;
             }
-            go.transform.localScale = scale; // fields that resize characters (SetObjectSize)
+            else
+            {
+                if (oldParent != null && oldParent != fieldMap.transform)
+                {
+                    go.transform.parent = oldParent;
+                    go.transform.localPosition = localPosition;
+                    go.transform.localRotation = rotation;
+                }
+                go.transform.localScale = scale; // fields that resize characters (SetObjectSize)
+            }
             foreach (KeyValuePair<Transform, String> kv in carried)
             {
                 if (kv.Key == null)
