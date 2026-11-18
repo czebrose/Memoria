@@ -30,7 +30,7 @@ namespace Memoria.Online.Party
             JSONClass state = new JSONClass();
             state.Add(Common, memoria[Common]);
             state.Add(MiniGame, memoria[MiniGame]);
-            return Clone(state);
+            return CloneObject(state);
         }
 
         /// <summary>Puts a party state into the game, as a load does (only these sections).</summary>
@@ -48,7 +48,20 @@ namespace Memoria.Online.Party
             parser.ParseToFF9StateSystem(root);
         }
 
-        public static JSONClass Clone(JSONNode node) => GameSnapshot.FromBytes(GameSnapshot.ToBytes(node));
+        /// <summary>A deep copy of any JSON value (object, array or plain value).</summary>
+        public static JSONNode Clone(JSONNode node)
+        {
+            using (System.IO.MemoryStream stream = new System.IO.MemoryStream())
+            {
+                System.IO.BinaryWriter writer = new System.IO.BinaryWriter(stream);
+                node.Serialize(writer);
+                writer.Flush();
+                stream.Position = 0;
+                return JSONNode.Deserialize(new System.IO.BinaryReader(stream));
+            }
+        }
+
+        public static JSONClass CloneObject(JSONNode node) => (JSONClass)Clone(node);
 
         /// <summary>
         /// A cheap hash of what menus can change, computed every frame: when it moves, the full state is captured and
@@ -214,7 +227,7 @@ namespace Memoria.Online.Party
 
         private static String WithoutRow(JSONNode info)
         {
-            JSONClass copy = Clone(info);
+            JSONClass copy = CloneObject(info);
             copy.Remove("row");
             return copy.ToString();
         }

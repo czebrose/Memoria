@@ -182,6 +182,7 @@ namespace Memoria.Online.Session
                 ui.TitleScene.Hide(() => EnterLoadedGame(asGuest));
             else
                 EnterLoadedGame(asGuest);
+            PersistenSingleton<UIManager>.Instance.MainMenuScene?.EnabledSubMenus?.Clear(); // a menu restriction (from a battle menu) never outlives a reload
             Memoria.Online.Party.PartySync.Instance?.OnGameLoaded(); // a whole-game load: the party sync starts over from it
             return tree;
         }

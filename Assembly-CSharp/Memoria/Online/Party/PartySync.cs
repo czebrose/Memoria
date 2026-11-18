@@ -428,7 +428,7 @@ namespace Memoria.Online.Party
             RefreshOpenMenu();
         }
 
-        private static JSONClass CloneState(JSONNode node) => PartyState.Clone(node);
+        private static JSONClass CloneState(JSONNode node) => PartyState.CloneObject(node);
 
         // ---- Messages ------------------------------------------------------------------------------------------
 

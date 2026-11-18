@@ -509,10 +509,19 @@ namespace Memoria.Online.Session
             TryLoadPending();
         }
 
+        /// <summary>A mid-game reload only from the field or the world map with no menu open (a menu left open by a reload breaks).</summary>
+        private static Boolean IsReadyForResync()
+        {
+            UIManager.UIState state = PersistenSingleton<UIManager>.Instance.State;
+            return (state == UIManager.UIState.FieldHUD || state == UIManager.UIState.WorldHUD) && !PersistenSingleton<SceneDirector>.Instance.IsFading;
+        }
+
         private void TryLoadPending()
         {
             if (_pending == null || !_receivedBlobs.TryGetValue(_pending.TransferId, out Byte[] blob))
                 return;
+            if (_pending.IsResync && !IsReadyForResync())
+                return; // a menu, a battle or a scene change is going on: reload once back on the field
             PendingLoad pending = _pending;
             _pending = null;
             _receivedBlobs.Clear();
