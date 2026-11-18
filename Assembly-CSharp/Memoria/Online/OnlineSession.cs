@@ -280,6 +280,11 @@ namespace Memoria.Online
                 // M4, playing: F1-F4 Take / Swap / Release party slot 1-4, F5 accept a swap offer, F6 decline
                 if (_session.Phase == SessionPhase.Playing)
                 {
+                    if (Input.GetKeyDown(KeyCode.J) && !_lobby.IsHost)
+                    {
+                        _session.JoinHost(); // M5 (in game, J isn't "join a lobby")
+                        return;
+                    }
                     for (Int32 i = 0; i < 4; i++)
                         if (Input.GetKeyDown(KeyCode.F1 + i))
                             _session.ControlSlot(i);
@@ -663,6 +668,7 @@ namespace Memoria.Online
                 _peers.Remove(peer);
             }
             GhostManager.Remove(peer, "left the lobby");
+            GhostManager.ForgetPeer(peer);
             _blobs.Forget(peer);
             Log.Message($"[Online] Connected to {_transport.Peers.Count} peer(s)");
         }

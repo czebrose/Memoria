@@ -61,8 +61,16 @@ namespace Memoria.Online.Ghosts
                 IgnoredBadPacket++;
                 return;
             }
+            LastFieldOf[peer] = _scratch.FieldId;
             OnState(peer, _scratch, nowMs);
         }
+
+        /// <summary>M5: the field each peer last said it is on (<see cref="GhostState.NotOnField"/> in a menu, battle...).</summary>
+        private static readonly Dictionary<UInt64, UInt16> LastFieldOf = new Dictionary<UInt64, UInt16>();
+
+        public static Boolean TryGetLastField(UInt64 peer, out UInt16 field) => LastFieldOf.TryGetValue(peer, out field);
+
+        public static void ForgetPeer(UInt64 peer) => LastFieldOf.Remove(peer);
 
         public static void OnState(UInt64 peer, GhostState state, Double nowMs)
         {

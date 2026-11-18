@@ -377,7 +377,7 @@ namespace Memoria.Online.Session
             Offer offer = OfferTo(_lobby.LocalId);
             Single width = 520f, line = 24f;
             Single x = Screen.width - width - 16f, y = 16f;
-            Int32 rows = 2 + Math.Max(1, party.Count) + (offer != null ? 2 : 0) + 1;
+            Int32 rows = 2 + Math.Max(1, party.Count) + (offer != null ? 2 : 0) + 1 + (IsHost ? 0 : 1);
             GUI.Box(new Rect(x, y, width, rows * line + 20f), "", _controlStyle);
             Single cx = x + 12f, cy = y + 8f;
             Int32 mine = CharacterOf(_lobby.LocalId);
@@ -412,6 +412,14 @@ namespace Memoria.Online.Session
                     AnswerOffer(true);
                 if (GUI.Button(new Rect(cx + 170f, cy, 160f, line - 2f), "Decline (F6)"))
                     AnswerOffer(false);
+                cy += line;
+            }
+            if (!IsHost)
+            {
+                cy += 2f;
+                GUI.Label(new Rect(cx, cy, 300f, line), WithHost ? "On the host's field" : "Exploring on your own");
+                if (GUI.Button(new Rect(cx + 320f, cy, 170f, line - 2f), "Join host (J)"))
+                    JoinHost();
                 cy += line;
             }
             GUI.Label(new Rect(cx, cy + 2f, width, line), "Ctrl+Shift+F1-F4: Take / Swap / Release slot 1-4");

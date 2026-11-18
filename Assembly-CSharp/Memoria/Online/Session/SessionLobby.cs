@@ -75,6 +75,8 @@ namespace Memoria.Online.Session
             public UInt32 TransferId;
             public UInt32 Crc;
             public Boolean IsResync;
+            /// <summary>M5 meeting resync: the field the guest was on when it asked; it keeps its spot (-1: no).</summary>
+            public Int32 KeepSpotField = -1;
         }
 
         private readonly SteamLobby _lobby;
@@ -181,6 +183,7 @@ namespace Memoria.Online.Session
                 SendResync();
             if (!IsHost && _pending != null)
                 TryLoadPending();
+            UpdateMeet(nowMs); // M5: free roaming, meeting resyncs (SessionLobby.Meet.cs)
         }
 
         // ---- Host: game choice, party, picks ---------------------------------------------------------------------
@@ -470,7 +473,9 @@ namespace Memoria.Online.Session
         /// <summary>Control-channel messages for the session; false if the message isn't one.</summary>
         public Boolean OnControlMessage(UInt64 peer, Byte[] data)
         {
-            if (data.Length != 10 || (data[0] != MsgStart && data[0] != MsgResync))
+            if (OnMeetMessage(peer, data))
+                return true;
+            if ((data.Length != 10 && !(data.Length == 12 && data[0] == MsgResync)) || (data[0] != MsgStart && data[0] != MsgResync))
                 return false;
             if (peer != _lobby.OwnerId)
             {
@@ -498,8 +503,9 @@ namespace Memoria.Online.Session
             }
             else
             {
-                _pending = new PendingLoad { TransferId = transferId, Crc = crc, IsResync = true };
-                Log.Message("[Online] Session: the host is resyncing everyone (its whole game)");
+                Int32 keepSpot = data.Length == 12 && mode == ModeKeepSpot ? data[10] | (data[11] << 8) : -1;
+                _pending = new PendingLoad { TransferId = transferId, Crc = crc, IsResync = true, KeepSpotField = keepSpot };
+                Log.Message(keepSpot >= 0 ? $"[Online] Session: the host's world for field {keepSpot} is coming (meeting; you keep your spot)" : "[Online] Session: the host is resyncing you (its whole game)");
             }
             TryLoadPending();
             return true;
@@ -536,6 +542,13 @@ namespace Memoria.Online.Session
                 Log.Warning($"[Online] Session: snapshot {pending.TransferId} doesn't match the start message's checksum");
                 return;
             }
+            SavedSpot spot = null;
+            if (pending.KeepSpotField >= 0 && !TrySaveSpot(pending.KeepSpotField, out spot))
+            {
+                _metField = -1; // asks again if we meet again
+                Log.Message($"[Online] Meet: you left field {pending.KeepSpotField} before the host's world arrived; not loaded");
+                return;
+            }
             GameSnapshot.Load(blob, true, out String error);
             if (error != null)
             {
@@ -543,6 +556,8 @@ namespace Memoria.Online.Session
                 Log.Warning($"[Online] Session: {Status}");
                 return;
             }
+            _restoreSpot = spot;
+            _metField = PersistenSingleton<FF9StateSystem>.Instance.mode == 1 ? FF9StateSystem.Common.FF9.fldMapNo : -1; // with the host now: no meeting request for this field
             Phase = SessionPhase.Playing;
             Status = String.Empty;
             Log.Message($"[Online] Session: loaded the host's game{(pending.IsResync ? " (resync)" : "")}");
@@ -585,6 +600,7 @@ namespace Memoria.Online.Session
             _myPick = -1;
             _where = null;
             ResetControl();
+            ResetMeet();
             Status = String.Empty;
         }
 

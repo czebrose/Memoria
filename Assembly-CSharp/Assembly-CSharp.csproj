@@ -376,6 +376,8 @@
     <Compile Include="Memoria\Online\Session\GuestGuard.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Control.cs" />
+    <Compile Include="Memoria\Online\Session\SessionLobby.Meet.cs" />
+    <Compile Include="Memoria\Online\Session\EventWatch.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />
