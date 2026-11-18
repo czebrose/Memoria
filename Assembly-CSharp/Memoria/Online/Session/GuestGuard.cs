@@ -16,6 +16,12 @@ namespace Memoria.Online.Session
         public static Boolean IsGuestSession { get; private set; }
         public static Int32 BlockedAutosaves { get; private set; }
 
+        /// <summary>
+        /// M4: this guest plays no character (released it, or none was free): its player is hidden, can't move and
+        /// can't interact (talk, check, triggers); it watches. Set every frame by OnlineSession.
+        /// </summary>
+        public static Boolean Spectating;
+
         public static void BeginGuestSession()
         {
             if (!IsGuestSession)

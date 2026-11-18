@@ -49,7 +49,7 @@ namespace Memoria.Online.Session
     /// New Game: everyone runs the game's own New Game; the host resyncs everyone (MsgResync + snapshot) the first time
     /// it has control on a field.
     /// </summary>
-    internal sealed class SessionLobby
+    internal sealed partial class SessionLobby
     {
         /// <summary>
         /// Optional, shipped by a mod in its StreamingAssets/Data/Online/: the New Game party, one character per line,
@@ -125,7 +125,7 @@ namespace Memoria.Online.Session
             get
             {
                 if (IsHost)
-                    return HostCharacter;
+                    return HostPlays;
                 foreach (KeyValuePair<Int32, UInt64> kv in Assignments)
                     if (kv.Value == _lobby.LocalId)
                         return kv.Key;
@@ -152,6 +152,8 @@ namespace Memoria.Online.Session
             {
                 Phase = SessionPhase.Gathering;
                 _startedBeforeJoin = !IsHost && _lobby.GetData("started") == "1";
+                if (!IsHost)
+                    _lobby.SetMemberData("ctl", ""); // no request from an earlier session
                 Log.Message($"[Online] Session: {(IsHost ? "hosting" : "joined")} a lobby{(_startedBeforeJoin ? " whose session has already started (joining mid-game isn't supported yet)" : "")}");
                 if (IsHost)
                     RefreshChoices();
@@ -166,7 +168,9 @@ namespace Memoria.Online.Session
                     _where = where;
                     _lobby.SetMemberData("where", where);
                 }
-                if (IsHost)
+                if (IsHost && Phase == SessionPhase.Playing)
+                    HostControl(nowMs); // M4: in-game control changes (SessionLobby.Control.cs)
+                else if (IsHost)
                     HostArbitrate();
                 else
                     ReadHostData();
@@ -460,6 +464,7 @@ namespace Memoria.Online.Session
                         if ((member & 0xFFFFFFFF) == account)
                             Assignments[character] = member;
             }
+            ReadControlData();
         }
 
         /// <summary>Control-channel messages for the session; false if the message isn't one.</summary>
@@ -579,6 +584,7 @@ namespace Memoria.Online.Session
             _publishedAssign = null;
             _myPick = -1;
             _where = null;
+            ResetControl();
             Status = String.Empty;
         }
 

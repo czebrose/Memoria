@@ -124,3 +124,47 @@ ghost state arrived after the snapshot was parsed but before the field's object 
 spawned on the next state); since fixed, ghosts wait for `EventEngine.HasObjectList`.
 
 Round trip guest → host → guest: under 10 ms on a direct connection.
+
+## 8. Control changes, as built (2026-11-18)
+
+Code: `Session/SessionLobby.Control.cs` (+ hooks below). Once the session plays, the lobby's picks are frozen; characters
+change hands only through these actions, all arbitrated by the host (first come, first served):
+
+| Action | Who | Effect |
+|---|---|---|
+| **Take** | anyone | a party member nobody plays becomes yours (yours, if any, goes back to the host's game). The host may Take too: it changes which character the host plays. |
+| **Swap** | a player with a character | offers the player of another character an exchange; they **Accept** or **Decline** (offers expire after 30 s). A Swap on a free character is a Take. |
+| **Release** | a guest | gives the character back to the host's game; the guest **watches** (this is Follow: with one character per guest, Release and Follow are the same state). |
+
+- The host always plays one character. **The lead** (the character the field scripts make the player) is now the
+  party's leader, not "the host's character": if the host plays B.Waltz, the field's Clove entry shows B.Waltz on the
+  host's PC and Clove on the PC of whoever plays Clove.
+- **Story removes a played character from the party** → that player gets the first free party member, else (a guest)
+  watches. Characters assigned in the lobby but not in the party yet (a New Game's party is built by the first field)
+  are kept until they have been in the party once.
+- **A guest leaves the lobby** → their character is free again (M7's "the host takes over").
+- **Watching** (`GuestGuard.Spectating`): the guest's player object is hidden on its PC in Player mode (the cast still
+  shows in Cast mode), it can't move (`FieldMapActorController` input) or interact (`EventEngine.CollisionRequest`),
+  and it sends no ghost. Following the host's camera comes with M5's tether. The interaction block is the one M5 needs
+  for "guests walk but don't interact".
+- **Data:** lobby data `assign` (guests' characters, as in the lobby), `hostplays`, `offers`
+  (`fromAccount:toAccount|...`); member data `ctl` = `seq:verb:arg`, a guest's latest request; the host acts on each
+  new value once.
+- **UI:** a "Party control" panel at the top right while playing (shown with the status box, Ctrl+Shift+O): the party,
+  who plays whom, a Take / Swap / Release button per slot, and an incoming offer with Accept / Decline. Keys:
+  Ctrl+Shift+F1-F4 act on party slot 1-4, F5 accepts, F6 declines (the lobby's F-keys only work at the title).
+  A toast says "You now play X" / "You're watching" on each change.
+- PartySync's editing rights follow the assignments at once (they're read per request).
+
+### C1 test steps (two PCs; host = Clove, guest = B.Waltz from the lobby)
+
+1. Both: in game, status box on. Panel shows: Clove you/host, B.Waltz guest, Duskly/Vayle free.
+2. **Guest Take:** guest presses Ctrl+Shift+F for Duskly's slot (not Vayle: no field body yet, she'd show as Clove). Guest becomes Duskly at once; host sees Duskly's
+   ghost (not B.Waltz). Guest equips Duskly (allowed), tries B.Waltz (blocked).
+3. **Guest offers a Swap to the host:** guest presses Clove's slot key. Host's panel shows the offer; host presses
+   Ctrl+Shift+F5. Host now plays Duskly (the host's player body becomes Duskly), guest plays Clove. Both ghosts match.
+4. **Host offers, guest Declines:** host presses Clove's slot; guest presses Ctrl+Shift+F6. Nothing changes.
+5. **Guest Release:** guest presses their own slot. Guest's body disappears, can't move or talk; host's ghost of the
+   guest disappears. Panel: "you play nobody (watching)".
+6. **Guest Takes again** a free slot: body back, moves again.
+7. Host Takes a free character: host's body switches. Logs: `Control:` lines on both PCs, no exceptions.

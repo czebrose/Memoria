@@ -167,25 +167,42 @@ namespace Memoria.Online
         /// <summary>Step 2 / M3: tell the body swap who plays whom (the host's character leads).</summary>
         private void UpdateBodyRoles()
         {
-            if (_session == null || _session.Phase != SessionPhase.Playing || _session.HostCharacter < 0)
+            Boolean playing = _session != null && _session.Phase == SessionPhase.Playing && _session.HostCharacter >= 0;
+            Boolean spectating = playing && !_lobby.IsHost && _session.MyCharacter < 0;
+            GuestGuard.Spectating = spectating;
+            BodySwap.HideLocalPlayer = spectating;
+            if (!playing)
             {
+                _lastMyCharacter = Int32.MinValue;
                 BodySwap.SetSession(-1, -1, null, null);
                 return;
             }
+            if (_session.MyCharacter != _lastMyCharacter)
+            {
+                if (_lastMyCharacter != Int32.MinValue)
+                    PartySync.Toast(_session.MyCharacter >= 0 ? $"You now play {CharacterBodies.ForCharacter(_session.MyCharacter)?.Name ?? $"character {_session.MyCharacter}"}" : "You're watching (no character)");
+                Log.Message($"[Online] Control: this PC plays {(_session.MyCharacter >= 0 ? $"character {_session.MyCharacter}" : "nobody (watching)")}");
+                _lastMyCharacter = _session.MyCharacter;
+            }
+            // The lead is the party's leader: the character the field scripts make the player (M4: the host may play another)
+            List<Int32> party = SessionLobby.CurrentParty();
+            Int32 lead = party.Count > 0 ? party[0] : _session.HostCharacter;
             // Who controls which character: the host its own, guests theirs (party members nobody picked are driven
             // by the host's game, not played: controller none)
             Dictionary<Int32, Int32> controllers = new Dictionary<Int32, Int32>();
             Dictionary<UInt64, Int32> peerCharacters = new Dictionary<UInt64, Int32>();
-            controllers[_session.HostCharacter] = _lobby.IsHost ? BodySwap.ControllerThisPC : BodySwap.ControllerOther;
-            peerCharacters[_lobby.OwnerId] = _session.HostCharacter;
+            controllers[_session.HostPlays] = _lobby.IsHost ? BodySwap.ControllerThisPC : BodySwap.ControllerOther;
+            peerCharacters[_lobby.OwnerId] = _session.HostPlays;
             foreach (KeyValuePair<Int32, UInt64> kv in _session.Assignments)
             {
                 controllers[kv.Key] = kv.Value == _lobby.LocalId ? BodySwap.ControllerThisPC : BodySwap.ControllerOther;
                 peerCharacters[kv.Value] = kv.Key;
             }
             peerCharacters.Remove(_lobby.LocalId);
-            BodySwap.SetSession(_session.HostCharacter, _session.MyCharacter, controllers, peerCharacters);
+            BodySwap.SetSession(lead, _session.MyCharacter, controllers, peerCharacters);
         }
+
+        private Int32 _lastMyCharacter = Int32.MinValue;
 
         /// <summary>Debug: cycle "pretend to be a guest playing X" (offline), then reload the field so it's created again.</summary>
         private void CycleDebugBody(Double now)
@@ -260,8 +277,19 @@ namespace Memoria.Online
             }
             if (_session != null)
             {
+                // M4, playing: F1-F4 Take / Swap / Release party slot 1-4, F5 accept a swap offer, F6 decline
+                if (_session.Phase == SessionPhase.Playing)
+                {
+                    for (Int32 i = 0; i < 4; i++)
+                        if (Input.GetKeyDown(KeyCode.F1 + i))
+                            _session.ControlSlot(i);
+                    if (Input.GetKeyDown(KeyCode.F5))
+                        _session.AnswerOffer(true);
+                    else if (Input.GetKeyDown(KeyCode.F6))
+                        _session.AnswerOffer(false);
+                }
                 // Step 2 lobby (title screen): F1 release, F2-F4 pick party slot 2-4, F5 next game (host), F6 start (host)
-                if (Input.GetKeyDown(KeyCode.F1))
+                else if (Input.GetKeyDown(KeyCode.F1))
                     _session.Pick(-1);
                 else if (Input.GetKeyDown(KeyCode.F2))
                     _session.Pick(1);
@@ -496,7 +524,7 @@ namespace Memoria.Online
             foreach (KeyValuePair<Int32, UInt64> kv in _session.Assignments)
                 if (kv.Value == peer)
                     return kv.Key;
-            return peer == _lobby.OwnerId ? _session.HostCharacter : -1;
+            return peer == _lobby.OwnerId ? _session.HostPlays : -1;
         }
 
         private void OnSnapshotReceived(BlobTransfer.Received received)
@@ -534,7 +562,7 @@ namespace Memoria.Online
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             FieldMapActorController leader = engine?.fieldmap?.playerController;
             Actor actor = leader?.originalActor;
-            if (engine == null || engine.gMode != 1 || actor == null || leader.IsGhost)
+            if (engine == null || engine.gMode != 1 || actor == null || leader.IsGhost || GuestGuard.Spectating) // watching: no ghost of us
             {
                 _local.FieldId = GhostState.NotOnField;
                 _local.Model = 0;
@@ -786,6 +814,7 @@ namespace Memoria.Online
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
             _session?.OnGUI();
+            _session?.OnControlGUI();
             String toast = PartySync.CurrentToast;
             if (toast != null)
             {

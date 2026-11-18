@@ -65,6 +65,9 @@ namespace Memoria.Online.Bodies
         // ---- Roles ---------------------------------------------------------------------------------------------
 
         private static Int32 _lead = -1, _local = -1;
+
+        /// <summary>M4: this PC watches (plays no character): the field's player object is hidden here, in Player mode.</summary>
+        public static Boolean HideLocalPlayer;
         private static readonly Dictionary<Int32, Int32> Controllers = new Dictionary<Int32, Int32>();
         private static readonly Dictionary<UInt64, Int32> PeerCharacters = new Dictionary<UInt64, Int32>();
 
@@ -387,7 +390,9 @@ namespace Memoria.Online.Bodies
                 Boolean primary = !rolesActive || Mode == SceneMode.Cast || e.IsSwapped
                                   || ReadScriptDictionary(KeyBindBase + e.Po.uid) != 0
                                   || e.Authored.CharacterId == lead || ReferenceEquals(e.Po, player);
-                if (forced == 2)
+                if (HideLocalPlayer && rolesActive && Mode == SceneMode.Player && ReferenceEquals(e.Po, player) && forced != 1)
+                    e.Hidden = true; // watching: no body of our own (the cast still shows in Cast mode)
+                else if (forced == 2)
                     e.Hidden = true;
                 else if (forced == 1 || primary)
                     e.Hidden = false;
