@@ -175,10 +175,13 @@ namespace Memoria.Online
         /// <summary>Debug: cycle "pretend to be a guest playing X" (offline), then reload the field so it's created again.</summary>
         private void CycleDebugBody(Double now)
         {
+            // The characters in the current party (in party order) that have a body, other than the leader
             List<Int32> ids = new List<Int32>();
-            foreach (CharacterBody body in CharacterBodies.All)
-                ids.Add(body.CharacterId);
-            ids.Sort();
+            PLAYER[] members = FF9StateSystem.Common.FF9.party?.member;
+            if (members != null)
+                for (Int32 i = 1; i < members.Length; i++)
+                    if (members[i] != null && CharacterBodies.ForCharacter((Int32)members[i].info.slot_no) != null)
+                        ids.Add((Int32)members[i].info.slot_no);
             Int32 index = ids.IndexOf(BodySwap.DebugLocalCharacter);
             BodySwap.DebugLocalCharacter = index + 1 < ids.Count ? ids[index + 1] : -1;
             Log.Message($"[Online] Debug body: {(BodySwap.DebugLocalCharacter < 0 ? "off" : CharacterBodies.ForCharacter(BodySwap.DebugLocalCharacter).ToString())}; reloading the field");
@@ -740,7 +743,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
-                text.Append($"\n{BodySwap.Describe()}  C pretend to play another character (reloads the field), F7 Player/Cast");
+                text.Append($"\n{BodySwap.Describe()}  C pretend to play another party member (reloads the field), F7 Player/Cast");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }
             GUIContent content = new GUIContent(text.ToString());
