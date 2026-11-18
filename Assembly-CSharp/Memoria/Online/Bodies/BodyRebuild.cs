@@ -174,6 +174,9 @@ namespace Memoria.Online.Bodies
         private static void CopyControllerState(FieldMapActorController from, FieldMapActorController to)
         {
             to.charFlags = from.charFlags;
+            // The exact position, not snapped to the walkmesh (AddFieldChar does): with pathing off a script can move
+            // the body above it (walking along the tram's floor)
+            to.SetPosition(from.curPos, true, false);
             to.SetActive(from.IsActive());
             to.speed = from.speed;
             to.activeTri = from.activeTri;
