@@ -1,52 +1,59 @@
 using Memoria.Prime;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace Memoria.Online.Bodies
 {
-    /// <summary>Who a scene shows (docs/online/step2-m3-own-leader.md, section 9).</summary>
+    /// <summary>Who a scene shows by default (docs/online/step2-m3-own-leader.md, sections 9 and 11).</summary>
     public enum SceneMode
     {
-        /// <summary>Each PC shows its own character on the player entry.</summary>
+        /// <summary>The player entry shows the acting character; characters players control are shown once (their ghost or their entry).</summary>
         Player,
-        /// <summary>Every PC shows the bodies the field authored (a story beat with several characters).</summary>
+        /// <summary>Every entry shows the body the field wrote it with (a story beat with the field's cast).</summary>
         Cast,
     }
 
     /// <summary>
-    /// Step 2 / M3: each player plays their own character.
+    /// Step 2 / M3: one shared world (docs/online/step2-m3-own-leader.md, section 11; tools: script-toolkit.md).
     ///
-    /// Engine side (works with the scripts as they are):
-    ///  - The scripts keep running the same entries on every PC (object 250 is the same entry everywhere); only the
-    ///    body differs. An entry is recognised by the model it's created with (<see cref="CharacterBodies.ForModel"/>).
-    ///  - Player mode: an entry created with the lead character's body (the host's character: Clove's player entry)
-    ///    is created with the local player's body instead, and every animation the script gives it is translated by
-    ///    action name (lead's animation → action → local body's animation; unknown ones play Stand). An entry created
-    ///    with the body of a character a player controls is hidden: that character is on screen as its player or
-    ///    its ghost.
-    ///  - Cast mode: every entry shows its authored body (swapped ones are rebuilt), hidden ones are shown, and
-    ///    ghosts whose character is on screen are hidden.
-    ///  - The mode: the script's choice if it makes one (<see cref="ScriptDictionary"/>), else a guess: Cast when,
-    ///    with the player's control off, another entry runs one of the swapped entry's functions by its UID (scene
-    ///    choreography), back to Player when control returns. Reset to Player on every new field.
-    ///
-    /// Script side (the convention, optional): Memoria script dictionary <see cref="ScriptDictionary"/> holds this
-    /// PC's player character, body and animations (read them in expressions), and the scene mode the script asks
-    /// for (write it). A SetModel whose model is an expression is the script's own choice: never swapped or hidden.
-    ///
-    /// Hooks ([Online] lines in EventEngine.DoEventCode): SetModel, the animation opcodes, RunScript*, EnableMove.
+    ///  - Entries are recognised by the model they're created with (<see cref="CharacterBodies.ForModel"/>); the
+    ///    scripts keep running the same entries on every PC, only bodies differ.
+    ///  - Every such entry shows one character's body: by default the one it was written with ("authored"); the
+    ///    player entry (written as the lead, the host's character) shows the <b>acting character</b>, the one doing
+    ///    the player's actions (default: this PC's player). A script can bind any entry to any character.
+    ///  - A character is shown at most once per PC: an entry written as a character a player controls is hidden
+    ///    (Player mode) when that character is already on screen, and a ghost is hidden when an entry shows its
+    ///    character. Scripts can force a character shown or hidden.
+    ///  - Cast mode: every entry shows its authored body. Mode: the script's choice, else a guess (Cast when, with
+    ///    control off, another entry runs one of the player entry's functions by UID; back on EnableMove).
+    ///  - Bodies are chosen at creation (SetModel) and changed later with <see cref="BodyRebuild"/>, animations are
+    ///    translated by action name.
+    /// Hooks ([Online] lines in EventEngine.DoEventCode): SetModel, the animation opcodes, HideObject/ShowObject,
+    /// RunScript*, EnableMove.
     /// </summary>
     public static class BodySwap
     {
-        /// <summary>Memoria script dictionary used by the convention (dictionary id, then the keys below).</summary>
+        // ---- Script dictionary 9900 (docs/online/script-toolkit.md) ---------------------------------------------
         public const Int32 ScriptDictionary = 9900;
-        public const Int32 KeyOnline = 0;            // 1 while an online session is playing
-        public const Int32 KeyPlayerCharacter = 1;   // this PC's player character (offline: the party leader)
-        public const Int32 KeyPlayerModel = 2;       // its SetModel arguments
-        public const Int32 KeyPlayerHead = 3;
-        public const Int32 KeyFirstAnim = 10;        // 10 + index in CharacterBodies.Required (10 Stand ... 23 LadderOffBottom)
-        public const Int32 KeySceneMode = 100;       // written by the script: 0 automatic, 1 Player, 2 Cast (reset to 0 on each field)
+        // Read (written by the engine every frame)
+        public const Int32 KeyOnline = 0;
+        public const Int32 KeyLocalCharacter = 1;
+        public const Int32 KeyLocalModel = 2;
+        public const Int32 KeyLocalHead = 3;
+        public const Int32 KeyActingCharacter = 4;
+        public const Int32 KeyLocalFirstAnim = 10;            // + index in CharacterBodies.Required
+        public const Int32 KeyCharacterBase = 10000;          // + character * 100 + offset below
+        public const Int32 CharController = 0, CharPresent = 1, CharModel = 2, CharHead = 3, CharFirstAnim = 10;
+        // Write (by the scripts; reset on each field)
+        public const Int32 KeySceneMode = 100;                // 0 automatic, 1 Player, 2 Cast
+        public const Int32 KeySceneScope = 101;               // 0 automatic, 1 personal, 2 shared (used from phase 2)
+        public const Int32 KeyActor = 102;                    // 0 automatic, else character + 1
+        public const Int32 KeyBindBase = 20000;               // + uid: 0 automatic, character + 1, or BindAuthored
+        public const Int32 KeyVisibilityBase = 30000;         // + character: 0 automatic, 1 show, 2 hide
+        public const Int32 BindAuthored = 255;
+        public const Int32 ControllerNone = 0, ControllerThisPC = 1, ControllerOther = 2;
 
         public static SceneMode Mode { get; private set; } = SceneMode.Player;
         private static Boolean _modeByScript;
@@ -54,67 +61,50 @@ namespace Memoria.Online.Bodies
         /// <summary>Debug, offline: pretend to be a guest playing this character (-1 = off).</summary>
         public static Int32 DebugLocalCharacter = -1;
 
+        // ---- Roles ---------------------------------------------------------------------------------------------
+
         private static Int32 _lead = -1, _local = -1;
-        private static readonly HashSet<Int32> Controlled = new HashSet<Int32>();
+        private static readonly Dictionary<Int32, Int32> Controllers = new Dictionary<Int32, Int32>();
+        private static readonly Dictionary<UInt64, Int32> PeerCharacters = new Dictionary<UInt64, Int32>();
 
-        private sealed class Swap
-        {
-            public CharacterBody From, To;
-            /// <summary>The model the script created the entry with (one of From's models), restored in Cast mode.</summary>
-            public UInt16 AuthoredModel;
-            /// <summary>The meshes the script hid on the authored body (mesh numbers are per model).</summary>
-            public UInt32 AuthoredMeshFlags;
-        }
-
-        private sealed class Hidden
-        {
-            public CharacterBody Body;
-            public Renderer[] Renderers;
-            public GameObject RenderersOf;
-            public Boolean Applied;
-        }
-
-        /// <summary>Entries showing the local body (Player mode).</summary>
-        private static readonly Dictionary<Obj, Swap> Swaps = new Dictionary<Obj, Swap>();
-        /// <summary>Entries that show the local body in Player mode but their authored body now (Cast mode).</summary>
-        private static readonly Dictionary<Obj, Swap> Suspended = new Dictionary<Obj, Swap>();
-        private static readonly Dictionary<Obj, Hidden> Hiddens = new Dictionary<Obj, Hidden>();
-        /// <summary>Character body models created on this field (as authored), for hiding ghosts in Cast mode.</summary>
-        private static readonly HashSet<UInt16> AuthoredModels = new HashSet<UInt16>();
-        private static readonly HashSet<Int32> LoggedUnmapped = new HashSet<Int32>();
-        private static FieldMap _fieldMap;
-        private static Int32 _lastScriptMode;
-
-        /// <summary>Called every frame by OnlineSession: the session's characters (lead = the host's), or -1 when not playing online.</summary>
-        public static void SetSession(Int32 lead, Int32 local, IEnumerable<Int32> controlled)
+        /// <summary>Called every frame by OnlineSession while a session plays (lead = the host's character), else with lead -1.</summary>
+        public static void SetSession(Int32 lead, Int32 local, IDictionary<Int32, Int32> controllers, IDictionary<UInt64, Int32> peerCharacters)
         {
             _lead = lead;
             _local = local;
-            Controlled.Clear();
-            if (controlled != null)
-                foreach (Int32 character in controlled)
-                    Controlled.Add(character);
+            Controllers.Clear();
+            PeerCharacters.Clear();
+            if (controllers != null)
+                foreach (KeyValuePair<Int32, Int32> kv in controllers)
+                    Controllers[kv.Key] = kv.Value;
+            if (peerCharacters != null)
+                foreach (KeyValuePair<UInt64, Int32> kv in peerCharacters)
+                    PeerCharacters[kv.Key] = kv.Value;
         }
 
-        /// <summary>The lead and local characters in effect (online session, else the offline debug override).</summary>
-        private static Boolean TryGetRoles(out Int32 lead, out Int32 local, out HashSet<Int32> controlled)
+        private static readonly Dictionary<Int32, Int32> DebugControllers = new Dictionary<Int32, Int32>();
+
+        /// <summary>The lead and local characters and who controls whom (online session, else the offline debug override).</summary>
+        private static Boolean TryGetRoles(out Int32 lead, out Int32 local, out Dictionary<Int32, Int32> controllers)
         {
             if (_lead >= 0)
             {
                 lead = _lead;
                 local = _local;
-                controlled = Controlled;
+                controllers = Controllers;
                 return true;
             }
+            controllers = DebugControllers;
+            DebugControllers.Clear();
             lead = local = -1;
-            controlled = null;
             if (DebugLocalCharacter < 0)
                 return false;
             lead = PartyLeader();
             if (lead < 0)
                 return false;
             local = DebugLocalCharacter;
-            controlled = new HashSet<Int32> { lead, local };
+            DebugControllers[lead] = ControllerOther; // as if the host played the leader
+            DebugControllers[local] = ControllerThisPC;
             return true;
         }
 
@@ -122,6 +112,70 @@ namespace Memoria.Online.Bodies
         {
             PLAYER leader = FF9StateSystem.Common.FF9.party?.member[0];
             return leader != null ? (Int32)leader.info.slot_no : -1;
+        }
+
+        /// <summary>The character doing the player's actions: the script's choice, else this PC's player (else the lead).</summary>
+        private static Int32 ActingCharacter(Int32 lead, Int32 local)
+        {
+            Int32 asked = ReadScriptDictionary(KeyActor);
+            if (asked > 0)
+                return asked - 1;
+            return local >= 0 ? local : lead;
+        }
+
+        // ---- Entries -------------------------------------------------------------------------------------------
+
+        private sealed class Entry
+        {
+            public PosObj Po;
+            public CharacterBody Authored;
+            /// <summary>The model the script created it with (one of Authored's models).</summary>
+            public UInt16 AuthoredModel;
+            public CharacterBody Shown;
+            /// <summary>The meshes the script hid on the authored body (mesh numbers are per model).</summary>
+            public UInt32 AuthoredMeshFlags;
+            public Boolean Hidden;
+            public Boolean HideApplied;
+            public Renderer[] Renderers;
+            public GameObject RenderersOf;
+            public Boolean LoggedNoBody;
+
+            public Boolean IsSwapped => !ReferenceEquals(Shown, Authored);
+            public override String ToString() => $"entry {Po.sid} (uid {Po.uid}) {Authored.Name}{(IsSwapped ? $" as {Shown.Name}" : "")}{(Hidden ? ", hidden" : "")}";
+        }
+
+        private static readonly Dictionary<Obj, Entry> Entries = new Dictionary<Obj, Entry>();
+        private static readonly HashSet<Int32> HiddenGhostCharacters = new HashSet<Int32>();
+        private static readonly HashSet<Int32> LoggedUnmapped = new HashSet<Int32>();
+        private static FieldMap _fieldMap;
+        private static Int32 _lastScriptMode;
+
+        /// <summary>The body this entry should show now.</summary>
+        private static CharacterBody DesiredBody(Entry e, Boolean rolesActive, Int32 lead, Int32 acting)
+        {
+            Int32 bind = ReadScriptDictionary(KeyBindBase + e.Po.uid);
+            if (bind == BindAuthored)
+                return e.Authored;
+            if (bind > 0)
+                return BodyOrAuthored(e, bind - 1);
+            if (!rolesActive || Mode == SceneMode.Cast)
+                return e.Authored;
+            if (e.Authored.CharacterId == lead && acting >= 0 && acting != lead)
+                return BodyOrAuthored(e, acting);
+            return e.Authored;
+        }
+
+        private static CharacterBody BodyOrAuthored(Entry e, Int32 character)
+        {
+            CharacterBody body = CharacterBodies.ForCharacter(character);
+            if (body != null)
+                return body;
+            if (!e.LoggedNoBody)
+            {
+                e.LoggedNoBody = true;
+                Log.Message($"[Online] Bodies: no body for character {character} (add it to {CharacterBodies.File}); {e} keeps its own");
+            }
+            return e.Authored;
         }
 
         // ---- Hooks ---------------------------------------------------------------------------------------------
@@ -136,35 +190,18 @@ namespace Memoria.Online.Bodies
                     return;
                 CheckField(engine.fieldmap);
                 CharacterBody authored = modelIsExpression ? null : CharacterBodies.ForModel(po.model);
-                if (authored == null || !TryGetRoles(out Int32 lead, out Int32 local, out HashSet<Int32> controlled))
-                    return;
-                AuthoredModels.Add(authored.Model);
-                AuthoredModels.Add(po.model);
-                if (authored.CharacterId == lead)
+                if (authored == null)
+                    return; // not a character, or the script chose the model itself (an expression): never touched
+                Entry e = new Entry { Po = po, Authored = authored, AuthoredModel = po.model, Shown = authored };
+                Entries[po] = e;
+                Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out _);
+                CharacterBody desired = DesiredBody(e, rolesActive, lead, ActingCharacter(lead, local));
+                if (!ReferenceEquals(desired, authored))
                 {
-                    if (local < 0 || local == lead)
-                        return;
-                    CharacterBody to = CharacterBodies.ForCharacter(local);
-                    if (to == null)
-                    {
-                        Log.Warning($"[Online] Bodies: no body for character {local} (add it to {CharacterBodies.File}); entry {po.sid} keeps {authored.Name}");
-                        return;
-                    }
-                    Swap swap = new Swap { From = authored, To = to, AuthoredModel = po.model };
-                    if (Mode == SceneMode.Cast)
-                    {
-                        Suspended[po] = swap;
-                        return;
-                    }
-                    Swaps[po] = swap;
-                    po.model = to.Model;
-                    po.eye = (Int16)(-4 * to.HeadHeight);
-                    Log.Message($"[Online] Bodies: field {FF9StateSystem.Common.FF9.fldMapNo} entry {po.sid} (uid {po.uid}) is created as {to.Name} instead of {authored.Name}");
-                }
-                else if (controlled.Contains(authored.CharacterId))
-                {
-                    Hiddens[po] = new Hidden { Body = authored };
-                    Log.Message($"[Online] Bodies: field {FF9StateSystem.Common.FF9.fldMapNo} entry {po.sid} (uid {po.uid}) is {authored.Name}, played by a player: hidden in Player mode");
+                    e.Shown = desired;
+                    po.model = desired.Model;
+                    po.eye = (Int16)(-4 * desired.HeadHeight);
+                    Log.Message($"[Online] Bodies: field {FF9StateSystem.Common.FF9.fldMapNo} {e}: created as {desired.Name}");
                 }
             }
             catch (Exception err)
@@ -178,15 +215,15 @@ namespace Memoria.Online.Bodies
         {
             try
             {
-                if (!Swaps.TryGetValue(po, out Swap swap) || !(po is Actor actor) || actor.go == null)
+                if (!Entries.TryGetValue(po, out Entry e) || !e.IsSwapped || !(po is Actor actor) || actor.go == null)
                     return;
-                foreach (UInt16 anim in swap.To.Actions.Values)
+                foreach (UInt16 anim in e.Shown.Actions.Values)
                     AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue(anim));
-                actor.idle = swap.To.Get("Stand");
-                actor.walk = swap.To.Get("Walk");
-                actor.run = swap.To.Get("Run");
-                actor.turnl = swap.To.Get("TurnLeft");
-                actor.turnr = swap.To.Get("TurnRight");
+                actor.idle = e.Shown.Get("Stand");
+                actor.walk = e.Shown.Get("Walk");
+                actor.run = e.Shown.Get("Run");
+                actor.turnl = e.Shown.Get("TurnLeft");
+                actor.turnr = e.Shown.Get("TurnRight");
             }
             catch (Exception err)
             {
@@ -197,11 +234,11 @@ namespace Memoria.Online.Bodies
         /// <summary>[Online] hook, every animation opcode: the animation to use on this object.</summary>
         public static UInt16 Anim(Obj obj, UInt16 anim)
         {
-            if (obj == null || Swaps.Count == 0 || !Swaps.TryGetValue(obj, out Swap swap))
+            if (obj == null || Entries.Count == 0 || !Entries.TryGetValue(obj, out Entry e) || !e.IsSwapped)
                 return anim;
-            UInt16 result = BodyRebuild.Translate(swap.From, swap.To, anim);
-            if (result != anim && !swap.From.ActionOf.ContainsKey(anim) && LoggedUnmapped.Add(anim))
-                Log.Message($"[Online] Bodies: animation {anim} ({FF9DBAll.AnimationDB.GetValue(anim)}) isn't one of {swap.From.Name}'s actions; {swap.To.Name} plays Stand");
+            UInt16 result = BodyRebuild.Translate(e.Authored, e.Shown, anim);
+            if (result != anim && !e.Authored.ActionOf.ContainsKey(anim) && LoggedUnmapped.Add(anim))
+                Log.Message($"[Online] Bodies: animation {anim} ({FF9DBAll.AnimationDB.GetValue(anim)}) isn't one of {e.Authored.Name}'s actions; {e.Shown.Name} plays Stand");
             return result;
         }
 
@@ -211,12 +248,12 @@ namespace Memoria.Online.Bodies
         /// </summary>
         public static Boolean OnMeshVisibility(PosObj po, Int32 mesh, Boolean hide)
         {
-            if (po == null || !Swaps.TryGetValue(po, out Swap swap))
+            if (po == null || !Entries.TryGetValue(po, out Entry e) || !e.IsSwapped)
                 return false;
             if (hide)
-                swap.AuthoredMeshFlags |= 1u << mesh;
+                e.AuthoredMeshFlags |= 1u << mesh;
             else
-                swap.AuthoredMeshFlags &= ~(1u << mesh);
+                e.AuthoredMeshFlags &= ~(1u << mesh);
             return true;
         }
 
@@ -225,7 +262,9 @@ namespace Memoria.Online.Bodies
         {
             try
             {
-                if (_modeByScript || Mode != SceneMode.Player || target == null || ReferenceEquals(caller, target) || rawUid == 250 || !Swaps.ContainsKey(target))
+                if (_modeByScript || Mode != SceneMode.Player || target == null || ReferenceEquals(caller, target) || rawUid == 250)
+                    return;
+                if (!Entries.TryGetValue(target, out Entry e) || !e.IsSwapped || ReadScriptDictionary(KeyBindBase + e.Po.uid) != 0)
                     return;
                 EventEngine engine = PersistenSingleton<EventEngine>.Instance;
                 if (engine.gMode != 1 || engine.GetUserControl())
@@ -254,7 +293,7 @@ namespace Memoria.Online.Bodies
 
         // ---- Per frame -----------------------------------------------------------------------------------------
 
-        /// <summary>Every frame (OnlineSession.Update): field change, the script dictionary, the script's scene mode.</summary>
+        /// <summary>Every frame (OnlineSession.Update): field change, the script dictionary, bodies and visibility.</summary>
         public static void Update()
         {
             try
@@ -265,8 +304,6 @@ namespace Memoria.Online.Bodies
                 CheckField(engine.fieldmap);
                 CheckReplaced();
                 CheckDictionaryReloaded();
-                if (_pendingMode.HasValue && CanRebuildNow())
-                    SetMode(_pendingMode.Value, _pendingReason);
                 WriteScriptDictionary();
                 Int32 asked = ReadScriptDictionary(KeySceneMode);
                 if (asked != _lastScriptMode)
@@ -278,6 +315,8 @@ namespace Memoria.Online.Bodies
                     else if (Mode == SceneMode.Cast && engine.GetUserControl())
                         SetMode(SceneMode.Player, "the script went back to automatic");
                 }
+                ApplyBodies();
+                ComputeVisibility(engine);
             }
             catch (Exception err)
             {
@@ -285,109 +324,118 @@ namespace Memoria.Online.Bodies
             }
         }
 
-        /// <summary>Right before rendering: hidden entries stay hidden in Player mode, whatever the script shows (except the player itself).</summary>
+        /// <summary>Rebuilds every entry whose body should change (once the field is on screen: no menu, no pause).</summary>
+        private static void ApplyBodies()
+        {
+            if (Entries.Count == 0 || !CanRebuildNow())
+                return;
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out _);
+            Int32 acting = ActingCharacter(lead, local);
+            foreach (Entry e in Entries.Values)
+            {
+                if (!(e.Po is Actor actor) || actor.go == null)
+                    continue;
+                CharacterBody desired = DesiredBody(e, rolesActive, lead, acting);
+                if (ReferenceEquals(desired, e.Shown))
+                    continue;
+                Boolean toAuthored = ReferenceEquals(desired, e.Authored);
+                UInt32 meshFlags = actor.meshflags;
+                if (!BodyRebuild.Rebuild(actor, e.Shown, desired, toAuthored ? e.AuthoredModel : (UInt16)0))
+                    continue;
+                if (!e.IsSwapped)
+                    e.AuthoredMeshFlags = meshFlags; // leaving the authored body: keep what the script hid on it
+                actor.meshflags = toAuthored ? e.AuthoredMeshFlags : 0;
+                Log.Message($"[Online] Bodies: field {FF9StateSystem.Common.FF9.fldMapNo} entry {e.Po.sid} (uid {e.Po.uid}): {e.Shown.Name} → {desired.Name}");
+                e.Shown = desired;
+            }
+        }
+
+        /// <summary>Which entries and ghosts are hidden: each character once per PC, the scripts' show/hide first.</summary>
+        private static void ComputeVisibility(EventEngine engine)
+        {
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out Dictionary<Int32, Int32> controllers);
+            Obj player = engine.fieldmap?.playerController?.originalActor;
+            HashSet<Int32> shownByEntry = new HashSet<Int32>();
+            foreach (Entry e in Entries.Values)
+            {
+                Int32 character = e.Shown.CharacterId;
+                Int32 forced = ReadScriptDictionary(KeyVisibilityBase + character);
+                if (forced == 2)
+                    e.Hidden = true;
+                else if (forced == 1)
+                    e.Hidden = false;
+                else
+                    e.Hidden = rolesActive && Mode == SceneMode.Player && !e.IsSwapped
+                               && ReadScriptDictionary(KeyBindBase + e.Po.uid) == 0
+                               && e.Authored.CharacterId != lead          // the player entry shows the acting character
+                               && controllers.ContainsKey(character)       // a player's character: shown by them (or their ghost)
+                               && !ReferenceEquals(e.Po, player);          // the field made it the player (leader switch)
+                if (!e.Hidden)
+                    shownByEntry.Add(character);
+            }
+            HiddenGhostCharacters.Clear();
+            foreach (KeyValuePair<UInt64, Int32> kv in PeerCharacters)
+                if (shownByEntry.Contains(kv.Value) || ReadScriptDictionary(KeyVisibilityBase + kv.Value) == 2)
+                    HiddenGhostCharacters.Add(kv.Value);
+        }
+
+        /// <summary>Right before rendering: hidden entries stay hidden, whatever the script shows.</summary>
         public static void ApplyRender()
         {
-            if (Hiddens.Count == 0)
+            if (Entries.Count == 0)
                 return;
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             if (engine == null || engine.gMode != 1 || !ReferenceEquals(engine.fieldmap, _fieldMap))
                 return;
-            Obj player = engine.fieldmap?.playerController?.originalActor;
-            foreach (KeyValuePair<Obj, Hidden> kv in Hiddens)
+            foreach (Entry e in Entries.Values)
             {
-                PosObj po = kv.Key as PosObj;
-                if (po?.go == null)
+                PosObj po = e.Po;
+                if (po?.go == null || (!e.Hidden && !e.HideApplied))
                     continue;
-                Hidden hidden = kv.Value;
-                if (!ReferenceEquals(hidden.RenderersOf, po.go))
+                if (!ReferenceEquals(e.RenderersOf, po.go))
                 {
-                    hidden.Renderers = po.go.GetComponentsInChildren<Renderer>(true);
-                    hidden.RenderersOf = po.go;
+                    e.Renderers = po.go.GetComponentsInChildren<Renderer>(true);
+                    e.RenderersOf = po.go;
                 }
-                Boolean hide = Mode == SceneMode.Player && !ReferenceEquals(po, player);
-                if (hide)
+                if (e.Hidden)
                 {
-                    foreach (Renderer renderer in hidden.Renderers)
+                    foreach (Renderer renderer in e.Renderers)
                         if (renderer != null && renderer.enabled)
                             renderer.enabled = false;
-                    if (!hidden.Applied)
+                    if (!e.HideApplied)
                     {
                         ff9shadow.FF9ShadowOffField(po.uid);
-                        hidden.Applied = true;
+                        e.HideApplied = true;
                     }
                 }
-                else if (hidden.Applied)
+                else
                 {
-                    // It became the player (leader switch) or the scene became a Cast scene: show it again
-                    foreach (Renderer renderer in hidden.Renderers)
+                    foreach (Renderer renderer in e.Renderers)
                         if (renderer != null)
                             renderer.enabled = true;
                     if (!po.isShadowOff)
                         ff9shadow.FF9ShadowOnField(po.uid);
-                    hidden.Applied = false;
+                    e.HideApplied = false;
                 }
             }
         }
 
-        /// <summary>Ghosts: in a Cast scene, a ghost whose character is on screen (as authored) isn't drawn twice.</summary>
-        public static Boolean HidesGhost(UInt16 model)
+        /// <summary>Ghosts: hidden when their character is already shown by an entry, or the script hides it.</summary>
+        public static Boolean HidesGhost(UInt64 peer)
         {
-            return Mode == SceneMode.Cast && AuthoredModels.Contains(model);
+            return PeerCharacters.TryGetValue(peer, out Int32 character) && HiddenGhostCharacters.Contains(character);
         }
 
         // ---- Modes ---------------------------------------------------------------------------------------------
 
         private static void SetMode(SceneMode mode, String reason)
         {
-            if (!CanRebuildNow())
-            {
-                // A menu, a pause or a scene change is in progress: switch once the field is back on screen
-                _pendingMode = mode;
-                _pendingReason = reason;
-                return;
-            }
-            _pendingMode = null;
             if (mode == Mode)
                 return;
             Mode = mode;
-            Int32 rebuilt = 0;
-            if (mode == SceneMode.Cast)
-            {
-                foreach (KeyValuePair<Obj, Swap> kv in Swaps)
-                {
-                    if (kv.Key is Actor actor && actor.go != null && BodyRebuild.Rebuild(actor, kv.Value.To, kv.Value.From, kv.Value.AuthoredModel))
-                    {
-                        actor.meshflags = kv.Value.AuthoredMeshFlags;
-                        rebuilt++;
-                    }
-                    Suspended[kv.Key] = kv.Value;
-                }
-                Swaps.Clear();
-            }
-            else
-            {
-                foreach (KeyValuePair<Obj, Swap> kv in Suspended)
-                {
-                    if (kv.Key is Actor actor && actor.go != null)
-                    {
-                        UInt32 authoredFlags = actor.meshflags;
-                        if (actor.model == kv.Value.AuthoredModel && BodyRebuild.Rebuild(actor, kv.Value.From, kv.Value.To))
-                        {
-                            kv.Value.AuthoredMeshFlags = authoredFlags;
-                            actor.meshflags = 0;
-                            rebuilt++;
-                        }
-                        Swaps[kv.Key] = kv.Value;
-                    }
-                }
-                Suspended.Clear();
-            }
-            Log.Message($"[Online] Bodies: {mode} mode on field {FF9StateSystem.Common.FF9.fldMapNo} ({reason}); {rebuilt} bod{(rebuilt == 1 ? "y" : "ies")} rebuilt");
+            Log.Message($"[Online] Bodies: {mode} mode on field {FF9StateSystem.Common.FF9.fldMapNo} ({reason})");
+            ApplyBodies(); // at once (a function of the player's entry may be about to run), or as soon as the field is on screen
         }
-
-        private static SceneMode? _pendingMode;
-        private static String _pendingReason;
 
         private static Boolean CanRebuildNow()
         {
@@ -436,21 +484,17 @@ namespace Memoria.Online.Bodies
         {
             if (ReferenceEquals(fieldMap, _fieldMap))
                 return;
-            Swaps.Clear();
-            Suspended.Clear();
-            Hiddens.Clear();
-            AuthoredModels.Clear();
+            Entries.Clear();
+            HiddenGhostCharacters.Clear();
             LoggedUnmapped.Clear();
             _fieldMap = fieldMap;
             Mode = SceneMode.Player;
             _modeByScript = false;
             _lastScriptMode = 0;
-            _pendingMode = null;
-            if (ScriptDictionaryInUse())
-                SetScriptDictionary(KeySceneMode, 0);
+            ResetScriptRequests();
         }
 
-        // ---- Script dictionary (the convention) ----------------------------------------------------------------
+        // ---- Script dictionary ---------------------------------------------------------------------------------
 
         /// <summary>Only for mods that declare bodies or while online, so other players' saves get no extra data.</summary>
         private static Boolean ScriptDictionaryInUse() => CharacterBodies.FromFile > 0 || _lead >= 0;
@@ -459,30 +503,75 @@ namespace Memoria.Online.Bodies
         {
             if (!ScriptDictionaryInUse())
                 return;
-            TryGetRoles(out Int32 lead, out Int32 local, out _);
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out Dictionary<Int32, Int32> controllers);
             Int32 character = local >= 0 ? local : PartyLeader();
+            Dictionary<Int32, Int32> dict = GetScriptDictionary();
+            dict[KeyOnline] = _lead >= 0 ? 1 : 0;
+            dict[KeyLocalCharacter] = character;
+            dict[KeyActingCharacter] = rolesActive ? ActingCharacter(lead, local) : character;
             CharacterBody body = CharacterBodies.ForCharacter(character);
-            SetScriptDictionary(KeyOnline, _lead >= 0 ? 1 : 0);
-            SetScriptDictionary(KeyPlayerCharacter, character);
-            if (body == null)
-                return;
-            SetScriptDictionary(KeyPlayerModel, body.Model);
-            SetScriptDictionary(KeyPlayerHead, body.HeadHeight);
+            dict[KeyLocalModel] = body?.Model ?? 0;
+            dict[KeyLocalHead] = body?.HeadHeight ?? 0;
             for (Int32 i = 0; i < CharacterBodies.Required.Length; i++)
-                SetScriptDictionary(KeyFirstAnim + i, body.Get(CharacterBodies.Required[i]));
+                dict[KeyLocalFirstAnim + i] = body?.Get(CharacterBodies.Required[i]) ?? 0;
+
+            // Every character: who controls it, whether it's in this field, its body
+            HashSet<Int32> characters = new HashSet<Int32>(controllers.Keys);
+            foreach (CharacterBody b in CharacterBodies.All)
+                characters.Add(b.CharacterId);
+            foreach (Int32 c in characters)
+            {
+                if (c < 0 || c >= 100)
+                    continue;
+                Int32 baseKey = KeyCharacterBase + c * 100;
+                controllers.TryGetValue(c, out Int32 controller);
+                dict[baseKey + CharController] = controller;
+                dict[baseKey + CharPresent] = IsPresent(c, controller) ? 1 : 0;
+                CharacterBody cb = CharacterBodies.ForCharacter(c);
+                dict[baseKey + CharModel] = cb?.Model ?? 0;
+                dict[baseKey + CharHead] = cb?.HeadHeight ?? 0;
+                for (Int32 i = 0; i < CharacterBodies.Required.Length; i++)
+                    dict[baseKey + CharFirstAnim + i] = cb?.Get(CharacterBodies.Required[i]) ?? 0;
+            }
+        }
+
+        /// <summary>A character is in this field: this PC's player, or another player whose last state is on this field.</summary>
+        private static Boolean IsPresent(Int32 character, Int32 controller)
+        {
+            if (controller == ControllerThisPC)
+                return true;
+            foreach (KeyValuePair<UInt64, Int32> kv in PeerCharacters)
+                if (kv.Value == character && Ghosts.GhostManager.IsPeerOnLocalField(kv.Key))
+                    return true;
+            return false;
+        }
+
+        /// <summary>The scripts' requests (mode, scope, actor, bindings, visibility) last for one field.</summary>
+        private static void ResetScriptRequests()
+        {
+            if (!FF9StateSystem.EventState.gScriptDictionary.TryGetValue(ScriptDictionary, out Dictionary<Int32, Int32> dict))
+                return;
+            dict.Remove(KeySceneMode);
+            dict.Remove(KeySceneScope);
+            dict.Remove(KeyActor);
+            List<Int32> keys = new List<Int32>();
+            foreach (Int32 key in dict.Keys)
+                if (key >= KeyBindBase)
+                    keys.Add(key);
+            foreach (Int32 key in keys)
+                dict.Remove(key);
         }
 
         private static Dictionary<Int32, Int32> _dictionary;
 
-        /// <summary>A loaded game (or one saved before the dictionary was excluded from saves) brings its own: the scene mode request isn't carried over.</summary>
+        /// <summary>A loaded game (or one saved before the dictionary was excluded from saves) brings its own: the scripts' requests aren't carried over.</summary>
         private static void CheckDictionaryReloaded()
         {
             FF9StateSystem.EventState.gScriptDictionary.TryGetValue(ScriptDictionary, out Dictionary<Int32, Int32> dict);
             if (ReferenceEquals(dict, _dictionary))
                 return;
             _dictionary = dict;
-            if (dict != null && dict.ContainsKey(KeySceneMode))
-                dict[KeySceneMode] = 0;
+            ResetScriptRequests();
             _lastScriptMode = 0;
         }
 
@@ -494,29 +583,53 @@ namespace Memoria.Online.Bodies
             return dict;
         }
 
-        private static void SetScriptDictionary(Int32 key, Int32 value)
-        {
-            GetScriptDictionary()[key] = value;
-        }
-
         private static Int32 ReadScriptDictionary(Int32 key)
         {
             return FF9StateSystem.EventState.gScriptDictionary.TryGetValue(ScriptDictionary, out Dictionary<Int32, Int32> dict) && dict.TryGetValue(key, out Int32 value) ? value : 0;
         }
 
+        // ---- Debug ---------------------------------------------------------------------------------------------
+
         public static String Describe()
         {
-            TryGetRoles(out Int32 lead, out Int32 local, out _);
-            if (lead < 0)
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out _);
+            if (!rolesActive)
                 return "bodies: off";
-            return $"bodies: lead {CharacterBodies.ForCharacter(lead)?.Name ?? lead.ToString()}, you {CharacterBodies.ForCharacter(local)?.Name ?? local.ToString()}" +
-                   $"{(_lead < 0 ? " (debug)" : "")}, {Mode} mode{(_modeByScript ? " (script)" : "")}, {Swaps.Count} swapped, {Suspended.Count} suspended, {Hiddens.Count} hidden";
+            Int32 acting = ActingCharacter(lead, local);
+            Int32 scope = ReadScriptDictionary(KeySceneScope);
+            StringBuilder text = new StringBuilder();
+            text.Append($"bodies: lead {NameOf(lead)}, you {NameOf(local)}{(_lead < 0 ? " (debug)" : "")}, acting {NameOf(acting)}{(ReadScriptDictionary(KeyActor) > 0 ? " (script)" : "")}, ");
+            text.Append($"{Mode} mode{(_modeByScript ? " (script)" : "")}{(scope != 0 ? $", scope {(scope == 2 ? "shared" : "personal")}" : "")}");
+            foreach (Entry e in Entries.Values)
+                if (e.IsSwapped || e.Hidden)
+                    text.Append($"\n  {e}");
+            foreach (Int32 c in HiddenGhostCharacters)
+                text.Append($"\n  ghost of {NameOf(c)} hidden");
+            return text.ToString();
         }
 
-        /// <summary>Debug: switch between Player and Cast mode by hand (as if the script asked; 0 = back to automatic).</summary>
+        private static String NameOf(Int32 character) => CharacterBodies.ForCharacter(character)?.Name ?? (character < 0 ? "-" : $"character {character}");
+
+        /// <summary>Debug: switch between Player and Cast mode by hand (as if the script asked; then back to automatic).</summary>
         public static void DebugToggleMode()
         {
-            SetScriptDictionary(KeySceneMode, Mode == SceneMode.Player ? 2 : 0);
+            GetScriptDictionary()[KeySceneMode] = Mode == SceneMode.Player ? 2 : 0;
+        }
+
+        /// <summary>Debug: pretend another party member is acting (as if the script asked): automatic → each party member → automatic.</summary>
+        public static void DebugCycleActor()
+        {
+            List<Int32> party = new List<Int32>();
+            PLAYER[] members = FF9StateSystem.Common.FF9.party?.member;
+            if (members != null)
+                foreach (PLAYER member in members)
+                    if (member != null && CharacterBodies.ForCharacter((Int32)member.info.slot_no) != null)
+                        party.Add((Int32)member.info.slot_no);
+            Int32 current = ReadScriptDictionary(KeyActor) - 1;
+            Int32 index = party.IndexOf(current);
+            Int32 next = index + 1 < party.Count ? party[index + 1] : -1;
+            GetScriptDictionary()[KeyActor] = next + 1;
+            Log.Message($"[Online] Debug: acting character {(next < 0 ? "automatic" : NameOf(next))}");
         }
     }
 }

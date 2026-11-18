@@ -100,8 +100,18 @@ namespace Memoria.Online.Ghosts
             ghost.Push(state, nowMs);
         }
 
+        /// <summary>This peer's player is on the local field (its last state is for this field and recent).</summary>
+        public static Boolean IsPeerOnLocalField(UInt64 peer)
+        {
+            return Ghosts.TryGetValue(peer, out GhostActor ghost) && ghost.IsAlive
+                   && ghost.Newest.FieldId == (UInt16)FF9StateSystem.Common.FF9.fldMapNo && _lastNowMs - ghost.LastReceivedMs <= StaleMs;
+        }
+
+        private static Double _lastNowMs;
+
         public static void Update(Double nowMs, Single deltaTime)
         {
+            _lastNowMs = nowMs;
             ProcessPendingRemovals();
             if (!IsOnField(out FieldMap fieldMap))
             {
@@ -125,7 +135,7 @@ namespace Memoria.Online.Ghosts
                 }
                 Boolean stale = nowMs - ghost.LastReceivedMs > StaleMs;
                 Boolean otherField = ghost.Newest.FieldId != localField;
-                Boolean show = !stale && !otherField && !Bodies.BodySwap.HidesGhost(ghost.Newest.Model); // Cast scene: its character is on screen
+                Boolean show = !stale && !otherField && !Bodies.BodySwap.HidesGhost(kv.Key); // its character is already shown by an entry (or a script hides it)
                 if (show != ghost.Visible)
                 {
                     ghost.SetVisible(show);

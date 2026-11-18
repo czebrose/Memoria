@@ -306,6 +306,41 @@ Open:
   branch isn't swapped.
 - Take / Swap / Release / Follow (in-game control changes), planned with M4.
 
+## 11. One shared world: the scene toolkit (decided 2026-11-17)
+
+**Guiding principle:** everyone plays in the same world. If one player sees a character do something, anyone else
+looking at that character sees the same thing. One action has one actor; its body is the same on every PC.
+
+Section 9's "each PC shows its own character" was only right for a player doing their own thing on their own PC. The
+script's player (object 250) means **the character doing the player's actions**, not the person looking at the screen.
+
+| Situation | Who acts | Host sees | Guest (Duskly) sees |
+|---|---|---|---|
+| Exploring | each player | their Clove + Duskly's ghost | their Duskly + Clove's ghost |
+| Clove picks something up | Clove | Clove kneels (own entry) | Clove kneels (her ghost) |
+| Duskly picks something up | Duskly | Duskly kneels (his ghost) | Duskly kneels (own entry) |
+| Duskly starts a shared scene | Duskly | Duskly on the player entry | Duskly on the player entry |
+| A story beat written for the cast | the field's cast | Clove (Cast) | Clove (Cast) |
+
+Who is in a scene, and how, is decided **scene by scene by the scripts**. The engine provides the tools and defaults
+that reproduce today's behaviour; fields that don't use the tools keep working.
+
+Model:
+- **Characters are the units.** Each party character is controlled by one player, or by none (the host's game).
+- **One character, one body on screen, per PC.** A character is shown by an entry or by its player's ghost, never both.
+- **Entry bindings.** Any entry can be bound to any character: it takes that character's body, its animations are
+  translated by action. Default: the body it was written with; the player entry (written as the lead, Clove) shows
+  the acting character.
+- **The acting character** performs object 250's actions: by default the local player (their own actions on their
+  own PC); for a shared scene, the player who started it.
+
+Phase 1 (now, single PC): the bindings, the acting character, every tool below, debug keys to pretend another player
+acts. Phase 2 (M4/M5): shared scenes and their bindings sent by the host; personal actions run only on the acting
+player's PC (others watch the ghost); guest-started shared scenes; sorting out the real interactions one by one
+(guesses: pick up, doors, ladders are personal; story conversations are shared).
+
+The tools (Memoria script dictionary 9900) are listed in [script-toolkit.md](script-toolkit.md).
+
 ## Appendix: running the scanner
 
 ```

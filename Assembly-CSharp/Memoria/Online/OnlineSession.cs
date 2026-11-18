@@ -24,7 +24,8 @@ namespace Memoria.Online
     /// lobby), L leave, O status box. With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
     /// G shadow ghost (replays you ~1 s behind), P pause its feed 6 s, K network simulation (10% loss, 0-80 ms jitter),
     /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay, C pretend to be a guest playing
-    /// another character (offline test of the body swap; reloads the field), F7 switch Player / Cast scene mode.
+    /// another character (offline test of the body swap; reloads the field), F7 switch Player / Cast scene mode, F8
+    /// pretend another party member is acting (a shared scene they started).
     /// </summary>
     public sealed class OnlineSession : MonoBehaviour
     {
@@ -165,11 +166,22 @@ namespace Memoria.Online
         {
             if (_session == null || _session.Phase != SessionPhase.Playing || _session.HostCharacter < 0)
             {
-                BodySwap.SetSession(-1, -1, null);
+                BodySwap.SetSession(-1, -1, null, null);
                 return;
             }
-            List<Int32> controlled = new List<Int32>(_session.Assignments.Keys) { _session.HostCharacter };
-            BodySwap.SetSession(_session.HostCharacter, _session.MyCharacter, controlled);
+            // Who controls which character: the host its own, guests theirs (party members nobody picked are driven
+            // by the host's game, not played: controller none)
+            Dictionary<Int32, Int32> controllers = new Dictionary<Int32, Int32>();
+            Dictionary<UInt64, Int32> peerCharacters = new Dictionary<UInt64, Int32>();
+            controllers[_session.HostCharacter] = _lobby.IsHost ? BodySwap.ControllerThisPC : BodySwap.ControllerOther;
+            peerCharacters[_lobby.OwnerId] = _session.HostCharacter;
+            foreach (KeyValuePair<Int32, UInt64> kv in _session.Assignments)
+            {
+                controllers[kv.Key] = kv.Value == _lobby.LocalId ? BodySwap.ControllerThisPC : BodySwap.ControllerOther;
+                peerCharacters[kv.Value] = kv.Key;
+            }
+            peerCharacters.Remove(_lobby.LocalId);
+            BodySwap.SetSession(_session.HostCharacter, _session.MyCharacter, controllers, peerCharacters);
         }
 
         /// <summary>Debug: cycle "pretend to be a guest playing X" (offline), then reload the field so it's created again.</summary>
@@ -338,6 +350,10 @@ namespace Memoria.Online
             else if (Input.GetKeyDown(KeyCode.F7))
             {
                 BodySwap.DebugToggleMode();
+            }
+            else if (Input.GetKeyDown(KeyCode.F8))
+            {
+                BodySwap.DebugCycleActor();
             }
         }
 
@@ -743,7 +759,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
-                text.Append($"\n{BodySwap.Describe()}  C pretend to play another party member (reloads the field), F7 Player/Cast");
+                text.Append($"\n{BodySwap.Describe()}\n  C pretend to play another party member (reloads the field), F7 Player/Cast, F8 acting character");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }
             GUIContent content = new GUIContent(text.ToString());
