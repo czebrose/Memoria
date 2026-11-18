@@ -106,7 +106,11 @@ namespace Memoria.Online.Bodies
                 FF9StateSystem.Field.FF9Field.loc.map.shadowArray[actor.uid] = new FF9Shadow();
             fieldMap.AddFieldChar(go, position, rotation, isPlayer, actor, false);
             if (actor.fieldMapActorController != null)
+            {
                 actor.fieldMapActorController.radius = radius;
+                if (oldController != null)
+                    CopyControllerState(oldController, actor.fieldMapActorController);
+            }
             Obj carrier = attached ? engine.FindObjByUID(actor.attachTargetUid) : null;
             if (carrier?.go != null && actor.fieldMapActorController != null)
             {
@@ -161,6 +165,30 @@ namespace Memoria.Online.Bodies
             if (actor.isShadowOff)
                 ff9shadow.FF9ShadowOffField(actor.uid);
             return true;
+        }
+
+        /// <summary>
+        /// What the scripts set on the body's controller: pathing on/off (SetPathing: charFlags, e.g. walking off the
+        /// tram), active state, speed, walkmesh triangle/floor, and a walk in progress.
+        /// </summary>
+        private static void CopyControllerState(FieldMapActorController from, FieldMapActorController to)
+        {
+            to.charFlags = from.charFlags;
+            to.SetActive(from.IsActive());
+            to.speed = from.speed;
+            to.activeTri = from.activeTri;
+            to.activeFloor = from.activeFloor;
+            to.lastTri = from.lastTri;
+            to.lastFloor = from.lastFloor;
+            to.lastPos = from.lastPos;
+            to.moveVec = from.moveVec;
+            to.stillCount = from.stillCount;
+            to.stillPos = from.stillPos;
+            to.moveTarget = from.moveTarget;
+            to.hasTarget = from.hasTarget;
+            to.movePaths = from.movePaths != null ? new List<Vector3>(from.movePaths) : null;
+            to.totalPathCount = from.totalPathCount;
+            to.totalPathLengthSq = from.totalPathLengthSq;
         }
 
         /// <summary>An animation of <paramref name="from"/> → the same action of <paramref name="to"/> (unknown → Stand).</summary>
