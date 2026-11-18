@@ -152,6 +152,7 @@ public partial class EventEngine
                 Int32 scriptLevel = this.getv1(); // arg1: script level
                 Obj obj1 = this.GetObj1(); // arg2: entry of the function
                 Int32 tagNumber = this.geti(); // arg3: function
+                Memoria.Online.Bodies.BodySwap.OnRunScript(this.gExec, obj1, this.LastObjArg); // [Online] Step 2 / M3: Cast scenes
                 this.Request(obj1, scriptLevel, tagNumber, false);
                 if (mapNo == 900 && obj1 != null && scriptLevel == 2 && tagNumber == 11 && obj1.uid == 14)
                     this.fieldmap.walkMesh.BGI_triSetActive(62U, 1U); // Treno/Pub, function "Steiner_11"
@@ -162,6 +163,7 @@ public partial class EventEngine
                 Int32 scriptLevel = this.getv1(); // arg1: script level
                 Obj obj1 = this.GetObj1(); // arg2: entry of the function
                 Int32 tagNumber = this.geti(); // arg3: function
+                Memoria.Online.Bodies.BodySwap.OnRunScript(this.gExec, obj1, this.LastObjArg); // [Online] Step 2 / M3: Cast scenes
                 if (mapNo == 2803 && obj1 != null && tagNumber == 18 && obj1.uid == 20)
                 {
                     // Daguerreo/2nd Floor, LibrarianB, moving after Zidane says where is the book he searches
@@ -196,6 +198,7 @@ public partial class EventEngine
                 Int32 scriptLevel = this.getv1(); // arg1: script level
                 Obj obj1 = this.GetObj1(); // arg2: entry of the function
                 Int32 tagNumber = this.geti(); // arg3: function
+                Memoria.Online.Bodies.BodySwap.OnRunScript(this.gExec, obj1, this.LastObjArg); // [Online] Step 2 / M3: Cast scenes
                 if (this.gMode == 3)
                 {
                     if (tagNumber == 19)
@@ -1012,6 +1015,7 @@ public partial class EventEngine
             {
                 this._context.usercontrol = (Byte)1;
                 EIcon.SetHereIcon(1);
+                Memoria.Online.Bodies.BodySwap.OnControlEnabled(); // [Online] Step 2 / M3
                 PersistenSingleton<UIManager>.Instance.SetPlayerControlEnable(true, (System.Action)null);
                 this.ResetIdleTimer(0);
                 if (this.gMode == 3)
@@ -1033,7 +1037,7 @@ public partial class EventEngine
                 po.model = (UInt16)this.getv2(); // arg1: model
                 this.gExec.flags |= 1;
                 po.eye = (Int16)(-4 * this.getv1()); // arg2: head's height
-                Memoria.Online.Bodies.BodySwap.OnSetModel(po); // [Online] Step 2 / M3: the player entry may be created with the local player's body
+                Memoria.Online.Bodies.BodySwap.OnSetModel(po, (this.gArgFlag & 1) != 0); // [Online] Step 2 / M3: the player entry may be created with the local player's body
                 if (this.gMode == 1)
                 {
                     String str = FF9BattleDB.GEO.GetValue(po.model);
@@ -3473,9 +3477,13 @@ public partial class EventEngine
         return false;
     }
 
+    /// <summary>[Online] The raw object argument of the last GetObj1 (250 = "the player", or a UID).</summary>
+    public Int32 LastObjArg;
+
     private Obj GetObj1()
     {
-        return this.GetObjByUID(this.getv1(), GetObjectModIndex(this.gExec));
+        this.LastObjArg = this.getv1(); // [Online]
+        return this.GetObjByUID(this.LastObjArg, GetObjectModIndex(this.gExec));
     }
 
     private Obj GetObj3()

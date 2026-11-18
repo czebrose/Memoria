@@ -54,6 +54,14 @@ namespace Memoria.Online.Bodies
             "LadderOn", "LadderClimb", "LadderOffTop", "LadderOnDown", "LadderOffBottom",
         };
 
+        /// <summary>How many bodies the mod's file declares (0: no file).</summary>
+        public static Int32 FromFile
+        {
+            get { EnsureLoaded(); return _fromFile; }
+            private set { _fromFile = value; }
+        }
+        private static Int32 _fromFile;
+
         private static Dictionary<Int32, CharacterBody> _byCharacter;
         private static Dictionary<UInt16, CharacterBody> _byModel;
 
@@ -97,7 +105,7 @@ namespace Memoria.Online.Bodies
             AddBuiltIn(9, "Cinna", 107, 87, 470, 761, 105, 104, 107);
             AddBuiltIn(10, "Marcus", 109, 100, 474, 367, 365, 368, 364);
             AddBuiltIn(11, "Blank", 5467, 87, 462, 5225, 5222, 5223, 5224);
-            Int32 fromFile = LoadFile();
+            Int32 fromFile = FromFile = LoadFile();
             _byModel = new Dictionary<UInt16, CharacterBody>();
             foreach (CharacterBody body in _byCharacter.Values)
                 if (!_byModel.ContainsKey(body.Model))

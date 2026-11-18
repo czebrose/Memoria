@@ -125,7 +125,7 @@ namespace Memoria.Online.Ghosts
                 }
                 Boolean stale = nowMs - ghost.LastReceivedMs > StaleMs;
                 Boolean otherField = ghost.Newest.FieldId != localField;
-                Boolean show = !stale && !otherField;
+                Boolean show = !stale && !otherField && !Bodies.BodySwap.HidesGhost(ghost.Newest.Model); // Cast scene: its character is on screen
                 if (show != ghost.Visible)
                 {
                     ghost.SetVisible(show);
