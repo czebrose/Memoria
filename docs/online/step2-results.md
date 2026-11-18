@@ -3,7 +3,7 @@
 Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Online/` (`Session/` for this step).
 M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.md).
 
-**Status: M1 and M2 done and tested on two PCs; M3-M7 not started.**
+**Status: M1 and M2 done and tested on two PCs; M3 built and tested on one PC; M4-M7 not started.**
 
 ## Milestones
 
@@ -11,7 +11,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 |---|---|---|
 | M1 | Save transfer | **Done.** A save loaded from memory gives exactly the state of the game's own Continue; 83 KB blob, 16 KB chunks with CRC; guests' save files untouched (autosave blocked). |
 | M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
-| M3 | Each player plays their own character | investigated; 14 required actions listed; approach (B/C/D) to decide: [step2-m3-own-leader.md](step2-m3-own-leader.md) |
+| M3 | Each player plays their own character | **Built** (approach D + Player/Cast scene modes), tested on one PC with the offline debug body; two-PC test and the sequel's other bodies open: [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17) |
 | M4 | Host-authoritative party state | not started |
 | M5 | Tether and story flags | not started |
 | M6 | Host-only battles | not started |

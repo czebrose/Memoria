@@ -34,6 +34,11 @@ spikes; most of them are the difference between working code and a game that cra
    A destroyed behaviour left in `HonoBehaviorSystem`'s list makes its `Update` throw every frame, which skips every
    object updated after it (characters glitch). Do what `EventEngine.DisposeObj` does; see `GhostActor.Despawn`.
    → [spike-b-ghosts.md, B2](spike-b-ghosts.md#b2-spawning-outside-the-script--yes)
+   Two traps found in M3 (both freeze every character): don't destroy the object's **shadow** before the system has
+   disposed of the object (`FieldMapActor.HonoLateUpdate` throws on it), and don't `SetActive(false)` it either (the
+   disposal only finds behaviours on active objects). Hide it by its renderers; destroy the shadow once the object is
+   gone (`GhostManager.ProcessPendingRemovals`, `BodySwap.CheckReplaced`). Unity's own log
+   (`x64/FF9_Data/output_log.txt`) shows these exceptions; Memoria.log doesn't.
 
 7. **Mark engine edits; keep new code under `Memoria/Online/`.**
    Every change to existing game code carries a tag comment (`[Online]` from now on; `[Ghosts]` from spike B) so it
@@ -43,6 +48,13 @@ spikes; most of them are the difference between working code and a game that cra
    Ghosts register under these object UIDs (custom range 128-249, below the 250+ special references). The sequel's
    field scripts must not use them; if one does, that field shows fewer ghosts (logged).
    → [spike-b-ghosts.md, B2](spike-b-ghosts.md#b2-spawning-outside-the-script--yes)
+
+9. **Change a live object's body only through `BodyRebuild`.**
+   A field object's state is spread over the `Actor`, its `FieldMapActorController` (pathing, speed, floor, walk in
+   progress, attach position) and `FieldMapActor` (attachment), plus the per-UID `charArray` entry and the object's
+   name ("Player" is looked up by name). `BodyRebuild.Rebuild` carries all of it over and translates animations; mesh
+   numbers are per model, so mesh visibility is kept per body (`BodySwap.OnMeshVisibility`).
+   → [step2-m3-own-leader.md, section 10](step2-m3-own-leader.md#10-implementation-2026-11-17)
 
 Also:
 - **Logs:** use `SteamNative.Tag(steamId)` (`#1234`) in log lines; Steam names (`GetName`) are for the on-screen status

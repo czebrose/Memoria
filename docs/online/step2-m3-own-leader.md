@@ -1,8 +1,7 @@
-# Step 2 / M3: each player plays their own character — approaches
+# Step 2 / M3: each player plays their own character
 
-**Status: investigation, no code changes. For deciding together.** Replaces yesterday's first draft, which jumped
-to a cosmetic re-skin. This version starts from how the engine and the sequel's scripts actually work (measured, not
-guessed), lists what the solution has to hold up to in later steps, then compares approaches.
+**Status: approach D decided (2026-11-17) and built; tested on one PC (offline debug), not yet on two PCs.**
+Sections 1-9 are the investigation and the design; section 10 is what was built and how it was tested.
 
 ## 1. How the engine decides who the player is
 
@@ -154,7 +153,7 @@ their body entries just point at existing ids.
 Proposed data file (one per mod, read like `NewGameParty.txt`), `StreamingAssets/Data/Online/CharacterBodies.txt`:
 
     # character id: model, head height, then action = animation id
-    2  Clove:  model 202, head 72, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661,
+    2  Clove:  model 202, head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661,
                KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304,
                LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308
     11 B.Waltz: model ..., Stand ..., ...
@@ -240,6 +239,68 @@ Proposal:
 
 Technical note: how the values are encoded (reserved system-variable numbers like Memoria's 191, or a small new
 Memoria opcode) is decided when building it; either way Hades Workshop shows a number/name in the expression.
+
+## 10. Implementation (2026-11-17)
+
+Decided: **D** (engine body swap now, the convention available) with **Player / Cast scene modes**.
+
+Code (`Assembly-CSharp/Memoria/Online/Bodies/`):
+- `CharacterBodies`: built-in vanilla bodies (locomotion only) + the mod's `StreamingAssets/Data/Online/CharacterBodies.txt`
+  (template: [CharacterBodies.example.txt](CharacterBodies.example.txt); format: `id Name: Model m, Head h, Action anim, ...`).
+- `BodySwap`: roles (lead = the host's character, local = this PC's, controlled = every player's), creation-time swap
+  of entries authored with the lead's body, animation translation by action, hiding entries of characters players
+  control (Player mode), scene modes, the script dictionary, ghost hiding in Cast mode.
+- `BodyRebuild`: replaces a live object's body (mode switches): model as SetModel builds it, same UID and name,
+  controller state (pathing, speed, floor, walk in progress, exact position), attachment (AttachObject) and its
+  restore position, objects carried on its bones, lighting re-applied, animations translated; the old body is
+  disposed of by the behaviour system (rule 6).
+
+Engine hooks (`[Online]`): `SetModel` (before/after building), the 9 animation opcodes, `HideObject`/`ShowObject`,
+`RunScript*` (+ `GetObj1` records the raw object argument), `EnableMove`, and `JsonParser` (dictionary 9900 is never
+saved). `OnlineSession` sets the roles every frame from the lobby (`HostCharacter`, `MyCharacter`, assignments).
+
+Script dictionary **9900** (read in expressions, written by the script):
+
+| Key | Value |
+|---|---|
+| 0 | 1 while an online session is playing |
+| 1 | this PC's player character (offline: the party leader) |
+| 2, 3 | its model and head height (`SetModel( dict[9900][2], dict[9900][3] )`) |
+| 10-23 | its animation for each required action, in the order of section 7 (10 Stand ... 23 LadderOffBottom) |
+| 100 | scene mode asked by the script: 0 automatic, 1 Player, 2 Cast (reset to 0 on each field) |
+
+A `SetModel` whose model is an expression is the script's own choice: never swapped or hidden.
+
+Automatic mode: Cast when, with control off, another entry runs a function of the swapped entry by its UID (not 250);
+Player again on `EnableMove`. A switch waits until the field is on screen (no menu, no pause).
+
+Debug (`[Debug] Enabled = 1`, `OnlineDebug = 1`): **Ctrl+Shift+C** pretend to be a guest playing the next character
+(reloads the field), **Ctrl+Shift+F7** Player / Cast.
+
+Tests (single PC, offline debug, cargo ship and Lindblum):
+
+| Test | Result |
+|---|---|
+| Swap at creation, every vanilla body | each field's Clove entry created as the chosen body; Zidane kneels with his own animation (translated) |
+| Player and Cast by hand, repeatedly | one body, animating, moving, lit correctly (after the fixes below) |
+| Automatic Cast: Lindblum tram (`lb_ctm` to `lb_stn`) | Clove rides and walks off at the right height; Zidane is back on the platform with control |
+
+Fixed along the way: the old body not disposed of and every character freezing (shadow destroyed too early, then
+`SetActive(false)`: rule 6), lighting only applied on a floor change, the player's object renamed (it's found by
+name "Player"), Clove's hidden meshes hiding Zidane's head (mesh numbers are per model), the dictionary's Cast request
+coming back from a save, the rebuilt body losing pathing (walking off the tram) and its height.
+
+Open:
+- **Two-PC test** (a guest playing a character other than the host's).
+- **Bodies for the sequel's other characters** in `CharacterBodies.txt` (only Clove and a Zidane test body now), and
+  the character ids of the sequel's party (see `NewGameParty.txt`).
+- A switch is visible (a body pops); a short fade would hide it.
+- A hidden entry still collides; its meshes all reappear when shown again.
+- The automatic guess only knows "run a function by UID": scenes that direct the player only through 250 stay in
+  Player mode unless the script asks (key 100).
+- Model 9004 (`GEO_MAIN_F0_904`, used by the tram station's Clove entry in one branch) isn't a known body: that
+  branch isn't swapped.
+- Take / Swap / Release / Follow (in-game control changes), planned with M4.
 
 ## Appendix: running the scanner
 
