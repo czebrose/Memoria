@@ -873,6 +873,9 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
         return objList?.obj;
     }
 
+    /// <summary>[Online] The field's object list exists (false for a moment while a game loads).</summary>
+    public Boolean HasObjectList => this._context != null;
+
     public Obj FindObjByUID(Int32 uid)
     {
         ObjList objList = this._context.activeObj;

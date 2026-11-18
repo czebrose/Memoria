@@ -87,7 +87,7 @@ namespace Memoria.Online.Ghosts
                     IgnoredOtherField++;
                     return;
                 }
-                if (fieldMap.walkMesh == null || fieldMap.playerController == null)
+                if (fieldMap.walkMesh == null || fieldMap.playerController == null || !PersistenSingleton<EventEngine>.Instance.HasObjectList)
                     return; // still loading, or a field without a player: nowhere to stand yet
                 ghost = TrySpawn(peer, fieldMap, state);
                 if (ghost == null)

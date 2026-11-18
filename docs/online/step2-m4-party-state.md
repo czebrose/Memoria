@@ -101,3 +101,26 @@ first free character, else Follow.
 3. **Item arrange and card discard: blocked on guests** (one shared bag order, decided by the host; card discards
    are permanent and cards are only used by the host's card games).
 4. **Control changes are part of M4**, built after the state sync and the save block.
+
+## 7. Two-PC test of the sync (2026-11-18)
+
+Build `35cdd0d6` (host Clove, guest B.Waltz). An earlier run (same day) found two bugs, fixed in that commit: a guest's
+request crashed while being packed (copying a non-object JSON value returned null), and the guest lost every menu but
+Equip after resyncs (a reload while a menu was open kept its menu restrictions; resyncs now wait for the field and a
+load clears them).
+
+| # | Test | Result |
+|---|---|---|
+| S4 | guest equips B.Waltz, then swaps back | both requests applied by the host (`equip` + the two item counts), shown on the host |
+| S4 | host uses a Potion | guest's count and HP updated |
+| S4 | guest uses a Potion on Vayle (another player's character) | applied (`cur` + item -1): decision 1 works |
+| S4 | last Potion used on both PCs | no conflict happened (the two uses never landed in the same moment); the "rejected" path is untested |
+| S4b | guest equips Clove, changes the order, arranges items | blocked with a toast (seen on screen; blocks aren't logged) |
+| S7 | guest saves / host saves | guest blocked, host saved |
+| R | host resyncs (Ctrl+Shift+Y) three times in 5 s | each snapshot loaded and matched the host exactly; menus intact |
+
+Logs: no errors on the host. On the guest, one `NullReferenceException` in `GhostManager.TrySpawn` during a resync: a
+ghost state arrived after the snapshot was parsed but before the field's object list existed. Harmless (the ghost
+spawned on the next state); since fixed, ghosts wait for `EventEngine.HasObjectList`.
+
+Round trip guest → host → guest: under 10 ms on a direct connection.
