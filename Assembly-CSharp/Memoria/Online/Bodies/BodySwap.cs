@@ -350,33 +350,53 @@ namespace Memoria.Online.Bodies
             }
         }
 
-        /// <summary>Which entries and ghosts are hidden: each character once per PC, the scripts' show/hide first.</summary>
+        /// <summary>
+        /// Which entries and ghosts are hidden. A character the script hides is hidden everywhere; otherwise each
+        /// character is shown once per PC, in this order of priority:
+        ///  1. entries that show a character on purpose: the player entry (the acting character), the entry the field
+        ///     made the player, entries the script binds, and in Cast mode every entry (the field's cast);
+        ///  2. other players' ghosts on this field;
+        ///  3. the field's other entries (extras): hidden only if their character is already shown by 1 or 2;
+        ///     otherwise left as the field placed them.
+        /// A character the script shows (1) keeps its entries; its ghost is hidden if an entry shows it.
+        /// </summary>
         private static void ComputeVisibility(EventEngine engine)
         {
-            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out Dictionary<Int32, Int32> controllers);
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out _, out _);
             Obj player = engine.fieldmap?.playerController?.originalActor;
-            HashSet<Int32> shownByEntry = new HashSet<Int32>();
+            HashSet<Int32> shown = new HashSet<Int32>();
+            List<Entry> extras = new List<Entry>();
             foreach (Entry e in Entries.Values)
             {
                 Int32 character = e.Shown.CharacterId;
                 Int32 forced = ReadScriptDictionary(KeyVisibilityBase + character);
+                Boolean primary = !rolesActive || Mode == SceneMode.Cast || e.IsSwapped
+                                  || ReadScriptDictionary(KeyBindBase + e.Po.uid) != 0
+                                  || e.Authored.CharacterId == lead || ReferenceEquals(e.Po, player);
                 if (forced == 2)
                     e.Hidden = true;
-                else if (forced == 1)
+                else if (forced == 1 || primary)
                     e.Hidden = false;
                 else
-                    e.Hidden = rolesActive && Mode == SceneMode.Player && !e.IsSwapped
-                               && ReadScriptDictionary(KeyBindBase + e.Po.uid) == 0
-                               && e.Authored.CharacterId != lead          // the player entry shows the acting character
-                               && controllers.ContainsKey(character)       // a player's character: shown by them (or their ghost)
-                               && !ReferenceEquals(e.Po, player);          // the field made it the player (leader switch)
+                {
+                    extras.Add(e);
+                    continue;
+                }
                 if (!e.Hidden)
-                    shownByEntry.Add(character);
+                    shown.Add(character);
             }
             HiddenGhostCharacters.Clear();
             foreach (KeyValuePair<UInt64, Int32> kv in PeerCharacters)
-                if (shownByEntry.Contains(kv.Value) || ReadScriptDictionary(KeyVisibilityBase + kv.Value) == 2)
+            {
+                if (shown.Contains(kv.Value) || ReadScriptDictionary(KeyVisibilityBase + kv.Value) == 2)
                     HiddenGhostCharacters.Add(kv.Value);
+                else if (Ghosts.GhostManager.IsPeerOnLocalField(kv.Key))
+                    shown.Add(kv.Value);
+            }
+            // Extras of one character don't hide each other: a field may keep several (one per scene state) and
+            // shows the right one itself
+            foreach (Entry e in extras)
+                e.Hidden = shown.Contains(e.Shown.CharacterId);
         }
 
         /// <summary>Right before rendering: hidden entries stay hidden, whatever the script shows.</summary>

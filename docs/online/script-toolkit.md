@@ -42,9 +42,11 @@ LadderOn, LadderClimb, LadderOffTop, LadderOnDown, LadderOffBottom. A body witho
 | 20000 + uid | 0 automatic, c + 1, 255 | **Bind an entry** (by its object UID) to character c: it takes c's body and its animations are translated by action. 255: its own written body, whatever the defaults. |
 | 30000 + c | 0 automatic, 1 show, 2 hide | **Show or hide character c** in this scene, wherever it's shown (an entry or its player's ghost). |
 
-Defaults (automatic everywhere): the player entry (written with the lead's body, Clove) shows the acting character;
-an entry written as a character a player controls is hidden in Player mode (the character is already on screen as its
-player or its ghost); a ghost is hidden while an entry shows its character. A `SetModel` whose model is an expression
+Defaults (automatic everywhere): the player entry (written with the lead's body, Clove) shows the acting character.
+Each character is shown once per PC, in this order: entries shown on purpose (the player entry, bound entries, the
+whole cast in Cast mode), then other players' ghosts on this field, then the field's other entries (extras). An extra
+is hidden only if its character is already shown that way; a character the script doesn't mention is otherwise left
+where the field put it. A character the script hides (30000 + c = 2) is hidden everywhere. A `SetModel` whose model is an expression
 is the script's own choice: never swapped, bound or hidden.
 
 ## Examples
