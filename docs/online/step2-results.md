@@ -13,7 +13,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
 | M3 | Each player plays their own character | **Done** (approach D, Player/Cast modes, the scene toolkit; bodies for Clove, Duskly, B.Waltz; Vayle has no field model yet). Tested on one PC and on two PCs (2026-11-17): [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17), [script-toolkit.md](script-toolkit.md) |
 | M4 | Host-authoritative party state | **Sync done** (guest requests validated and applied by the host, full-state updates, guest blocks for save/arrange/card discard/order), tested on two PCs (2026-11-18): [step2-m4-party-state.md](step2-m4-party-state.md#7-two-pc-test-of-the-sync-2026-11-18). Control changes (Take/Swap/Release, watching) tested on two PCs (C1, 2026-11-18). |
-| M5 | Tether and story flags | not started; plan: [step2-m5-m7-plan.md](step2-m5-m7-plan.md) |
+| M5 | Free roaming, meeting resyncs, guests' changes to the host (revised from "tether") | not started; plan: [step2-m5-m7-plan.md](step2-m5-m7-plan.md) |
 | M6 | Host-only battles | not started |
 | M7 | Disconnects | not started |
 
