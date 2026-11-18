@@ -1,6 +1,6 @@
 # Step 2 / M4: host-authoritative party state — hook points and proposal
 
-**Status: proposal, for review before building (as the Step 2 brief asks).**
+**Status: proposal reviewed, decisions below (2026-11-17); building.**
 
 Brief (M4): guests change only their own character (equipment, abilities); shared inventory and gil are the host's to
 arbitrate (two players using the last Potion: first request wins, the second is rejected and the guest's menu shows
@@ -21,7 +21,7 @@ points). M5 isn't built yet, so until then a guest *can* interact; the protocol 
 | **Magic in the menu** | `AbilityUI` (cast: Cure, Life...) | caster's MP, target's HP/status | yes | **Cover** (caster = own character; any target) |
 | **Item use** | `ItemUI` (`FF9Item_Remove` + effect) | item count, target's HP/MP/status | yes | **Cover** (any target; the item is the contested resource) |
 | **Item arrange / sort** | `ItemUI` arrange | the order of the shared item list | yes | **Block on guests** (the host's order wins anyway) |
-| **Order / rows** | `MainMenuUI` Order (`party.member` swap, row) | party order, rows | yes | **Block on guests** (party order is the host's) |
+| **Order / rows** | `MainMenuUI` Order (`party.member` swap, row) | party order, rows | yes | **Order: block on guests** (the host's; position 1 is the host's character). **Row: own character only** (a property of the character, like equipment) |
 | **Card discard** | `CardUI.OnDiscardDialogKeyConfirm` | shared card collection | yes | **Block on guests** |
 | **Status / Config** | `MainMenuUI` | nothing shared (Config is per-PC) | yes | nothing to do |
 | **Shop buy / sell / synthesis** | `ShopUI` (`FF9Item_Add`, `party.gil -=`), `ff9sell` | items, gil | only by talking to a shop (host-only from M5) | **Host only**; the host's changes are broadcast |
@@ -92,11 +92,12 @@ first free character, else Follow.
 | S4b | guest tries to equip the host's character, change the order, discard a card | blocked or rejected, no change on either side |
 | C1 | guest Takes a free character, Swaps with the host, Releases, Follows | assignments, bodies and editing rights follow each change on both PCs |
 
-## 6. Questions before building
+## 6. Decisions (2026-11-17)
 
-1. **Item use and spells on other players' characters**: allowed (a guest heals the host's Clove with a Potion)?
-   Proposed: yes, HP/MP/status of any character, the item/MP being the cost.
-2. **Order and rows**: host only? Proposed: yes (a guest's own row too, for now).
-3. **Item arrange and card discard on guests**: blocked? Proposed: yes.
-4. **Control changes in M4**, or after it (they're independent of the state sync)? Proposed: build the sync and the
-   save block first, then the control changes, in the same milestone.
+1. **Items and spells on other characters: yes.** A guest can use an item from the shared bag, or cast a spell, on any
+   party member (e.g. a Potion on the host's Clove): HP/MP/status of any character may change, the item or the
+   caster's MP being the cost. Equipment and abilities stay own-character only.
+2. **Order: host only. Row: each player sets their own character's row.**
+3. **Item arrange and card discard: blocked on guests** (one shared bag order, decided by the host; card discards
+   are permanent and cards are only used by the host's card games).
+4. **Control changes are part of M4**, built after the state sync and the save block.

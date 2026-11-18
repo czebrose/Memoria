@@ -1,5 +1,6 @@
 using Memoria.Online.Bodies;
 using Memoria.Online.Ghosts;
+using Memoria.Online.Party;
 using Memoria.Online.Session;
 using Memoria.Prime;
 using SimpleJSON;
@@ -81,6 +82,7 @@ namespace Memoria.Online
         // Step 2 / M1: game snapshots (debug hotkeys S, T, R, B)
         private readonly BlobTransfer _blobs = new BlobTransfer();
         private SessionLobby _session; // Step 2: title-screen lobby, character pick, start
+        private PartySync _party; // Step 2 / M4: host-authoritative party state
         private Byte[] _snapshot;
         private String _snapshotSource;
         private JSONClass _verifyTree;
@@ -140,6 +142,7 @@ namespace Memoria.Online
                 }
                 UpdateBodyRoles();
                 BodySwap.Update();
+                _party?.Update(_session != null && _session.Phase == SessionPhase.Playing, now);
 
                 Boolean sending = (_transport != null && _transport.IsActive && _transport.Peers.Count > 0) || _shadow.Enabled;
                 if (sending && now >= _nextGhostSend)
@@ -224,6 +227,8 @@ namespace Memoria.Online
             _session = new SessionLobby(_lobby, _transport, _blobs, IsConnected);
             _blobs.Completed += OnSnapshotReceived;
             _blobs.Completed += _session.OnBlob;
+            _party = new PartySync(_blobs, () => _lobby.IsHost, () => _lobby.OwnerId, () => _transport.Peers, CharacterOfPeer, () => _session.MyCharacter);
+            _blobs.Completed += _party.OnBlob;
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
 
@@ -482,8 +487,18 @@ namespace Memoria.Online
                 _blobs.Send(peer, _snapshot);
         }
 
+        private Int32 CharacterOfPeer(UInt64 peer)
+        {
+            foreach (KeyValuePair<Int32, UInt64> kv in _session.Assignments)
+                if (kv.Value == peer)
+                    return kv.Key;
+            return peer == _lobby.OwnerId ? _session.HostCharacter : -1;
+        }
+
         private void OnSnapshotReceived(BlobTransfer.Received received)
         {
+            if (PartySync.IsPartyBlob(received.Blob))
+                return;
             _snapshot = received.Blob;
             _snapshotSource = $"received from {SteamNative.Tag(received.Peer)} in {received.Milliseconds:0} ms";
             Log.Message($"[Online] Snapshot {_snapshotSource} stored; Ctrl+Shift+R loads it");
@@ -766,6 +781,13 @@ namespace Memoria.Online
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
             _session?.OnGUI();
+            String toast = PartySync.CurrentToast;
+            if (toast != null)
+            {
+                GUIContent message = new GUIContent(toast);
+                Vector2 messageSize = _style.CalcSize(message);
+                GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, Screen.height * 0.75f, messageSize.x + 16, messageSize.y + 8), message, _style);
+            }
         }
 
         private Boolean IsConnected(UInt64 peer)

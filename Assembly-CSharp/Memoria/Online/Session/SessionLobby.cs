@@ -500,7 +500,7 @@ namespace Memoria.Online.Session
         /// <summary>A complete blob from the transfer layer.</summary>
         public void OnBlob(BlobTransfer.Received received)
         {
-            if (received.Peer != _lobby.OwnerId)
+            if (received.Peer != _lobby.OwnerId || Memoria.Online.Party.PartySync.IsPartyBlob(received.Blob))
                 return;
             _receivedBlobs[received.TransferId] = received.Blob;
             TryLoadPending();
