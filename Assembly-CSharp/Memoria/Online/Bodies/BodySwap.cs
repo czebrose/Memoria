@@ -392,29 +392,40 @@ namespace Memoria.Online.Bodies
             return ui != null && ui.State == UIManager.UIState.FieldHUD && !ui.IsPause && HonoBehaviorSystem.Exists;
         }
 
-        /// <summary>Debug: bodies replaced by a rebuild, checked a second later (they must be gone).</summary>
-        private static readonly List<KeyValuePair<GameObject, Single>> Replaced = new List<KeyValuePair<GameObject, Single>>();
-
-        internal static void TrackReplaced(GameObject old)
+        private sealed class ReplacedBody
         {
-            Replaced.Add(new KeyValuePair<GameObject, Single>(old, Time.realtimeSinceStartup + 1f));
+            public GameObject Go;
+            public FieldMapActor FieldActor;
+            public Single Since;
+        }
+
+        /// <summary>Bodies replaced by a rebuild, until the behaviour system has disposed of them (then their shadow goes).</summary>
+        private static readonly List<ReplacedBody> Replaced = new List<ReplacedBody>();
+
+        internal static void TrackReplaced(GameObject old, FieldMapActor fieldActor)
+        {
+            Replaced.Add(new ReplacedBody { Go = old, FieldActor = fieldActor, Since = Time.realtimeSinceStartup });
         }
 
         private static void CheckReplaced()
         {
             for (Int32 i = Replaced.Count - 1; i >= 0; i--)
             {
-                if (Time.realtimeSinceStartup < Replaced[i].Value)
-                    continue;
-                GameObject old = Replaced[i].Key;
-                if (old != null)
+                ReplacedBody body = Replaced[i];
+                if (body.Go == null) // Unity's == null: disposed of; its managed fields are still readable
                 {
-                    Log.Message($"[Online] Bodies: the replaced body '{old.name}' was still there a second later; destroyed");
-                    UnityEngine.Object.Destroy(old);
+                    if (!ReferenceEquals(body.FieldActor, null))
+                    {
+                        try { body.FieldActor.DestroySelfShadow(); }
+                        catch (Exception err) { Log.Warning($"[Online] Bodies: destroying a replaced body's shadow failed: {err.Message}"); }
+                    }
+                    Replaced.RemoveAt(i);
                 }
-                else
-                    Log.Message("[Online] Bodies: the replaced body is gone");
-                Replaced.RemoveAt(i);
+                else if (Time.realtimeSinceStartup - body.Since > 5f)
+                {
+                    Log.Warning($"[Online] Bodies: the replaced body '{body.Go.name}' is still there after 5 s (left hidden)");
+                    Replaced.RemoveAt(i);
+                }
             }
         }
 

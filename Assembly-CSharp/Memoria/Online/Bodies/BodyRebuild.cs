@@ -63,14 +63,17 @@ namespace Memoria.Online.Bodies
             for (Int32 i = 0; i < meshCount; i++)
                 actor.meshIsRendering[i] = true;
 
-            // Retire the old body (as EventEngine.DisposeObj does)
+            // Retire the old body (as EventEngine.DisposeObj does). RULE 6: its shadow is only hidden now; destroying
+            // it before the behaviour system has disposed of the body makes FieldMapActor.HonoLateUpdate throw, which
+            // stops that system's whole update (nothing moves) and the disposal never happens.
             oldGo.name += "_replaced";
-            BodySwap.TrackReplaced(oldGo);
+            BodySwap.TrackReplaced(oldGo, oldFieldActor);
             if (oldController != null)
                 oldController.UnregisterHonoBehavior(true);
             if (oldFieldActor != null)
             {
-                oldFieldActor.DestroySelfShadow();
+                if (oldFieldActor.shadowTran != null)
+                    oldFieldActor.shadowTran.gameObject.SetActive(false);
                 oldFieldActor.UnregisterHonoBehavior(true);
             }
             else
