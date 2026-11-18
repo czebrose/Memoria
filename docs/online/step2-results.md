@@ -57,13 +57,8 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
   initial party (Zidane); the sequel's first field builds the real one. A mod ships
   `StreamingAssets/Data/Online/NewGameParty.txt` (read through Memoria's asset manager, so it lives in the mod folder):
   one character per line, `characterId[, display name]`, first line = the host's character, `#` comments. Without the
-  file the lobby shows the game's initial party. Example for the sequel (IDs to confirm):
-
-      # New Game party for online play: characterId, name. First = the host's (Clove).
-      2, Clove
-      11, B.Waltz
-      10, Blank
-      1, Duskly
+  file the lobby shows the game's initial party. The sequel's (IDs from its CharacterParameters.csv and
+  DictionaryPatch.txt): [NewGameParty.example.txt](NewGameParty.example.txt) (2 Clove, 1 Duskly, 3 Vayle, 11 B.Waltz).
 
 - **Picks are by character, not party slot** (lobby data `assign` = `characterId:accountId`), so they survive party
   reordering and the story changing the party.

@@ -13,7 +13,10 @@ namespace Memoria.Online.Bodies
     {
         public Int32 CharacterId;
         public String Name;
+        /// <summary>The model this body is created with.</summary>
         public UInt16 Model;
+        /// <summary>Other models the field scripts use for this character (recognised, never created).</summary>
+        public readonly List<UInt16> OtherModels = new List<UInt16>();
         public Byte HeadHeight; // SetModel's 2nd argument
         public readonly Dictionary<String, UInt16> Actions = new Dictionary<String, UInt16>(StringComparer.OrdinalIgnoreCase);
         /// <summary>Animation id → action name (the first action declared with that id).</summary>
@@ -101,15 +104,20 @@ namespace Memoria.Online.Bodies
             AddBuiltIn(5, "Quina", 273, 92, 3228, 3237, 3230, 3235, 3227);
             AddBuiltIn(6, "Eiko", 443, 63, 7503, 7518, 7506, 7516, 7514);
             AddBuiltIn(7, "Amarant", 509, 122, 8307, 8316, 8312, 8310, 8314);
-            AddBuiltIn(8, "Beatrix", 204, 100, 2978, 2975, 2981, 2980, 2974);
-            AddBuiltIn(9, "Cinna", 107, 87, 470, 761, 105, 104, 107);
-            AddBuiltIn(10, "Marcus", 109, 100, 474, 367, 365, 368, 364);
-            AddBuiltIn(11, "Blank", 5467, 87, 462, 5225, 5222, 5223, 5224);
+            AddBuiltIn(8, "Cinna", 107, 87, 470, 761, 105, 104, 107);
+            AddBuiltIn(9, "Marcus", 109, 100, 474, 367, 365, 368, 364);
+            AddBuiltIn(10, "Blank", 5467, 87, 462, 5225, 5222, 5223, 5224);
+            AddBuiltIn(11, "Beatrix", 204, 100, 2978, 2975, 2981, 2980, 2974);
             Int32 fromFile = FromFile = LoadFile();
             _byModel = new Dictionary<UInt16, CharacterBody>();
             foreach (CharacterBody body in _byCharacter.Values)
+            {
                 if (!_byModel.ContainsKey(body.Model))
                     _byModel[body.Model] = body;
+                foreach (UInt16 model in body.OtherModels)
+                    if (!_byModel.ContainsKey(model))
+                        _byModel[model] = body;
+            }
             Log.Message($"[Online] Character bodies: {_byCharacter.Count} ({fromFile} from {File})");
         }
 
@@ -188,7 +196,10 @@ namespace Memoria.Online.Bodies
                 }
                 if (String.Equals(kv[0], "Model", StringComparison.OrdinalIgnoreCase))
                 {
-                    body.Model = value;
+                    if (hasModel)
+                        body.OtherModels.Add(value); // "Model 9004, Model 202": the first is the one created
+                    else
+                        body.Model = value;
                     hasModel = true;
                 }
                 else if (String.Equals(kv[0], "Head", StringComparison.OrdinalIgnoreCase))

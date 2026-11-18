@@ -1,0 +1,7 @@
+# Online play: the party offered in the lobby for New Game (Memoria Step 2).
+# Install as <mod folder>/StreamingAssets/Data/Online/NewGameParty.txt
+# One character per line: characterId[, name]. The first line is the host's character. Ids: CharacterParameters.csv.
+2, Clove
+1, Duskly
+3, Vayle
+11, B.Waltz

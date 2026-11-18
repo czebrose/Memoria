@@ -13,14 +13,17 @@ namespace Memoria.Online.Bodies
     /// </summary>
     internal static class BodyRebuild
     {
-        public static Boolean Rebuild(Actor actor, CharacterBody from, CharacterBody to)
+        /// <param name="model">The model to create (one of <paramref name="to"/>'s); 0 = its main one.</param>
+        public static Boolean Rebuild(Actor actor, CharacterBody from, CharacterBody to, UInt16 model = 0)
         {
+            if (model == 0)
+                model = to.Model;
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             FieldMap fieldMap = engine?.fieldmap;
             GameObject oldGo = actor?.go;
             if (fieldMap == null || oldGo == null || engine.gMode != 1)
                 return false;
-            if (!FF9BattleDB.GEO.TryGetValue(to.Model, out String modelName))
+            if (!FF9BattleDB.GEO.TryGetValue(model, out String modelName))
             {
                 Log.Warning($"[Online] Bodies: no geometry for model {to.Model} ({to.Name})");
                 return false;
@@ -92,7 +95,7 @@ namespace Memoria.Online.Bodies
                 renderer.enabled = false;
 
             // Register the new one under the same UID (as SetModel does), keeping the field's per-character state
-            actor.model = to.Model;
+            actor.model = model;
             actor.eye = (Int16)(-4 * to.HeadHeight);
             actor.go = go;
             go.name = oldName;

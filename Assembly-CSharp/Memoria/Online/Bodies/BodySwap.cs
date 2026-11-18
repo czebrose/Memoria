@@ -60,6 +60,8 @@ namespace Memoria.Online.Bodies
         private sealed class Swap
         {
             public CharacterBody From, To;
+            /// <summary>The model the script created the entry with (one of From's models), restored in Cast mode.</summary>
+            public UInt16 AuthoredModel;
             /// <summary>The meshes the script hid on the authored body (mesh numbers are per model).</summary>
             public UInt32 AuthoredMeshFlags;
         }
@@ -137,6 +139,7 @@ namespace Memoria.Online.Bodies
                 if (authored == null || !TryGetRoles(out Int32 lead, out Int32 local, out HashSet<Int32> controlled))
                     return;
                 AuthoredModels.Add(authored.Model);
+                AuthoredModels.Add(po.model);
                 if (authored.CharacterId == lead)
                 {
                     if (local < 0 || local == lead)
@@ -147,7 +150,7 @@ namespace Memoria.Online.Bodies
                         Log.Warning($"[Online] Bodies: no body for character {local} (add it to {CharacterBodies.File}); entry {po.sid} keeps {authored.Name}");
                         return;
                     }
-                    Swap swap = new Swap { From = authored, To = to };
+                    Swap swap = new Swap { From = authored, To = to, AuthoredModel = po.model };
                     if (Mode == SceneMode.Cast)
                     {
                         Suspended[po] = swap;
@@ -353,7 +356,7 @@ namespace Memoria.Online.Bodies
             {
                 foreach (KeyValuePair<Obj, Swap> kv in Swaps)
                 {
-                    if (kv.Key is Actor actor && actor.go != null && BodyRebuild.Rebuild(actor, kv.Value.To, kv.Value.From))
+                    if (kv.Key is Actor actor && actor.go != null && BodyRebuild.Rebuild(actor, kv.Value.To, kv.Value.From, kv.Value.AuthoredModel))
                     {
                         actor.meshflags = kv.Value.AuthoredMeshFlags;
                         rebuilt++;
@@ -369,7 +372,7 @@ namespace Memoria.Online.Bodies
                     if (kv.Key is Actor actor && actor.go != null)
                     {
                         UInt32 authoredFlags = actor.meshflags;
-                        if (actor.model == kv.Value.From.Model && BodyRebuild.Rebuild(actor, kv.Value.From, kv.Value.To))
+                        if (actor.model == kv.Value.AuthoredModel && BodyRebuild.Rebuild(actor, kv.Value.From, kv.Value.To))
                         {
                             kv.Value.AuthoredMeshFlags = authoredFlags;
                             actor.meshflags = 0;

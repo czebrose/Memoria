@@ -2,8 +2,11 @@
 # Install as <mod folder>/StreamingAssets/Data/Online/CharacterBodies.txt
 #
 # One character per line:   characterId Name: Model m, Head h, Action animId, Action animId, ...
-#   characterId  the party character id (0 Zidane, 1 Vivi, 2 Garnet, 3 Steiner, ... 11 Blank)
-#   Model, Head  SetModel's two arguments (model id, head height)
+#   characterId  the party character id (CharacterParameters.csv: 0 Zidane, 1 Vivi, 2 Garnet, 3 Steiner, 4 Freya,
+#                5 Quina, 6 Eiko, 7 Amarant, 8 Cinna, 9 Marcus, 10 Blank, 11 Beatrix in vanilla)
+#   Model        the model the body is created with; more "Model" entries = other models the field scripts use for
+#                this character (recognised as this character, never created)
+#   Head         SetModel's head height (dialog box height)
 #   Actions      every character should have these 14 (missing ones play Stand):
 #                Stand, Walk, Run, TurnLeft, TurnRight,
 #                KneelDown, Kneeling, KneelUp, OpenDoor,
@@ -15,7 +18,22 @@
 # Clove) is created with the guest's body, and each of Clove's animations is replaced by the guest's animation
 # for the same action.
 
-2 Clove: Model 202, Head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661, KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304, LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308, Stance 60311, StanceStart 60310
+# The sequel's party (CharacterDefaultName in DictionaryPatch.txt). Bodies as the mod's field scripts draw them today.
+
+# Clove: model 9004 (GEO_MAIN_F0_904) or 202 (GEO_MAIN_F3_GRN), chosen by a branch in her entries; Garnet's skeleton.
+2 Clove: Model 9004, Model 202, Head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661, KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304, LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308, Stance 60311, StanceStart 60310
+
+# Duskly: drawn with vanilla Vivi's field model on the fields' Vivi entry (no field model of their own yet: 9002 is
+# battle only). Vivi has all 14 actions.
+1 Duskly: Model 8, Head 61, Stand 148, Walk 571, Run 419, TurnLeft 917, TurnRight 918, KneelDown 7019, Kneeling 7023, KneelUp 7021, OpenDoor 2157, LadderOn 10280, LadderClimb 10276, LadderOffTop 10278, LadderOnDown 10436, LadderOffBottom 10434
+
+# Vayle: drawn with vanilla Steiner's field model on the fields' Steiner entry (9003 is battle only). Steiner has
+# no kneel or door animations: those play Stand.
+3 Vayle: Model 5489, Model 658, Head 104, Stand 2001, Walk 1996, Run 2005, TurnLeft 1986, TurnRight 2010, LadderOn 10744, LadderClimb 10740, LadderOffTop 10742, LadderOnDown 480, LadderOffBottom 406
+
+# B.Waltz: his battle model (278, GEO_MON_B3_115) with the mod's field animations (FSTAND/FWALK/FRUN). No field
+# script uses it yet: head height is a guess; turns, kneel, door and ladders play Stand.
+11 B.Waltz: Model 278, Head 100, Stand 60279, Walk 60280, Run 60281
 
 # Test body: vanilla Zidane has all 14 actions.
 0 Zidane: Model 98, Head 93, Stand 200, Walk 25, Run 38, TurnLeft 40, TurnRight 41, KneelDown 2607, Kneeling 2605, KneelUp 2591, OpenDoor 1071, LadderOn 10687, LadderClimb 10539, LadderOffTop 10685, LadderOnDown 11455, LadderOffBottom 11453
