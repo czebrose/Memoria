@@ -127,6 +127,8 @@ public class CardUI : UIScene
         {
             case 1: // Confirm
             {
+                if (Memoria.Online.Party.PartySync.BlockGuestAction("Only the host can discard cards.")) // [Online] shared collection
+                    goto case 2;
                 if (count[deleteCardId] < 1)
                     goto case 2;
                 DiscardSelectedCard();

@@ -171,6 +171,8 @@ public class SaveLoadUI : UIScene
             else if (ButtonGroupState.ActiveGroup == SaveLoadUI.FileGroupButton)
             {
                 this.currentFile = go.GetComponent<ScrollItemKeyNavigation>().ID;
+                if (this.type == SaveLoadUI.SerializeType.Save && Memoria.Online.Party.PartySync.BlockGuestSave()) // [Online] only the host saves
+                    return true;
                 if (this.type == SaveLoadUI.SerializeType.Save)
                 {
                     FF9Sfx.FF9SFX_Play(103);

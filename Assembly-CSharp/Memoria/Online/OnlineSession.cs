@@ -360,6 +360,10 @@ namespace Memoria.Online
             {
                 BodySwap.DebugCycleActor();
             }
+            else if (Input.GetKeyDown(KeyCode.Y))
+            {
+                _session?.SendResync("asked by the host"); // M4: the full-state fallback
+            }
         }
 
         // ---- Step 2 / M1: snapshots (debug) ---------------------------------------------------------------------
@@ -774,6 +778,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
+                text.Append($"\n{_party?.Describe()}  Y resync guests (host)");
                 text.Append($"\n{BodySwap.Describe()}\n  C pretend to play another party member (reloads the field), F7 Player/Cast, F8 acting character");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }

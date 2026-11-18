@@ -602,6 +602,8 @@ public class MainMenuUI : UIScene
 
     private void ToggleOrder()
     {
+        if (Memoria.Online.Party.PartySync.BlockOrderChange(FF9StateSystem.Common.FF9.party.member[this.currentCharacterIndex], this.currentCharacterIndex == this.currentOrder)) // [Online] order: host; row: own character
+            return;
         if (this.currentCharacterIndex == this.currentOrder)
         {
             if (FF9StateSystem.Common.FF9.party.member[this.currentCharacterIndex] != null)

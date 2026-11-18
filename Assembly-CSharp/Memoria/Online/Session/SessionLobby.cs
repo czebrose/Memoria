@@ -410,8 +410,11 @@ namespace Memoria.Online.Session
                 Log.Warning($"[Online] Session: the host's own load failed: {error}");
         }
 
-        private void SendResync()
+        /// <summary>Sends the host's whole game to every guest (after New Game; M4: on demand, the full fallback).</summary>
+        public void SendResync(String why = "New Game")
         {
+            if (!IsHost || Phase != SessionPhase.Playing)
+                return;
             _awaitingNewGameResync = false;
             Byte[] blob = GameSnapshot.CaptureCurrent(out _);
             UInt32 crc = GameSnapshot.Crc32(blob, 0, blob.Length);
@@ -420,7 +423,7 @@ namespace Memoria.Online.Session
                 UInt32 transferId = _blobs.Send(peer, blob);
                 SendControl(peer, MsgResync, 0, transferId, crc);
             }
-            Log.Message($"[Online] Session: New Game resync sent from field {FF9StateSystem.Common.FF9.fldMapNo} ({blob.Length} bytes)");
+            Log.Message($"[Online] Session: resync ({why}) sent from field {FF9StateSystem.Common.FF9.fldMapNo} ({blob.Length} bytes)");
         }
 
         // ---- Guest ------------------------------------------------------------------------------------------------
@@ -491,7 +494,7 @@ namespace Memoria.Online.Session
             else
             {
                 _pending = new PendingLoad { TransferId = transferId, Crc = crc, IsResync = true };
-                Log.Message("[Online] Session: the host is resyncing everyone (after New Game)");
+                Log.Message("[Online] Session: the host is resyncing everyone (its whole game)");
             }
             TryLoadPending();
             return true;
@@ -528,7 +531,7 @@ namespace Memoria.Online.Session
             }
             Phase = SessionPhase.Playing;
             Status = String.Empty;
-            Log.Message($"[Online] Session: loaded the host's game{(pending.IsResync ? " (New Game resync)" : "")}");
+            Log.Message($"[Online] Session: loaded the host's game{(pending.IsResync ? " (resync)" : "")}");
         }
 
         // ---- Shared ---------------------------------------------------------------------------------------------
