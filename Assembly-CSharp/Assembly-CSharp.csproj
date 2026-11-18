@@ -361,6 +361,8 @@
     <Compile Include="Global\SPS\CommonSPSSystem.cs" />
     <Compile Include="Global\SPS\SHPEffect.cs" />
     <Compile Include="Memoria\Application\ControllerWatcher.cs" />
+    <Compile Include="Memoria\Online\Bodies\BodySwap.cs" />
+    <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
     <Compile Include="Memoria\Online\SteamCallbacks.cs" />
     <Compile Include="Memoria\Online\SteamLobby.cs" />

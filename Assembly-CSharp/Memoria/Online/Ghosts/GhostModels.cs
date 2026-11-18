@@ -61,6 +61,13 @@ namespace Memoria.Online.Ghosts
             return new GhostModel($"model {state.Model}", state.Model, 90, state.Anim, state.Anim, state.Anim, 20);
         }
 
+        /// <summary>A ghost model from the character bodies (Data/Online/CharacterBodies.txt: the mod's characters), or null.</summary>
+        public static GhostModel FromCharacterBody(UInt16 model)
+        {
+            Bodies.CharacterBody body = Bodies.CharacterBodies.ForModel(model);
+            return body == null ? null : new GhostModel(body.Name, body.Model, body.HeadHeight, body.Get("Stand"), body.Get("Walk"), body.Get("Run"), 20);
+        }
+
         public static GhostModel Find(UInt16 model)
         {
             return ByModel.TryGetValue(model, out GhostModel result) ? result : null;

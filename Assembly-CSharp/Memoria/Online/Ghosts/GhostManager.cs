@@ -180,7 +180,7 @@ namespace Memoria.Online.Ghosts
                 Log.Warning($"[Ghosts] No free UID in {FirstUid}-{FirstUid + MaxGhosts - 1} on field {state.FieldId} (used by the field script?); ghost {peer:X} not shown");
                 return null;
             }
-            GhostModel model = ModelOverride ?? GhostModels.Find(state.Model) ?? GhostModels.FromState(state);
+            GhostModel model = ModelOverride ?? GhostModels.Find(state.Model) ?? GhostModels.FromCharacterBody(state.Model) ?? GhostModels.FromState(state);
             try
             {
                 GhostActor ghost = GhostActor.Spawn(peer, uid, model, fieldMap, state);

@@ -133,7 +133,8 @@ namespace Memoria.Online.Session
             }
         }
 
-        private Int32 HostCharacter => Party.Count > 0 ? Party[0].CharacterId : -1;
+        /// <summary>The host's character (CharacterId), or -1.</summary>
+        public Int32 HostCharacter => Party.Count > 0 ? Party[0].CharacterId : -1;
 
         private static Boolean AtTitle => PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.Title;
 

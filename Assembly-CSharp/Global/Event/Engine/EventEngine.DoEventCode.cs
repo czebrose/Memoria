@@ -1033,6 +1033,7 @@ public partial class EventEngine
                 po.model = (UInt16)this.getv2(); // arg1: model
                 this.gExec.flags |= 1;
                 po.eye = (Int16)(-4 * this.getv1()); // arg2: head's height
+                Memoria.Online.Bodies.BodySwap.OnSetModel(po); // [Online] Step 2 / M3: the player entry may be created with the local player's body
                 if (this.gMode == 1)
                 {
                     String str = FF9BattleDB.GEO.GetValue(po.model);
@@ -1069,6 +1070,7 @@ public partial class EventEngine
                         FF9StateSystem.Field.FF9Field.loc.map.shadowArray.Add(po.uid, new FF9Shadow());
                         po.go.name = "obj" + po.uid;
                         this.fieldmap.AddFieldChar(po.go, po.posField, po.rotField, false, (Actor)po, false);
+                        Memoria.Online.Bodies.BodySwap.AfterSetModel(po); // [Online]
                     }
                 }
                 else if (this.gMode == 3)
@@ -1080,7 +1082,7 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.AIDLE: // 0x33, "SetStandAnimation", "Change the standing animation"
             {
-                actor.idle = (UInt16)this.getv2(); // arg1: animation ID
+                actor.idle = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 if (mapNo == 112 && po.model == 223)
                 {
                     if ((actor.idle == 8239 && actor.uid == 3) || (actor.idle == 1870 && actor.uid == 6)) // Remove SetStandAnimation( 8239 ) for Dante's glass in Alexandria/Pub
@@ -1125,13 +1127,13 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.AWALK: // 0x34, "SetWalkAnimation", "Change the walking animation"
             {
-                actor.walk = (UInt16)this.getv2(); // arg1: animation ID
+                actor.walk = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.walk));
                 return 0;
             }
             case EBin.event_code_binary.ARUN: // 0x34, "SetWalkAnimation", "Change the walking animation"
             {
-                actor.run = (UInt16)this.getv2(); // arg1: animation ID
+                actor.run = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.run));
                 return 0;
             }
@@ -1273,7 +1275,7 @@ public partial class EventEngine
             {
                 if (eventCodeBinary == EBin.event_code_binary.DANIM)
                     actor = (Actor)this.GetObj1(); // arg1: object's entry
-                Int32 anim = (UInt16)this.getv2(); // arg1/2: animation ID
+                Int32 anim = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1/2: animation ID [Online] body swap
 
                 if (mapNo == 103 && po.model == 5492) // Jump rope from little girls at Alexandria (before Alexandria destruction)
                 {
@@ -1617,7 +1619,7 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.ASLEEP: // 0x52, "SetInactiveAnimation", "Change the animation played when inactive for a long time. The inaction time required is:First Time = 200 + 4 * Random[0, 255], Subsequent Times = 200 + 2 * Random[0, 255]"
             {
-                actor.sleep = (UInt16)this.getv2(); // arg1: animation ID
+                actor.sleep = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.sleep));
                 return 0;
             }
@@ -1906,13 +1908,13 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.ATURNL: // 0x7A, "SetLeftAnimation", "Change the left turning animation"
             {
-                actor.turnl = (UInt16)this.getv2(); // arg1: animation ID
+                actor.turnl = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.turnl));
                 return 0;
             }
             case EBin.event_code_binary.ATURNR: // 0x7B, "SetRightAnimation", "Change the right turning animation"
             {
-                actor.turnr = (UInt16)this.getv2(); // arg1: animation ID
+                actor.turnr = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.turnr));
                 return 0;
             }
@@ -2038,7 +2040,7 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.AJUMP: // 0x94, "SetJumpAnimation", "Change the jumping animation"
             {
-                actor.jump = (UInt16)this.getv2(); // arg1: animation ID
+                actor.jump = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv2()); // arg1: animation ID [Online] body swap
                 actor.jump0 = (Byte)this.getv1(); // arg2: unknown
                 actor.jump1 = (Byte)this.getv1(); // arg3: unknown
                 AnimationFactory.AddAnimWithAnimatioName(actor.go, FF9DBAll.AnimationDB.GetValue((Int32)actor.jump));
@@ -3149,7 +3151,7 @@ public partial class EventEngine
             {
                 actor = this.GetObj3() as Actor; // object re-animated
                 Int32 kind = this.getv3(); // type of logical animation
-                UInt16 anim = (UInt16)this.getv3(); // animation to use
+                UInt16 anim = Memoria.Online.Bodies.BodySwap.Anim(actor, (UInt16)this.getv3()); // animation to use [Online] body swap
                 switch (kind)
                 {
                     case 0: actor.idle = anim; break;

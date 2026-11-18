@@ -1,3 +1,4 @@
+using Memoria.Online.Bodies;
 using Memoria.Online.Ghosts;
 using Memoria.Online.Session;
 using Memoria.Prime;
@@ -22,7 +23,8 @@ namespace Memoria.Online
     /// Hotkeys (Ctrl+Shift): H host, I invite (Steam overlay), J join (lobby id in the clipboard, else a friend's FF9
     /// lobby), L leave, O status box. With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
     /// G shadow ghost (replays you ~1 s behind), P pause its feed 6 s, K network simulation (10% loss, 0-80 ms jitter),
-    /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay.
+    /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay, C pretend to be a guest playing
+    /// another character (offline test of the body swap; reloads the field).
     /// </summary>
     public sealed class OnlineSession : MonoBehaviour
     {
@@ -99,6 +101,7 @@ namespace Memoria.Online
             try
             {
                 GhostManager.ApplyRender();
+                BodySwap.ApplyRender();
             }
             catch (Exception err)
             {
@@ -134,6 +137,7 @@ namespace Memoria.Online
                         HandleMessage(msg, now);
                     _session.Update(now);
                 }
+                UpdateBodyRoles();
 
                 Boolean sending = (_transport != null && _transport.IsActive && _transport.Peers.Count > 0) || _shadow.Enabled;
                 if (sending && now >= _nextGhostSend)
@@ -152,6 +156,36 @@ namespace Memoria.Online
             catch (Exception err)
             {
                 Log.Error(err, "[Online] Update failed");
+            }
+        }
+
+        /// <summary>Step 2 / M3: tell the body swap who plays whom (the host's character leads).</summary>
+        private void UpdateBodyRoles()
+        {
+            if (_session == null || _session.Phase != SessionPhase.Playing || _session.HostCharacter < 0)
+            {
+                BodySwap.SetSession(-1, -1, null);
+                return;
+            }
+            List<Int32> controlled = new List<Int32>(_session.Assignments.Keys) { _session.HostCharacter };
+            BodySwap.SetSession(_session.HostCharacter, _session.MyCharacter, controlled);
+        }
+
+        /// <summary>Debug: cycle "pretend to be a guest playing X" (offline), then reload the field so it's created again.</summary>
+        private void CycleDebugBody(Double now)
+        {
+            List<Int32> ids = new List<Int32>();
+            foreach (CharacterBody body in CharacterBodies.All)
+                ids.Add(body.CharacterId);
+            ids.Sort();
+            Int32 index = ids.IndexOf(BodySwap.DebugLocalCharacter);
+            BodySwap.DebugLocalCharacter = index + 1 < ids.Count ? ids[index + 1] : -1;
+            Log.Message($"[Online] Debug body: {(BodySwap.DebugLocalCharacter < 0 ? "off" : CharacterBodies.ForCharacter(BodySwap.DebugLocalCharacter).ToString())}; reloading the field");
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine != null && engine.gMode == 1)
+            {
+                CaptureCurrentSnapshot();
+                LoadSnapshot(now);
             }
         }
 
@@ -292,6 +326,10 @@ namespace Memoria.Online
             else if (Input.GetKeyDown(KeyCode.B))
             {
                 SendSnapshotToPeers();
+            }
+            else if (Input.GetKeyDown(KeyCode.C))
+            {
+                CycleDebugBody(now);
             }
         }
 
@@ -697,6 +735,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
+                text.Append($"\n{BodySwap.Describe()}  C pretend to play another character (reloads the field)");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }
             GUIContent content = new GUIContent(text.ToString());

@@ -1,0 +1,21 @@
+# Online play: the field body of each playable character (Memoria Step 2 / M3).
+# Install as <mod folder>/StreamingAssets/Data/Online/CharacterBodies.txt
+#
+# One character per line:   characterId Name: Model m, Head h, Action animId, Action animId, ...
+#   characterId  the party character id (0 Zidane, 1 Vivi, 2 Garnet, 3 Steiner, ... 11 Blank)
+#   Model, Head  SetModel's two arguments (model id, head height)
+#   Actions      every character should have these 14 (missing ones play Stand):
+#                Stand, Walk, Run, TurnLeft, TurnRight,
+#                KneelDown, Kneeling, KneelUp, OpenDoor,
+#                LadderOn, LadderClimb, LadderOffTop, LadderOnDown, LadderOffBottom
+#                Extra actions may be added with any name.
+# Vanilla characters have built-in bodies (Stand/Walk/Run/TurnLeft/TurnRight only); a line here replaces it.
+#
+# When a guest plays another character, the field's player entry (created with the host's character's body,
+# Clove) is created with the guest's body, and each of Clove's animations is replaced by the guest's animation
+# for the same action.
+
+2 Clove: Model 202, Head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661, KneelDown 60305, Kneeling 60309, KneelUp 60306, OpenDoor 60304, LadderOn 60301, LadderClimb 60302, LadderOffTop 60303, LadderOnDown 60307, LadderOffBottom 60308, Stance 60311, StanceStart 60310
+
+# Test body: vanilla Zidane has all 14 actions.
+0 Zidane: Model 98, Head 93, Stand 200, Walk 25, Run 38, TurnLeft 40, TurnRight 41, KneelDown 2607, Kneeling 2605, KneelUp 2591, OpenDoor 1071, LadderOn 10687, LadderClimb 10539, LadderOffTop 10685, LadderOnDown 11455, LadderOffBottom 11453
