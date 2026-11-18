@@ -1,6 +1,6 @@
 # Step 2 / M3: each player plays their own character
 
-**Status: approach D decided (2026-11-17) and built; tested on one PC (offline debug), not yet on two PCs.**
+**Status: approach D decided (2026-11-17) and built, with the scene toolkit (section 11); tested on one PC and on two PCs.**
 Sections 1-9 are the investigation and the design; section 10 is what was built and how it was tested.
 
 ## 1. How the engine decides who the player is
@@ -291,7 +291,13 @@ name "Player"), Clove's hidden meshes hiding Zidane's head (mesh numbers are per
 coming back from a save, the rebuilt body losing pathing (walking off the tram) and its height.
 
 Open:
-- **Two-PC test** (a guest playing a character other than the host's).
+- ~~Two-PC test~~ **done (2026-11-17)**, host Clove, guest B.Waltz, cargo ship and Ice Cavern: the guest's player
+  entry is created as B.Waltz on every field, the host sees B.Waltz's ghost, F8/F7 hide a ghost while its character
+  is shown by an entry. First run failed on the guest: a redeploy of the mod had removed `Data/Online` (the files now
+  live in the mod's repo, `src/memoria/StreamingAssets/Data/Online/`, and a missing file is logged and shown). Fixed:
+  a ghost built Clove with her main model (9004) while the sender used 202, so every state respawned it (blinking,
+  hood up instead of down, ~4,500 respawns in a few minutes); ghosts now keep the sender's exact model. Logs clean
+  (0 respawns, 0 Unity exceptions on the guest).
 - **Sequel bodies** (2026-11-17, [CharacterBodies.example.txt](CharacterBodies.example.txt)): Clove (9004/202), Duskly
   (vanilla Vivi's model, checked in game), B.Waltz (battle model 278 + the mod's field stand/walk/run; not checked).
   **Vayle has no field model yet**: a guest playing Vayle keeps Clove's body. With a body file, only its bodies exist

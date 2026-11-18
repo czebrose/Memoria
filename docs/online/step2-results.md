@@ -3,7 +3,7 @@
 Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Online/` (`Session/` for this step).
 M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.md).
 
-**Status: M1 and M2 done and tested on two PCs; M3 built and tested on one PC; M4-M7 not started.**
+**Status: M1-M3 done and tested on two PCs; M4-M7 not started.**
 
 ## Milestones
 
@@ -11,7 +11,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 |---|---|---|
 | M1 | Save transfer | **Done.** A save loaded from memory gives exactly the state of the game's own Continue; 83 KB blob, 16 KB chunks with CRC; guests' save files untouched (autosave blocked). |
 | M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
-| M3 | Each player plays their own character | **Built** (approach D + Player/Cast scene modes), tested on one PC with the offline debug body; two-PC test and the sequel's other bodies open: [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17) |
+| M3 | Each player plays their own character | **Done** (approach D, Player/Cast modes, the scene toolkit; bodies for Clove, Duskly, B.Waltz; Vayle has no field model yet). Tested on one PC and on two PCs (2026-11-17): [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17), [script-toolkit.md](script-toolkit.md) |
 | M4 | Host-authoritative party state | not started |
 | M5 | Tether and story flags | not started |
 | M6 | Host-only battles | not started |
@@ -50,6 +50,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | M2a | single PC: lobby panel, game cycling, Start with Continue and with New Game | works; fixed: clipped panel title, New Game resync sent before the new field had loaded |
 | M2b | two PCs: Continue, guest picks, Start | both loaded the host's game (tester: "everything seemed fine") |
 | M2c | two PCs: New Game, Start | both started; the host's resync (85 KB) went 1 s after Start from field 507 and loaded on the guest in 16 ms; guest's save files unchanged (host's changed: its own New Game autosave, as expected) |
+| M3 | two PCs: Continue, guest picks B.Waltz | guest plays B.Waltz on every field (cargo ship, Ice Cavern); host sees B.Waltz's ghost; debug F7/F8 hide a ghost while its character is shown by an entry; logs clean |
 
 ## Known issues / open points
 
