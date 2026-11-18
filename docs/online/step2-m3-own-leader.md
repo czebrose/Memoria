@@ -292,8 +292,12 @@ coming back from a save, the rebuilt body losing pathing (walking off the tram) 
 
 Open:
 - **Two-PC test** (a guest playing a character other than the host's).
-- **Bodies for the sequel's other characters** in `CharacterBodies.txt` (only Clove and a Zidane test body now), and
-  the character ids of the sequel's party (see `NewGameParty.txt`).
+- **Sequel bodies** (2026-11-17, [CharacterBodies.example.txt](CharacterBodies.example.txt)): Clove (9004/202), Duskly
+  (vanilla Vivi's model, checked in game), B.Waltz (battle model 278 + the mod's field stand/walk/run; not checked).
+  **Vayle has no field model yet**: a guest playing Vayle keeps Clove's body. With a body file, only its bodies exist
+  (no built-in vanilla ones: the fields' Steiner entries are Steiner, not character 3). Caveat: Duskly shares vanilla
+  Vivi's model, so an entry drawn as Vivi counts as Duskly (hidden when a player plays Duskly).
+- Debug Ctrl+Shift+C cycles through the current party only.
 - A switch is visible (a body pops); a short fade would hide it.
 - A hidden entry still collides; its meshes all reappear when shown again.
 - The automatic guess only knows "run a function by UID": scenes that direct the player only through 250 stay in

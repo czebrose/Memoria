@@ -35,8 +35,10 @@ namespace Memoria.Online.Bodies
     }
 
     /// <summary>
-    /// The bodies of the playable characters. Vanilla characters have built-in bodies (locomotion only); a mod
-    /// declares or replaces bodies in <see cref="File"/>, one character per line:
+    /// The bodies of the playable characters. A mod declares them in <see cref="File"/>, and then only those exist
+    /// (its characters aren't the vanilla ones: in the sequel, character 3 is Vayle, not Steiner, and the fields'
+    /// Steiner entries are Steiner). Without the file, vanilla characters have built-in bodies (locomotion only).
+    /// One character per line:
     ///
     ///   # characterId name: Model m, Head h, Action animId, Action animId, ...
     ///   2 Clove: Model 202, Head 91, Stand 2670, Walk 2655, Run 2672, TurnLeft 2667, TurnRight 2661, KneelDown 60305, ...
@@ -95,6 +97,23 @@ namespace Memoria.Online.Bodies
             if (_byCharacter != null)
                 return;
             _byCharacter = new Dictionary<Int32, CharacterBody>();
+            Int32 fromFile = FromFile = LoadFile();
+            if (fromFile == 0)
+                AddBuiltInBodies();
+            _byModel = new Dictionary<UInt16, CharacterBody>();
+            foreach (CharacterBody body in _byCharacter.Values)
+            {
+                if (!_byModel.ContainsKey(body.Model))
+                    _byModel[body.Model] = body;
+                foreach (UInt16 model in body.OtherModels)
+                    if (!_byModel.ContainsKey(model))
+                        _byModel[model] = body;
+            }
+            Log.Message($"[Online] Character bodies: {_byCharacter.Count} ({(fromFile > 0 ? $"from {File}" : "vanilla, built in")})");
+        }
+
+        private static void AddBuiltInBodies()
+        {
             // Vanilla: each character's most common field model and locomotion (same table as the ghosts')
             AddBuiltIn(0, "Zidane", 98, 93, 200, 25, 38, 40, 41);
             AddBuiltIn(1, "Vivi", 8, 61, 148, 571, 419, 917, 918);
@@ -108,17 +127,6 @@ namespace Memoria.Online.Bodies
             AddBuiltIn(9, "Marcus", 109, 100, 474, 367, 365, 368, 364);
             AddBuiltIn(10, "Blank", 5467, 87, 462, 5225, 5222, 5223, 5224);
             AddBuiltIn(11, "Beatrix", 204, 100, 2978, 2975, 2981, 2980, 2974);
-            Int32 fromFile = FromFile = LoadFile();
-            _byModel = new Dictionary<UInt16, CharacterBody>();
-            foreach (CharacterBody body in _byCharacter.Values)
-            {
-                if (!_byModel.ContainsKey(body.Model))
-                    _byModel[body.Model] = body;
-                foreach (UInt16 model in body.OtherModels)
-                    if (!_byModel.ContainsKey(model))
-                        _byModel[model] = body;
-            }
-            Log.Message($"[Online] Character bodies: {_byCharacter.Count} ({fromFile} from {File})");
         }
 
         private static void AddBuiltIn(Int32 id, String name, UInt16 model, Byte head, UInt16 stand, UInt16 walk, UInt16 run, UInt16 turnLeft, UInt16 turnRight)
