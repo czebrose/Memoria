@@ -73,14 +73,18 @@ namespace Memoria.Online.Bodies
             if (oldFieldActor != null)
             {
                 if (oldFieldActor.shadowTran != null)
-                    oldFieldActor.shadowTran.gameObject.SetActive(false);
+                    foreach (Renderer renderer in oldFieldActor.shadowTran.GetComponentsInChildren<Renderer>(true))
+                        renderer.enabled = false;
                 oldFieldActor.UnregisterHonoBehavior(true);
             }
             else
             {
                 Object.Destroy(oldGo);
             }
-            oldGo.SetActive(false); // never drawn again, even before the system disposes of it
+            // Never drawn again, even before the system disposes of it. Not SetActive(false): the disposal only finds
+            // the behaviours of active objects, and the ones it misses fail every frame once the body is destroyed
+            foreach (Renderer renderer in oldGo.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
 
             // Register the new one under the same UID (as SetModel does), keeping the field's per-character state
             actor.model = to.Model;
