@@ -24,7 +24,7 @@ namespace Memoria.Online
     /// lobby), L leave, O status box. With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
     /// G shadow ghost (replays you ~1 s behind), P pause its feed 6 s, K network simulation (10% loss, 0-80 ms jitter),
     /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay, C pretend to be a guest playing
-    /// another character (offline test of the body swap; reloads the field), V switch Player / Cast scene mode.
+    /// another character (offline test of the body swap; reloads the field), F7 switch Player / Cast scene mode.
     /// </summary>
     public sealed class OnlineSession : MonoBehaviour
     {
@@ -332,7 +332,7 @@ namespace Memoria.Online
             {
                 CycleDebugBody(now);
             }
-            else if (Input.GetKeyDown(KeyCode.V))
+            else if (Input.GetKeyDown(KeyCode.F7))
             {
                 BodySwap.DebugToggleMode();
             }
@@ -740,7 +740,7 @@ namespace Memoria.Online
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
-                text.Append($"\n{BodySwap.Describe()}  C pretend to play another character (reloads the field), V Player/Cast");
+                text.Append($"\n{BodySwap.Describe()}  C pretend to play another character (reloads the field), F7 Player/Cast");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }
             GUIContent content = new GUIContent(text.ToString());

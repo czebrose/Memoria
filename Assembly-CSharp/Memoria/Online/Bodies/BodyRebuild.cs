@@ -56,6 +56,7 @@ namespace Memoria.Online.Bodies
 
             // Retire the old body (as EventEngine.DisposeObj does)
             oldGo.name += "_replaced";
+            BodySwap.TrackReplaced(oldGo);
             if (oldController != null)
                 oldController.UnregisterHonoBehavior(true);
             if (oldFieldActor != null)
@@ -67,6 +68,7 @@ namespace Memoria.Online.Bodies
             {
                 Object.Destroy(oldGo);
             }
+            oldGo.SetActive(false); // never drawn again, even before the system disposes of it
 
             // Register the new one under the same UID (as SetModel does), keeping the field's per-character state
             actor.model = to.Model;

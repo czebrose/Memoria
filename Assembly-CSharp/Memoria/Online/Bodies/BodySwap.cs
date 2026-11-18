@@ -243,6 +243,9 @@ namespace Memoria.Online.Bodies
                 if (engine == null || engine.gMode != 1 || engine.fieldmap == null)
                     return;
                 CheckField(engine.fieldmap);
+                CheckReplaced();
+                if (_pendingMode.HasValue && CanRebuildNow())
+                    SetMode(_pendingMode.Value, _pendingReason);
                 WriteScriptDictionary();
                 Int32 asked = ReadScriptDictionary(KeySceneMode);
                 if (asked != _lastScriptMode)
@@ -316,6 +319,14 @@ namespace Memoria.Online.Bodies
 
         private static void SetMode(SceneMode mode, String reason)
         {
+            if (!CanRebuildNow())
+            {
+                // A menu, a pause or a scene change is in progress: switch once the field is back on screen
+                _pendingMode = mode;
+                _pendingReason = reason;
+                return;
+            }
+            _pendingMode = null;
             if (mode == Mode)
                 return;
             Mode = mode;
@@ -346,6 +357,38 @@ namespace Memoria.Online.Bodies
             Log.Message($"[Online] Bodies: {mode} mode on field {FF9StateSystem.Common.FF9.fldMapNo} ({reason}); {rebuilt} bod{(rebuilt == 1 ? "y" : "ies")} rebuilt");
         }
 
+        private static SceneMode? _pendingMode;
+        private static String _pendingReason;
+
+        private static Boolean CanRebuildNow()
+        {
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            return ui != null && ui.State == UIManager.UIState.FieldHUD && !ui.IsPause && HonoBehaviorSystem.Exists;
+        }
+
+        /// <summary>Debug: bodies replaced by a rebuild, checked a second later (they must be gone).</summary>
+        private static readonly List<KeyValuePair<GameObject, Single>> Replaced = new List<KeyValuePair<GameObject, Single>>();
+
+        internal static void TrackReplaced(GameObject old)
+        {
+            Replaced.Add(new KeyValuePair<GameObject, Single>(old, Time.realtimeSinceStartup + 1f));
+        }
+
+        private static void CheckReplaced()
+        {
+            for (Int32 i = Replaced.Count - 1; i >= 0; i--)
+            {
+                if (Time.realtimeSinceStartup < Replaced[i].Value)
+                    continue;
+                GameObject old = Replaced[i].Key;
+                if (old != null)
+                    Log.Warning($"[Online] Bodies: the replaced body '{old.name}' still exists a second later (active {old.activeInHierarchy}, parent {old.transform.parent?.name})");
+                else
+                    Log.Message("[Online] Bodies: the replaced body is gone");
+                Replaced.RemoveAt(i);
+            }
+        }
+
         private static void CheckField(FieldMap fieldMap)
         {
             if (ReferenceEquals(fieldMap, _fieldMap))
@@ -359,6 +402,7 @@ namespace Memoria.Online.Bodies
             Mode = SceneMode.Player;
             _modeByScript = false;
             _lastScriptMode = 0;
+            _pendingMode = null;
             if (ScriptDictionaryInUse())
                 SetScriptDictionary(KeySceneMode, 0);
         }
