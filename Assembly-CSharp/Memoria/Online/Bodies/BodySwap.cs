@@ -60,6 +60,8 @@ namespace Memoria.Online.Bodies
         private sealed class Swap
         {
             public CharacterBody From, To;
+            /// <summary>The meshes the script hid on the authored body (mesh numbers are per model).</summary>
+            public UInt32 AuthoredMeshFlags;
         }
 
         private sealed class Hidden
@@ -200,6 +202,21 @@ namespace Memoria.Online.Bodies
             return result;
         }
 
+        /// <summary>
+        /// [Online] hook, HideObject / ShowObject: mesh numbers belong to the authored model, so on a swapped body they
+        /// change the authored body's state (applied when it's shown again) instead of hiding a random part. True = handled.
+        /// </summary>
+        public static Boolean OnMeshVisibility(PosObj po, Int32 mesh, Boolean hide)
+        {
+            if (po == null || !Swaps.TryGetValue(po, out Swap swap))
+                return false;
+            if (hide)
+                swap.AuthoredMeshFlags |= 1u << mesh;
+            else
+                swap.AuthoredMeshFlags &= ~(1u << mesh);
+            return true;
+        }
+
         /// <summary>[Online] hook, RunScript / RunScriptAsync / RunScriptSync: <paramref name="caller"/> runs a function of <paramref name="target"/>.</summary>
         public static void OnRunScript(Obj caller, Obj target, Int32 rawUid)
         {
@@ -336,7 +353,10 @@ namespace Memoria.Online.Bodies
                 foreach (KeyValuePair<Obj, Swap> kv in Swaps)
                 {
                     if (kv.Key is Actor actor && actor.go != null && BodyRebuild.Rebuild(actor, kv.Value.To, kv.Value.From))
+                    {
+                        actor.meshflags = kv.Value.AuthoredMeshFlags;
                         rebuilt++;
+                    }
                     Suspended[kv.Key] = kv.Value;
                 }
                 Swaps.Clear();
@@ -347,8 +367,13 @@ namespace Memoria.Online.Bodies
                 {
                     if (kv.Key is Actor actor && actor.go != null)
                     {
+                        UInt32 authoredFlags = actor.meshflags;
                         if (actor.model == kv.Value.From.Model && BodyRebuild.Rebuild(actor, kv.Value.From, kv.Value.To))
+                        {
+                            kv.Value.AuthoredMeshFlags = authoredFlags;
+                            actor.meshflags = 0;
                             rebuilt++;
+                        }
                         Swaps[kv.Key] = kv.Value;
                     }
                 }

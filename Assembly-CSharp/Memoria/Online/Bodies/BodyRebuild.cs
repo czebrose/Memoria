@@ -1,5 +1,6 @@
 using Memoria.Prime;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -33,6 +34,14 @@ namespace Memoria.Online.Bodies
             Vector3 scale = oldGo.transform.localScale;
             Single radius = oldController != null ? oldController.radius : actor.bgiRad * 4f;
             Boolean active = oldGo.activeSelf;
+            String oldName = oldGo.name; // "Player" for the player (looked up by name), else "obj<uid>"
+            Transform oldParent = oldGo.transform.parent; // not the field when attached to something (the tram)
+            Vector3 localPosition = oldGo.transform.localPosition;
+            // Objects attached to this body's bones (AttachObject): moved to the same bones of the new body
+            List<KeyValuePair<Transform, String>> carried = new List<KeyValuePair<Transform, String>>();
+            foreach (FieldMapActor other in oldGo.GetComponentsInChildren<FieldMapActor>(true))
+                if (other.gameObject != oldGo)
+                    carried.Add(new KeyValuePair<Transform, String>(other.transform, other.transform.parent.name));
 
             GameObject go = ModelFactory.CreateModel(modelName, false, true, Configuration.Graphics.ElementsSmoothTexture);
             if (go == null)
@@ -74,11 +83,11 @@ namespace Memoria.Online.Bodies
             actor.model = to.Model;
             actor.eye = (Int16)(-4 * to.HeadHeight);
             actor.go = go;
-            go.name = "obj" + actor.uid;
-            if (FF9StateSystem.Common.FF9.charArray.TryGetValue(actor.uid, out FF9Char ff9Char))
-                ff9Char.geo = go;
-            else
-                FF9StateSystem.Common.FF9.charArray[actor.uid] = new FF9Char { geo = go, evt = actor };
+            go.name = oldName;
+            if (!FF9StateSystem.Common.FF9.charArray.TryGetValue(actor.uid, out FF9Char ff9Char))
+                FF9StateSystem.Common.FF9.charArray[actor.uid] = ff9Char = new FF9Char { evt = actor };
+            ff9Char.geo = go;
+            ff9Char.attr &= ~0x100u; // the field lighting is applied again to the new body (fldmcf)
             if (!FF9StateSystem.Field.FF9Field.loc.map.charStateArray.ContainsKey(actor.uid))
                 FF9StateSystem.Field.FF9Field.loc.map.charStateArray[actor.uid] = new FF9FieldCharState();
             if (!FF9StateSystem.Field.FF9Field.loc.map.shadowArray.ContainsKey(actor.uid))
@@ -86,7 +95,27 @@ namespace Memoria.Online.Bodies
             fieldMap.AddFieldChar(go, position, rotation, isPlayer, actor, false);
             if (actor.fieldMapActorController != null)
                 actor.fieldMapActorController.radius = radius;
+            if (oldParent != null && oldParent != fieldMap.transform)
+            {
+                go.transform.parent = oldParent;
+                go.transform.localPosition = localPosition;
+                go.transform.localRotation = rotation;
+            }
             go.transform.localScale = scale; // fields that resize characters (SetObjectSize)
+            foreach (KeyValuePair<Transform, String> kv in carried)
+            {
+                if (kv.Key == null)
+                    continue;
+                Transform bone = go.transform.GetChildByName(kv.Value) ?? go.transform;
+                Vector3 p = kv.Key.localPosition;
+                Quaternion r = kv.Key.localRotation;
+                Vector3 sc = kv.Key.localScale;
+                kv.Key.parent = bone;
+                kv.Key.localPosition = p;
+                kv.Key.localRotation = r;
+                kv.Key.localScale = sc;
+            }
+            Object.Destroy(oldGo);
             if (!active)
                 go.SetActive(false);
 

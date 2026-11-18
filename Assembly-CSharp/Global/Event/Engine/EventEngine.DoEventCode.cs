@@ -1224,7 +1224,7 @@ public partial class EventEngine
             {
                 po = (PosObj)this.GetObj1(); // arg1: object
                 Int32 mesh = this.getv1(); // arg2: mesh list to show
-                if (po != null)
+                if (po != null && !Memoria.Online.Bodies.BodySwap.OnMeshVisibility(po, mesh, false)) // [Online] swapped body: authored model's mesh
                     po.geoMeshShow(mesh);
                 return 0;
             }
@@ -1232,7 +1232,7 @@ public partial class EventEngine
             {
                 po = (PosObj)this.GetObj1(); // arg1: object
                 Int32 mesh = this.getv1(); // arg2: mesh list to hide
-                if (po != null)
+                if (po != null && !Memoria.Online.Bodies.BodySwap.OnMeshVisibility(po, mesh, true)) // [Online] swapped body: authored model's mesh
                     po.geoMeshHide(mesh);
                 return 0;
             }
