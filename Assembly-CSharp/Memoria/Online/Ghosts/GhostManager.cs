@@ -139,7 +139,7 @@ namespace Memoria.Online.Ghosts
                 if (show != ghost.Visible)
                 {
                     ghost.SetVisible(show);
-                    Log.Message($"[Ghosts] {ghost} {(show ? "shown again" : stale ? $"hidden: no state for {(nowMs - ghost.LastReceivedMs) / 1000:0.0}s" : ghost.Newest.FieldId == GhostState.NotOnField ? "hidden: its player is not on a field (battle, menu, world map...)" : $"hidden: its player is in field {ghost.Newest.FieldId}")}");
+                    Log.Message($"[Ghosts] {ghost} {(show ? "shown again" : stale ? $"hidden: no state for {(nowMs - ghost.LastReceivedMs) / 1000:0.0}s" : ghost.Newest.FieldId == GhostState.NotOnField ? "hidden: its player is not on a field (battle, menu, world map...)" : otherField ? $"hidden: its player is in field {ghost.Newest.FieldId}" : "hidden: its character is already shown here (or a script hides it)")}");
                 }
                 if (show)
                     ghost.Update(nowMs, deltaTime, SendIntervalMs, FixedDelayMs, Interpolate);

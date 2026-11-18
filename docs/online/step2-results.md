@@ -3,7 +3,7 @@
 Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Online/` (`Session/` for this step).
 M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.md).
 
-**Status: M1-M3 done and tested on two PCs; M4 party sync tested on two PCs, control changes in progress; M5-M7 not started.**
+**Status: M1-M3 done and tested on two PCs; M4 party sync and control changes tested on two PCs; M5-M7 not started.**
 
 ## Milestones
 
@@ -12,7 +12,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | M1 | Save transfer | **Done.** A save loaded from memory gives exactly the state of the game's own Continue; 83 KB blob, 16 KB chunks with CRC; guests' save files untouched (autosave blocked). |
 | M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
 | M3 | Each player plays their own character | **Done** (approach D, Player/Cast modes, the scene toolkit; bodies for Clove, Duskly, B.Waltz; Vayle has no field model yet). Tested on one PC and on two PCs (2026-11-17): [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17), [script-toolkit.md](script-toolkit.md) |
-| M4 | Host-authoritative party state | **Sync done** (guest requests validated and applied by the host, full-state updates, guest blocks for save/arrange/card discard/order), tested on two PCs (2026-11-18): [step2-m4-party-state.md](step2-m4-party-state.md#7-two-pc-test-of-the-sync-2026-11-18). Control changes (Take/Swap/Release, watching) built, C1 test pending. |
+| M4 | Host-authoritative party state | **Sync done** (guest requests validated and applied by the host, full-state updates, guest blocks for save/arrange/card discard/order), tested on two PCs (2026-11-18): [step2-m4-party-state.md](step2-m4-party-state.md#7-two-pc-test-of-the-sync-2026-11-18). Control changes (Take/Swap/Release, watching) tested on two PCs (C1, 2026-11-18). |
 | M5 | Tether and story flags | not started; plan: [step2-m5-m7-plan.md](step2-m5-m7-plan.md) |
 | M6 | Host-only battles | not started |
 | M7 | Disconnects | not started |
@@ -52,6 +52,7 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | M2c | two PCs: New Game, Start | both started; the host's resync (85 KB) went 1 s after Start from field 507 and loaded on the guest in 16 ms; guest's save files unchanged (host's changed: its own New Game autosave, as expected) |
 | M3 | two PCs: Continue, guest picks B.Waltz | guest plays B.Waltz on every field (cargo ship, Ice Cavern); host sees B.Waltz's ghost; debug F7/F8 hide a ghost while its character is shown by an entry; logs clean |
 | M4 | two PCs: guest equips, Potions both ways and on another player's character, blocks, saves, resyncs | all synced; the last-item race never collided, so its rejection path is untested |
+| M4 C1 | two PCs: guest watches, takes, swaps with the host, releases, takes again | all worked; fixed after: a character with no field body (Clove stand-in) hid the host's Clove ghost |
 
 ## Known issues / open points
 

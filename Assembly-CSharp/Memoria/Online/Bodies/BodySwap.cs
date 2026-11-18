@@ -374,7 +374,8 @@ namespace Memoria.Online.Bodies
         /// </summary>
         private static void ComputeVisibility(EventEngine engine)
         {
-            Boolean rolesActive = TryGetRoles(out Int32 lead, out _, out _);
+            Boolean rolesActive = TryGetRoles(out Int32 lead, out Int32 local, out _);
+            Int32 acting = rolesActive ? ActingCharacter(lead, local) : -1;
             Obj player = engine.fieldmap?.playerController?.originalActor;
             HashSet<Int32> shown = new HashSet<Int32>();
             List<Entry> extras = new List<Entry>();
@@ -386,6 +387,11 @@ namespace Memoria.Online.Bodies
                     continue;
                 }
                 Int32 character = e.Shown.CharacterId;
+                // The player entry of an acting character with no body keeps the lead's body as a stand-in: it stands
+                // for the acting character, so the lead's ghost (another player) still shows
+                if (rolesActive && Mode == SceneMode.Player && acting >= 0 && ReferenceEquals(e.Po, player)
+                    && ReadScriptDictionary(KeyBindBase + e.Po.uid) == 0)
+                    character = acting;
                 Int32 forced = ReadScriptDictionary(KeyVisibilityBase + character);
                 Boolean primary = !rolesActive || Mode == SceneMode.Cast || e.IsSwapped
                                   || ReadScriptDictionary(KeyBindBase + e.Po.uid) != 0

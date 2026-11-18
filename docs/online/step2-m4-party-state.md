@@ -168,3 +168,17 @@ change hands only through these actions, all arbitrated by the host (first come,
    guest disappears. Panel: "you play nobody (watching)".
 6. **Guest Takes again** a free slot: body back, moves again.
 7. Host Takes a free character: host's body switches. Logs: `Control:` lines on both PCs, no exceptions.
+
+### C1 test results (2026-11-18)
+
+Run on two PCs. The guest started out watching (no character picked in the lobby). It then took Duskly (1), took
+character 10 while playing Duskly, released, took again, offered swaps with the host's Clove (accepted both ways), and
+took and released B.Waltz (11). Every request came back as `Control: this PC plays ...` within about 1 s. On swaps,
+the ghost on each PC was rebuilt with the new model. Tester: a success overall.
+
+One bug, fixed after the test. Character 10 (vanilla slot "Blank") has no line in `CharacterBodies.txt`, so the
+guest's player entry kept Clove's body as a stand-in (documented). That stand-in counted as "Clove is shown here", so
+the host's Clove ghost was hidden on the guest. Now the player entry counts as the acting character. A stand-in body
+no longer hides the lead's ghost, and you see two Cloves until the character gets a body. The ghost log now says
+"its character is already shown here" for this case, instead of "its player is in field N".
+Not covered: the host's own Take (step 7) and the offer Decline (step 4). Neither shows in the guest log.
