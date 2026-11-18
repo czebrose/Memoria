@@ -605,6 +605,8 @@ public class JsonParser : ISharedDataParser
             JSONArray dictionaryArray = new JSONArray();
             foreach (KeyValuePair<Int32, Dictionary<Int32, Int32>> kp in data.gScriptDictionary)
             {
+                if (kp.Key == Memoria.Online.Bodies.BodySwap.ScriptDictionary)
+                    continue; // [Online] this PC's player body and scene mode: never saved (refilled every frame)
                 JSONArray entryArray = new JSONArray();
                 foreach (KeyValuePair<Int32, Int32> entry in kp.Value)
                 {

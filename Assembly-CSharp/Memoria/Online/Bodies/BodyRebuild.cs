@@ -115,7 +115,8 @@ namespace Memoria.Online.Bodies
                 kv.Key.localRotation = r;
                 kv.Key.localScale = sc;
             }
-            Object.Destroy(oldGo);
+            // Not destroyed here: the behaviour system disposes of it on its next update (destroying it first
+            // breaks that update); BodySwap destroys it a second later if it's still there
             if (!active)
                 go.SetActive(false);
 

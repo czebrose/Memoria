@@ -261,6 +261,7 @@ namespace Memoria.Online.Bodies
                     return;
                 CheckField(engine.fieldmap);
                 CheckReplaced();
+                CheckDictionaryReloaded();
                 if (_pendingMode.HasValue && CanRebuildNow())
                     SetMode(_pendingMode.Value, _pendingReason);
                 WriteScriptDictionary();
@@ -407,7 +408,10 @@ namespace Memoria.Online.Bodies
                     continue;
                 GameObject old = Replaced[i].Key;
                 if (old != null)
-                    Log.Warning($"[Online] Bodies: the replaced body '{old.name}' still exists a second later (active {old.activeInHierarchy}, parent {old.transform.parent?.name})");
+                {
+                    Log.Message($"[Online] Bodies: the replaced body '{old.name}' was still there a second later; destroyed");
+                    UnityEngine.Object.Destroy(old);
+                }
                 else
                     Log.Message("[Online] Bodies: the replaced body is gone");
                 Replaced.RemoveAt(i);
@@ -454,11 +458,25 @@ namespace Memoria.Online.Bodies
                 SetScriptDictionary(KeyFirstAnim + i, body.Get(CharacterBodies.Required[i]));
         }
 
+        private static Dictionary<Int32, Int32> _dictionary;
+
+        /// <summary>A loaded game (or one saved before the dictionary was excluded from saves) brings its own: the scene mode request isn't carried over.</summary>
+        private static void CheckDictionaryReloaded()
+        {
+            FF9StateSystem.EventState.gScriptDictionary.TryGetValue(ScriptDictionary, out Dictionary<Int32, Int32> dict);
+            if (ReferenceEquals(dict, _dictionary))
+                return;
+            _dictionary = dict;
+            if (dict != null && dict.ContainsKey(KeySceneMode))
+                dict[KeySceneMode] = 0;
+            _lastScriptMode = 0;
+        }
+
         private static Dictionary<Int32, Int32> GetScriptDictionary()
         {
             Dictionary<Int32, Dictionary<Int32, Int32>> all = FF9StateSystem.EventState.gScriptDictionary;
             if (!all.TryGetValue(ScriptDictionary, out Dictionary<Int32, Int32> dict))
-                all[ScriptDictionary] = dict = new Dictionary<Int32, Int32>();
+                all[ScriptDictionary] = _dictionary = dict = new Dictionary<Int32, Int32>();
             return dict;
         }
 
