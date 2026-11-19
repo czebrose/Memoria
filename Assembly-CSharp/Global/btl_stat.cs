@@ -36,7 +36,16 @@ public static class btl_stat
         btl.sel_mode = 0;
     }
 
+    // [Online] Spike C: AlterStatus / RemoveStatus are recorded as "ops" (see BattleSpike.OpEnter)
     public static UInt32 AlterStatus(BattleUnit target, BattleStatusId statusId, BattleUnit inflicter = null, Boolean usePartialResist = false, params Object[] parameters)
+    {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Alter, target?.Data, (Int32)statusId, 0, 0, inflicter?.Data, parameters);
+        UInt32 result = 0;
+        try { return result = AlterStatusCore(target, statusId, inflicter, usePartialResist, parameters); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op, result); }
+    }
+
+    private static UInt32 AlterStatusCore(BattleUnit target, BattleStatusId statusId, BattleUnit inflicter, Boolean usePartialResist, Object[] parameters)
     {
         Dictionary<BattleStatusId, BattleStatusDataEntry> statusDatabase = FF9StateSystem.Battle.FF9Battle.status_data;
         BTL_DATA btl = target;
@@ -137,6 +146,14 @@ public static class btl_stat
     }
 
     public static UInt32 RemoveStatus(BattleUnit unit, BattleStatusId statusId)
+    {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Remove, unit?.Data, (Int32)statusId);
+        UInt32 result = 0;
+        try { return result = RemoveStatusCore(unit, statusId); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op, result); }
+    }
+
+    private static UInt32 RemoveStatusCore(BattleUnit unit, BattleStatusId statusId)
     {
         BattleStatus status = statusId.ToBattleStatus();
         BTL_DATA btl = unit;

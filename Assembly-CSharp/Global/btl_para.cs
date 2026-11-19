@@ -115,7 +115,15 @@ public class btl_para
         return isLowHP ? BattleStatus.LowHP : 0;
     }
 
+    // [Online] Spike C: SetDamage / SetRecover / SetMpDamage / SetMpRecover are recorded as "ops" (see BattleSpike.OpEnter)
     public static Int32 SetDamage(BattleUnit unit, Int32 damage, Byte dmg_mot, CMD_DATA cmd = null, Boolean requestFigureNow = false)
+    {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Damage, unit.Data, damage, dmg_mot, requestFigureNow ? 1 : 0);
+        try { return SetDamageCore(unit, damage, dmg_mot, cmd, requestFigureNow); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static Int32 SetDamageCore(BattleUnit unit, Int32 damage, Byte dmg_mot, CMD_DATA cmd, Boolean requestFigureNow)
     {
         // "damage" and the different "fig" numbers are signed integers now
         // Maybe choose to have these unsigned or have everything signed (including "hp.cur" etc...) or to keep things as they are now
@@ -170,6 +178,13 @@ public class btl_para
 
     public static Int32 SetRecover(BattleUnit unit, UInt32 recover, Boolean requestFigureNow = false)
     {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Recover, unit.Data, (Int32)recover, 0, requestFigureNow ? 1 : 0);
+        try { return SetRecoverCore(unit, recover, requestFigureNow); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static Int32 SetRecoverCore(BattleUnit unit, UInt32 recover, Boolean requestFigureNow)
+    {
         BTL_DATA btl = unit.Data;
         if (btl_stat.CheckStatus(btl, BattleStatus.Death))
         {
@@ -200,6 +215,13 @@ public class btl_para
 
     public static Int32 SetMpDamage(BattleUnit btl, UInt32 damage)
     {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.MpDamage, btl.Data, (Int32)damage);
+        try { return SetMpDamageCore(btl, damage); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static Int32 SetMpDamageCore(BattleUnit btl, UInt32 damage)
+    {
         if (btl.IsUnderAnyStatus(BattleStatus.Death))
         {
             btl.Data.fig.info = Param.FIG_INFO_MISS;
@@ -222,6 +244,13 @@ public class btl_para
     }
 
     public static Int32 SetMpRecover(BattleUnit btl, UInt32 recover)
+    {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.MpRecover, btl.Data, (Int32)recover);
+        try { return SetMpRecoverCore(btl, recover); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static Int32 SetMpRecoverCore(BattleUnit btl, UInt32 recover)
     {
         if (btl.IsUnderAnyStatus(BattleStatus.Death))
         {

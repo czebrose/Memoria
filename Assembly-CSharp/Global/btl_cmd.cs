@@ -487,6 +487,8 @@ public class btl_cmd
 
     private static void RunCommandFromQueue(FF9StateBattleSystem btlsys)
     {
+        if (Memoria.Online.Battle.BattleSpike.BlockQueue(btlsys)) // [Online] Spike C: a passive battle takes its commands from the owner
+            return;
         Boolean admitNewCommand = btlsys.cur_cmd == null;
         if (admitNewCommand)
             btl_cmd.next_cmd_delay = 0;
@@ -559,6 +561,7 @@ public class btl_cmd
         }
         btlsys.cur_cmd_list.Add(cmd);
         KillCommand(cmd);
+        Memoria.Online.Battle.BattleSpike.OnCommandAdmitted(cmd); // [Online] Spike C
     }
 
     public static void CommandEngine(FF9StateBattleSystem btlsys)
@@ -569,6 +572,7 @@ public class btl_cmd
             curCommandDuplicate.Add(cmd);
         foreach (CMD_DATA cmd in curCommandDuplicate)
         {
+            CMD_DATA spikeContext = Memoria.Online.Battle.BattleSpike.EnterCommand(cmd); // [Online] Spike C: this command's RNG tape
             BTL_DATA caster = cmd.regist;
             switch (cmd.info.mode)
             {
@@ -665,6 +669,7 @@ public class btl_cmd
             }
             if (cmd.info.mode == command_mode_index.CMD_MODE_DONE)
                 FinishCommand(btlsys, cmd);
+            Memoria.Online.Battle.BattleSpike.ExitCommand(spikeContext); // [Online] Spike C
         }
     }
 
@@ -1037,7 +1042,12 @@ public class btl_cmd
             case BattleCommandId.SummonGarnet:
             case BattleCommandId.SummonEiko:
             case BattleCommandId.Phantom:
-                DecideSummonType(cmd);
+                // [Online] Spike C: long / short summon depends on this PC's achievements: a passive battle takes the owner's
+                if (!Memoria.Online.Battle.BattleSpike.ReplaySummonType(cmd))
+                {
+                    DecideSummonType(cmd);
+                    Memoria.Online.Battle.BattleSpike.OnSummonTypeDecided(cmd);
+                }
                 break;
             case BattleCommandId.Counter:
                 if (abilId == BattleAbilityId.Attack)
@@ -1405,6 +1415,7 @@ public class btl_cmd
 
         if (!FF9StateSystem.Battle.isDebug)
             HonoluluBattleMain.playerEnterCommand = true;
+        Memoria.Online.Battle.BattleSpike.OnCommandFinished(cmd); // [Online] Spike C
     }
 
     private static Boolean IsNeedToDecreaseTrance(BattleUnit caster, BattleCommandId commandId, CMD_DATA cmd)

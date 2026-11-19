@@ -149,6 +149,7 @@ public static class ff9play
 
     public static void FF9Play_SetParty(Int32 partySlot, CharacterId charId)
     {
+        Memoria.Online.PartyTrace.Slot(partySlot, charId); // [Online] debug: who changes the party
         FF9StateGlobal ff9StateGlobal = FF9StateSystem.Common.FF9;
         PLAYER player = ff9StateGlobal.party.member[partySlot];
 
@@ -204,11 +205,13 @@ public static class ff9play
 
     public static void FF9Play_Add(PLAYER player)
     {
+        Memoria.Online.PartyTrace.Roster(player, 1); // [Online] debug
         player.info.party = 1;
     }
 
     public static void FF9Play_Delete(PLAYER player)
     {
+        Memoria.Online.PartyTrace.Roster(player, 0); // [Online] debug
         player.info.party = 0;
     }
 

@@ -58,6 +58,14 @@ public static class btl2d
 
     public static void Btl2dReq(BTL_DATA btl, Btl2dParam param)
     {
+        // [Online] Spike C: damage numbers requested directly by a calculation or a tick are recorded as "ops"
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Figure, btl, param.info, param.hp, param.mp);
+        try { Btl2dReqCore(btl, param); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static void Btl2dReqCore(BTL_DATA btl, Btl2dParam param)
+    {
         Byte delay = 0;
         if (btl.bi.disappear == 0)
         {
@@ -107,6 +115,13 @@ public static class btl2d
     }
 
     public static void Btl2dStatReq(BTL_DATA btl, Int32 hp, Int32 mp)
+    {
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.StatFigure, btl, hp, mp); // [Online] Spike C
+        try { Btl2dStatReqCore(btl, hp, mp); }
+        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+    }
+
+    private static void Btl2dStatReqCore(BTL_DATA btl, Int32 hp, Int32 mp)
     {
         if (btl.bi.disappear != 0)
             return;

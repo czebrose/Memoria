@@ -8,12 +8,12 @@ namespace FF9
     {
         public static Int32 random8()
         {
-            return UnityEngine.Random.Range(0, 256);
+            return Memoria.Online.Battle.BattleTape.Filter(Memoria.Online.Battle.TapeKind.Random8, UnityEngine.Random.Range(0, 256)); // [Online] Spike C: command RNG tape
         }
 
         public static Int32 random16()
         {
-            return UnityEngine.Random.Range(0, 65536);
+            return Memoria.Online.Battle.BattleTape.Filter(Memoria.Online.Battle.TapeKind.Random16, UnityEngine.Random.Range(0, 65536)); // [Online] Spike C: command RNG tape
         }
 
         public static UInt32 randomID(UInt32 id)

@@ -570,6 +570,13 @@ namespace Memoria
         }
         public void Kill(BTL_DATA killer = null)
         {
+            Online.Battle.BattleOp op = Online.Battle.BattleSpike.OpEnter(Online.Battle.OpKind.Kill, Data, 0, 0, 0, killer); // [Online] Spike C
+            try { KillCore(killer); }
+            finally { Online.Battle.BattleSpike.OpExit(op); }
+        }
+
+        private void KillCore(BTL_DATA killer)
+        {
             CurrentHp = 0; // Use CurrentHp there to prevent killing for real the enemies that should never die (with the 10,000 HP threshold system)
             if (Data.cur.hp > 0) // Also, let the script handle the animations and sounds in that case
                 return;
