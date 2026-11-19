@@ -1,3 +1,4 @@
+using Memoria.Online.Battle;
 using Memoria.Online.Bodies;
 using Memoria.Online.Ghosts;
 using Memoria.Online.Party;
@@ -83,6 +84,7 @@ namespace Memoria.Online
         private readonly BlobTransfer _blobs = new BlobTransfer();
         private SessionLobby _session; // Step 2: title-screen lobby, character pick, start
         private PartySync _party; // Step 2 / M4: host-authoritative party state
+        private BattleEntry _battle; // Spike D: shared battle entry and exit
         private Byte[] _snapshot;
         private String _snapshotSource;
         private JSONClass _verifyTree;
@@ -139,6 +141,7 @@ namespace Memoria.Online
                     foreach (TransportMessage msg in _received)
                         HandleMessage(msg, now);
                     _session.Update(now);
+                    _battle.Update(now);
                 }
                 UpdateBodyRoles();
                 BodySwap.Update();
@@ -246,6 +249,8 @@ namespace Memoria.Online
             _blobs.Completed += _session.OnBlob;
             _party = new PartySync(_blobs, () => _lobby.IsHost, () => _lobby.OwnerId, () => _transport.Peers, CharacterOfPeer, () => _session.MyCharacter);
             _blobs.Completed += _party.OnBlob;
+            _battle = new BattleEntry(_transport, _lobby, _blobs, () => _session.Phase == SessionPhase.Playing, () => _session.MyCharacter, CharacterOfPeer, IsPlayed);
+            _blobs.Completed += _battle.OnBlob;
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
 
@@ -397,6 +402,16 @@ namespace Memoria.Online
             {
                 _session?.SendResync("asked by the host"); // M4: the full-state fallback
             }
+            else if (Input.GetKeyDown(KeyCode.U))
+            {
+                BattleEntry.FreeCharactersJoinHost = !BattleEntry.FreeCharactersJoinHost; // Spike D
+                Log.Message($"[Online] Battle entry: party members nobody plays {(BattleEntry.FreeCharactersJoinHost ? "join" : "sit out")} the battles the host takes part in");
+            }
+            else if (Input.GetKeyDown(KeyCode.V))
+            {
+                Int32 scene = PersistenSingleton<EventEngine>.Instance != null ? PersistenSingleton<EventEngine>.Instance.OnlineDebugEncounter() : 0; // Spike D
+                Log.Message(scene > 0 ? $"[Online] Battle entry: debug encounter, battle {scene}" : "[Online] Battle entry: debug encounter: no random battle here (needs a field with an encounter table and player control)");
+            }
         }
 
         // ---- Step 2 / M1: snapshots (debug) ---------------------------------------------------------------------
@@ -524,6 +539,9 @@ namespace Memoria.Online
                 _blobs.Send(peer, _snapshot);
         }
 
+        /// <summary>Spike D: a player plays this character (the host's own or a guest's).</summary>
+        private Boolean IsPlayed(Int32 character) => character == _session.HostPlays || _session.Assignments.ContainsKey(character);
+
         private Int32 CharacterOfPeer(UInt64 peer)
         {
             foreach (KeyValuePair<Int32, UInt64> kv in _session.Assignments)
@@ -534,7 +552,7 @@ namespace Memoria.Online
 
         private void OnSnapshotReceived(BlobTransfer.Received received)
         {
-            if (PartySync.IsPartyBlob(received.Blob))
+            if (PartySync.IsPartyBlob(received.Blob) || BattleEntry.IsResultBlob(received.Blob))
                 return;
             _snapshot = received.Blob;
             _snapshotSource = $"received from {SteamNative.Tag(received.Peer)} in {received.Milliseconds:0} ms";
@@ -622,6 +640,8 @@ namespace Memoria.Online
                 case TransportChannel.Control:
                     if (_session != null && _session.OnControlMessage(msg.Peer, d))
                         break;
+                    if (_battle != null && _battle.OnControlMessage(msg.Peer, d))
+                        break;
                     if (d.Length == 13 && d[0] == MsgPing)
                     {
                         d[0] = MsgPong;
@@ -667,6 +687,7 @@ namespace Memoria.Online
                 LogSummary(s, "LEFT");
                 _peers.Remove(peer);
             }
+            _battle?.OnPeerLeft(peer);
             GhostManager.Remove(peer, "left the lobby");
             GhostManager.ForgetPeer(peer);
             _blobs.Forget(peer);
@@ -785,7 +806,7 @@ namespace Memoria.Online
             String notice = GuestGuard.Frozen ? GuestGuard.FrozenMessage : null;
             String toast = PartySync.CurrentToast;
             Single noticeY = Screen.height * 0.75f;
-            foreach (String line in new[] { notice, toast })
+            foreach (String line in new[] { notice, BattleEntry.Notice, toast })
             {
                 if (line == null)
                     continue;
@@ -828,6 +849,8 @@ namespace Memoria.Online
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");
                 text.Append($"M model {(GhostManager.ModelOverride?.Name ?? "sender's")}, N interp {(GhostManager.Interpolate ? "on" : "OFF")}, D delay {(GhostManager.FixedDelayMs < 0 ? "adaptive" : "fixed")}");
                 text.Append($"\n{_party?.Describe()}  Y resync guests (host)");
+                if (_battle != null)
+                    text.Append($"\n{_battle.Describe()}");
                 text.Append($"\n{BodySwap.Describe()}\n  C pretend to play another party member (reloads the field), F7 Player/Cast, F8 acting character");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }

@@ -100,7 +100,7 @@ public static class btl_init
         if (FF9StateSystem.Battle.isDebug)
             scene.Info.StartType = FF9StateSystem.Battle.debugStartType;
         else
-            scene.Info.StartType = btl_sys.StartType(scene.Info);
+            scene.Info.StartType = Memoria.Online.Battle.BattleEntry.StartType(scene.Info); // [Online] Spike D: btl_sys.StartType, or the owner's on a participant
         SB2_PATTERN[] scenePatternList = FF9StateSystem.Battle.FF9Battle.btl_scene.PatAddr;
         SB2_MON_PARM[] sceneMonsterList = FF9StateSystem.Battle.FF9Battle.btl_scene.MonAddr;
         AA_DATA[] sceneAttackList = FF9StateSystem.Battle.FF9Battle.btl_scene.atk;
