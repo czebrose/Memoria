@@ -228,6 +228,7 @@ namespace Memoria.Online.Battle
         /// <summary>CheckCommandCondition (summons): true = passive, the owner's long / short choice was applied.</summary>
         public static Boolean ReplaySummonType(CMD_DATA cmd)
         {
+            Recorder?.BeforeSummonType(cmd);
             return Replayer != null && Replayer.ApplySummonType(cmd);
         }
 

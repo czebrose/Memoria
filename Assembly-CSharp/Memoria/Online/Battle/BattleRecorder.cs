@@ -177,10 +177,22 @@ namespace Memoria.Online.Battle
             return value;
         }
 
+        private Int32 _tapeBeforeSummon = -1;
+
+        public void BeforeSummonType(CMD_DATA cmd)
+        {
+            _tapeBeforeSummon = _running.TryGetValue(cmd, out BattleEvent ev) ? ev.Tape.Count : -1;
+        }
+
         public void OnSummonTypeDecided(CMD_DATA cmd)
         {
-            if (_running.TryGetValue(cmd, out BattleEvent ev))
-                ev.ShortSummon = (SByte)cmd.info.short_summon;
+            if (!_running.TryGetValue(cmd, out BattleEvent ev))
+                return;
+            ev.ShortSummon = (SByte)cmd.info.short_summon;
+            // The passive takes the owner's choice instead of drawing it: the draws made for it aren't on the tape
+            if (_tapeBeforeSummon >= 0 && ev.Tape.Count > _tapeBeforeSummon)
+                ev.Tape.RemoveRange(_tapeBeforeSummon, ev.Tape.Count - _tapeBeforeSummon);
+            _tapeBeforeSummon = -1;
         }
 
         public void OnCommandFinished(CMD_DATA cmd)
