@@ -171,6 +171,7 @@ namespace Memoria.Online.Battle
                 return;
             }
             PublishPresence(now);
+            WatchResultScreen(now);
             UpdateIncoming(now);
             UpdateCurrent(now);
             ApplyPendingResult();
@@ -178,6 +179,53 @@ namespace Memoria.Online.Battle
             if (_current != null && _current.InBattle && PersistenSingleton<SceneDirector>.Instance.CurrentScene != SceneDirector.BattleMapSceneName
                 && PersistenSingleton<FF9StateSystem>.Instance.mode != 2 && PersistenSingleton<FF9StateSystem>.Instance.mode != 8)
                 BattleLeft("left the battle scene without the result screen");
+        }
+
+        // ---- Diagnostics: the result screen that wouldn't move (first two-PC run) ------------------------------
+
+        private Double _resultScreenSince = -1, _nextResultDump;
+
+        /// <summary>While the result screen is up for more than 10 s, its state goes to the log every 10 s.</summary>
+        private void WatchResultScreen(Double now)
+        {
+            if (PersistenSingleton<UIManager>.Instance.State != UIManager.UIState.BattleResult)
+            {
+                _resultScreenSince = -1;
+                return;
+            }
+            if (_resultScreenSince < 0)
+            {
+                _resultScreenSince = now;
+                _nextResultDump = now + 10000;
+            }
+            if (now >= _nextResultDump)
+            {
+                _nextResultDump = now + 10000;
+                Log.Message($"[Online] Battle entry: result screen up for {(now - _resultScreenSince) / 1000:0} s: {DumpResultScreen()}");
+            }
+        }
+
+        /// <summary>Debug (Ctrl+Shift+2, and automatically): what the result screen and the input are doing.</summary>
+        public static String DumpResultScreen()
+        {
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            BattleResultUI r = ui.BattleResultScene;
+            System.Text.StringBuilder s = new System.Text.StringBuilder();
+            s.Append($"ui {ui.State}, menu control {ui.IsMenuControlEnable}, player control {ui.IsPlayerControlEnable}, group '{ButtonGroupState.ActiveGroup}', button {(ButtonGroupState.ActiveButton != null ? ButtonGroupState.ActiveButton.name : "none")}");
+            s.Append($", quit dialog {ui.QuitScene?.isShowQuitUI}, fading {PersistenSingleton<SceneDirector>.Instance.IsFading}, mode {PersistenSingleton<FF9StateSystem>.Instance.mode}, btl_result {FF9StateSystem.Common.FF9.btl_result}, event bonus {battle.btl_bonus.Event}");
+            if (r != null)
+            {
+                System.Reflection.BindingFlags f = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                Object Field(String name) { try { return typeof(BattleResultUI).GetField(name, f)?.GetValue(r); } catch { return "?"; } }
+                s.Append($"; result screen: active {r.gameObject.activeInHierarchy}, loading {r.Loading}, state {Field("currentState")}, exp done {Field("expEndTick")}, ap done {Field("apEndTick")}");
+                if (Field("abilityLearned") is List<Int32>[] learned)
+                    s.Append($", abilities waiting [{String.Join(" ", Array.ConvertAll(learned, l => (l?.Count ?? -1).ToString()))}]");
+                if (Field("isReadyToShowNextAbil") is Boolean[] ready)
+                    s.Append($", next ability ready [{String.Join(" ", Array.ConvertAll(ready, b => b ? "1" : "0"))}]");
+            }
+            PLAYER[] members = FF9StateSystem.Common.FF9.party.member;
+            s.Append($"; party slots [{String.Join(" ", Array.ConvertAll(members, p => p != null ? ((Int32)p.info.slot_no).ToString() : "-"))}], battle party altered {BattleEntryParty.Altered}");
+            return s.ToString();
         }
 
         private void PublishPresence(Double now)
