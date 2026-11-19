@@ -374,6 +374,7 @@
     <Compile Include="Memoria\Online\Bodies\BodySwap.cs" />
     <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
+    <Compile Include="Memoria\Online\PartyTrace.cs" />
     <Compile Include="Memoria\Online\Party\PartyState.cs" />
     <Compile Include="Memoria\Online\Party\PartySync.cs" />
     <Compile Include="Memoria\Online\Party\GuestFinds.cs" />
