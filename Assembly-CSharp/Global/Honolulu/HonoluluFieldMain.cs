@@ -222,6 +222,7 @@ public class HonoluluFieldMain : HonoBehavior
             if ((this.FF9.attr & 2u) == 0u)
             {
                 Int32 codeFlowState = this.ee.ServiceEvents();
+                codeFlowState = Memoria.Online.Battle.BattleEntry.OnFieldFlow(codeFlowState); // [Online] Spike D: note the owner's battle / start a participant's
                 HonoluluFieldMain.eventEngineRunningCount++;
                 SFXData.AdvanceEventSFXFrame();
                 this.updatePlayerObj();

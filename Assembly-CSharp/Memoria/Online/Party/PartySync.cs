@@ -165,6 +165,8 @@ namespace Memoria.Online.Party
                 return false;
             if (engine.gMode != 1 && engine.gMode != 3)
                 return false;
+            if (Memoria.Online.Battle.BattleEntry.PartyAltered)
+                return false; // Spike D: the party slots hold a battle party
             switch (ui.State)
             {
                 case UIManager.UIState.Initial:

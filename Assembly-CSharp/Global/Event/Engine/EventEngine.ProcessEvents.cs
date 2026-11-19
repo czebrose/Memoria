@@ -174,7 +174,7 @@ public partial class EventEngine
                         if (obj.uid == this._context.controlUID)
                         {
                             EIcon.ProcessHereIcon(actor);
-                            if (this.GetUserControl() && !Memoria.Online.Session.GuestGuard.Spectating && !Memoria.Online.Session.GuestGuard.Frozen) // [Online] a watching or frozen guest doesn't interact
+                            if (this.GetUserControl() && !Memoria.Online.Session.GuestGuard.Spectating && !Memoria.Online.Session.GuestGuard.Frozen && !Memoria.Online.Battle.BattleEntry.HoldPlayer) // [Online] a watching or frozen guest doesn't interact; Spike D: nor a battle participant
                                 this.CollisionRequest(actor);
                         }
                     }
@@ -454,6 +454,22 @@ public partial class EventEngine
             }
         }
         EventEngine.sLastTalker = (PosObj)null;
+    }
+
+    /// <summary>[Online] Spike D debug (Ctrl+Shift+1): a random encounter from this field's table at the next field frame.</summary>
+    public Int32 OnlineDebugEncounter()
+    {
+        if (this.gMode != 1 || this._context == null || this._context.usercontrol == 0)
+            return 0;
+        Int32 sceneNo = this.SelectScene();
+        if (sceneNo == 0)
+            return 0;
+        this.SetBattleScene(sceneNo);
+        this._ff9.btlSubMapNo = -1;
+        FF9StateSystem.Battle.isRandomEncounter = true;
+        FF9StateSystem.Battle.isEncount = true;
+        this._encountReserved = true;
+        return sceneNo;
     }
 
     private Boolean ProcessEncount(PosObj po)

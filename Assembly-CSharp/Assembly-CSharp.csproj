@@ -361,6 +361,9 @@
     <Compile Include="Global\SPS\CommonSPSSystem.cs" />
     <Compile Include="Global\SPS\SHPEffect.cs" />
     <Compile Include="Memoria\Application\ControllerWatcher.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleEntry.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleEntryMessages.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleEntryParty.cs" />
     <Compile Include="Memoria\Online\Battle\BattleLog.cs" />
     <Compile Include="Memoria\Online\Battle\BattleOutcome.cs" />
     <Compile Include="Memoria\Online\Battle\BattleRecorder.cs" />

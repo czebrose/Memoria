@@ -96,7 +96,7 @@ public static class battle
                 battle.BattleLoadLoop(ff9, ff9Battle);
                 break;
             case FF9StateBattleSystem.PHASE_MENU_ON:
-                if (battle.BattleIdleLoop(ff9, ff9Battle))
+                if (battle.BattleIdleLoop(ff9, ff9Battle) && Memoria.Online.Battle.BattleEntry.MayLeaveIntro()) // [Online] Spike D: hold until everyone is ready (participants: until the end)
                 {
                     if (ff9.btlMapNo == 336 && !battle.isAlreadyShowTutorial && !Configuration.Debug.StartBattle) // Masked Man
                     {
@@ -584,6 +584,7 @@ public static class battle
 
     public static void ff9ShutdownStateBattleResult()
     {
+        Memoria.Online.Battle.BattleEntry.OnBattleLeft(); // [Online] Spike D: party slots back, results to the host
         if ((FF9StateSystem.Common.FF9.btl_flag & battle.BTL_CONTI_FLD_SONG) != 0)
             return;
 
