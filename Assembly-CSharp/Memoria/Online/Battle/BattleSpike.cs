@@ -181,10 +181,10 @@ namespace Memoria.Online.Battle
                 _allEnemiesDownSince = UnityEngine.Time.realtimeSinceStartup;
                 Note($"watchdog: no enemy standing ({(anyEnemy ? "all down" : "none left in btl_list")})\n" + DescribeBattleFlow());
             }
-            else if (!_watchdogLogged && UnityEngine.Time.realtimeSinceStartup - _allEnemiesDownSince > 8f)
+            else if (!_watchdogLogged && UnityEngine.Time.realtimeSinceStartup - _allEnemiesDownSince > 20f)
             {
                 _watchdogLogged = true;
-                Note("watchdog: the battle hasn't ended 8 s after the last enemy went down\n" + DescribeBattleFlow());
+                Note("watchdog: the battle hasn't ended 20 s after the last enemy went down\n" + DescribeBattleFlow());
             }
         }
 

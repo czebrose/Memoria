@@ -30,14 +30,14 @@ namespace Memoria.Online.Battle
         private Boolean _stallLogged;
 
         public Boolean Started => _started;
-        public Int32 Mismatches, Corrections, Syncs, TapeMisses, Actions, Effects, LocalQueueDrops, TranceWrites;
+        public Int32 Mismatches, Corrections, Syncs, TapeMisses, Actions, Effects, LocalQueueDrops, TranceWrites, TickWrites;
 
         public BattleReplayer(BattleLog log)
         {
             Log = log;
         }
 
-        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSpike.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
+        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSpike.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
 
         private void Mismatch(String what)
         {
@@ -233,6 +233,19 @@ namespace Memoria.Online.Battle
                 {
                     btl.trance = u.Trance;
                     TranceWrites++;
+                }
+            }
+            // Known direct write: Poison / Regen / Venom ticks change HP / MP in the status script (OnOpr), only the
+            // damage number is an op
+            if (ev.Type == BattleEventType.Tick)
+            {
+                UnitState u = ev.State.Find(ev.Target);
+                BTL_DATA btl = BattleSpike.FindBtl(ev.Target);
+                if (u != null && btl != null && (btl.cur.hp != u.Hp || btl.cur.mp != u.Mp) && u.Hp > 0)
+                {
+                    btl.cur.hp = u.Hp;
+                    btl.cur.mp = u.Mp;
+                    TickWrites++;
                 }
             }
             List<String> diffs = ev.State.ApplyToBattle();
