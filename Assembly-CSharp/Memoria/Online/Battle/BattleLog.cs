@@ -42,6 +42,7 @@ namespace Memoria.Online.Battle
         public Boolean ShortRange;
         public UInt64 AbilityStatus;
         public readonly List<TapeEntry> Tape = new List<TapeEntry>();
+        public SByte ShortSummon = -1;      // summons: the owner's long (0) / short (1) choice
 
         // Effect (Caster = caster, Target = target) and Tick (Target = the unit)
         public UInt16 Target;
@@ -81,6 +82,7 @@ namespace Memoria.Online.Battle
                     // Ability fields that SA features may have patched (ScriptId, rate, power, ...)
                     w.Write((Byte)ScriptId); w.Write((Byte)HitRate); w.Write((Byte)Power); w.Write(Category); w.Write(AbilType);
                     w.Write(AbilityStatus);
+                    w.Write(ShortSummon);
                     w.Write((Byte)Tape.Count);
                     foreach (TapeEntry t in Tape)
                     {
@@ -150,7 +152,7 @@ namespace Memoria.Online.Battle
                     sb.Append($" battle {MapNo} pattern {Pattern} start {StartType}\n{State}");
                     break;
                 case BattleEventType.Command:
-                    sb.Append($" #{Seq} {BattleSpike.UnitName(Caster)}[{Slot}] {CmdNo} sub {SubNo} → {TarId:X2} script {ScriptId} tape [{String.Join(",", Tape.ConvertAll(t => t.ToString()).ToArray())}]");
+                    sb.Append($" #{Seq} {BattleSpike.UnitName(Caster)}[{Slot}] {CmdNo} sub {SubNo} → {TarId:X2} script {ScriptId}{(ShortSummon >= 0 ? $" summon {(ShortSummon != 0 ? "short" : "long")}" : "")} tape [{String.Join(",", Tape.ConvertAll(t => t.ToString()).ToArray())}]");
                     break;
                 case BattleEventType.Effect:
                     sb.Append($" #{Seq} {BattleSpike.UnitName(Caster)} → {BattleSpike.UnitName(Target)}");

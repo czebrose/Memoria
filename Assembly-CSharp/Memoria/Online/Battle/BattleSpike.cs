@@ -238,6 +238,17 @@ namespace Memoria.Online.Battle
             Recorder?.OnCommandAdmitted(cmd);
         }
 
+        /// <summary>CheckCommandCondition (summons): true = passive, the owner's long / short choice was applied.</summary>
+        public static Boolean ReplaySummonType(CMD_DATA cmd)
+        {
+            return Replayer != null && Replayer.ApplySummonType(cmd);
+        }
+
+        public static void OnSummonTypeDecided(CMD_DATA cmd)
+        {
+            Recorder?.OnSummonTypeDecided(cmd);
+        }
+
         /// <summary>FinishCommand, at its end.</summary>
         public static void OnCommandFinished(CMD_DATA cmd)
         {
@@ -352,6 +363,15 @@ namespace Memoria.Online.Battle
             if (_opDepth != 1 || Recorder == null || (BattleTape.Context != null && CalcDepth == 0))
                 return null;
             return Recorder.AddScriptOp(kind, unit, id, value);
+        }
+
+        /// <summary>Inventory changes: recorded inside a calculation or tick only (item use at SELECT_VFX runs everywhere).</summary>
+        public static BattleOp ItemOpEnter(OpKind kind, Int32 itemId, Int32 count)
+        {
+            _opDepth++;
+            if (_opDepth != 1 || Recorder == null)
+                return null;
+            return Recorder.AddOp(kind, null, itemId, count, 0, null, null);
         }
 
         public static BattleOp MessageOpEnter(String text, Byte priority)

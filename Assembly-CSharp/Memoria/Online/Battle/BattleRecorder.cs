@@ -176,6 +176,12 @@ namespace Memoria.Online.Battle
             return value;
         }
 
+        public void OnSummonTypeDecided(CMD_DATA cmd)
+        {
+            if (_running.TryGetValue(cmd, out BattleEvent ev))
+                ev.ShortSummon = (SByte)cmd.info.short_summon;
+        }
+
         public void OnCommandFinished(CMD_DATA cmd)
         {
             if (!_running.TryGetValue(cmd, out BattleEvent ev))

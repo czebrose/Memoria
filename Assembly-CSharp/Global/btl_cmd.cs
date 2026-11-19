@@ -1042,7 +1042,12 @@ public class btl_cmd
             case BattleCommandId.SummonGarnet:
             case BattleCommandId.SummonEiko:
             case BattleCommandId.Phantom:
-                DecideSummonType(cmd);
+                // [Online] Spike C: long / short summon depends on this PC's achievements: a passive battle takes the owner's
+                if (!Memoria.Online.Battle.BattleSpike.ReplaySummonType(cmd))
+                {
+                    DecideSummonType(cmd);
+                    Memoria.Online.Battle.BattleSpike.OnSummonTypeDecided(cmd);
+                }
                 break;
             case BattleCommandId.Counter:
                 if (abilId == BattleAbilityId.Attack)

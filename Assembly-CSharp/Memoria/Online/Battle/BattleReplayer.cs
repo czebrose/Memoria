@@ -299,6 +299,17 @@ namespace Memoria.Online.Battle
             return null;
         }
 
+        public Boolean ApplySummonType(CMD_DATA cmd)
+        {
+            if (!_seqOf.TryGetValue(cmd, out Int32 seq))
+                return false;
+            BattleEvent ev = FindCommand(seq);
+            if (ev == null || ev.ShortSummon < 0)
+                return false;
+            cmd.info.short_summon = (Byte)ev.ShortSummon;
+            return true;
+        }
+
         public Int32 Tape(CMD_DATA cmd, TapeKind kind, Int32 value)
         {
             if (!_seqOf.TryGetValue(cmd, out Int32 seq))

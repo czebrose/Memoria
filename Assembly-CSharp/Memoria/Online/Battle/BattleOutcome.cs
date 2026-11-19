@@ -230,6 +230,8 @@ namespace Memoria.Online.Battle
         Message = 10,   // BattleHUD.SetBattleMessage(Text, (Byte)A)
         ScriptUnitSet = 11,   // btl_scrp.SetCharacterData(unit, (UInt32)A, B): a battle script changing a unit
         ScriptBattleSet = 12, // btl_scrp.SetBattleData((UInt32)A, B): a battle script changing the battle
+        ItemAdd = 13,    // ff9item.FF9Item_Add((RegularItem)A, B)
+        ItemRemove = 14, // ff9item.FF9Item_Remove((RegularItem)A, B)
     }
 
     /// <summary>Spike C: one engine-level "apply" call made while calculating an action (or a status tick). Replaying
@@ -274,6 +276,9 @@ namespace Memoria.Online.Battle
                 case OpKind.ScriptUnitSet:
                 case OpKind.ScriptBattleSet:
                     w.Write((Byte)A); w.Write(B); break;
+                case OpKind.ItemAdd:
+                case OpKind.ItemRemove:
+                    w.Write((UInt16)A); w.Write((Byte)B); break;
             }
         }
 
@@ -306,6 +311,16 @@ namespace Memoria.Online.Battle
             if (Kind == OpKind.ScriptBattleSet)
             {
                 btl_scrp.SetBattleData((UInt32)A, B);
+                return null;
+            }
+            if (Kind == OpKind.ItemAdd)
+            {
+                ff9item.FF9Item_Add((RegularItem)A, B);
+                return null;
+            }
+            if (Kind == OpKind.ItemRemove)
+            {
+                ff9item.FF9Item_Remove((RegularItem)A, B);
                 return null;
             }
             BTL_DATA btl = BattleSpike.FindBtl(Unit);
@@ -357,6 +372,8 @@ namespace Memoria.Online.Battle
                 case OpKind.Message: return $"Message \"{Text}\" priority {A}";
                 case OpKind.ScriptUnitSet: return $"ScriptUnitSet {u} [{A}] = {B}";
                 case OpKind.ScriptBattleSet: return $"ScriptBattleSet [{A}] = {B}";
+                case OpKind.ItemAdd: return $"ItemAdd {(RegularItem)A} x{B}";
+                case OpKind.ItemRemove: return $"ItemRemove {(RegularItem)A} x{B}";
             }
             return Kind.ToString();
         }
