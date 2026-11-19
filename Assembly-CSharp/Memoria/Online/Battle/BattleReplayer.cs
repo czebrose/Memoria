@@ -30,14 +30,14 @@ namespace Memoria.Online.Battle
         private Boolean _stallLogged;
 
         public Boolean Started => _started;
-        public Int32 Mismatches, Corrections, Syncs, TapeMisses, Actions, Effects, LocalQueueDrops, TranceWrites, TickWrites;
+        public Int32 Mismatches, Corrections, Syncs, TapeMisses, Actions, Effects, LocalQueueDrops, TranceWrites, TickWrites, ReviveWrites;
 
         public BattleReplayer(BattleLog log)
         {
             Log = log;
         }
 
-        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSync.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
+        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} revive {ReviveWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSync.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
 
         private void Mismatch(String what)
         {
@@ -278,6 +278,20 @@ namespace Memoria.Online.Battle
                     btl.cur.hp = u.Hp;
                     btl.cur.mp = u.Mp;
                     TickWrites++;
+                }
+            }
+            // Known direct write: a revive (Phoenix Down, Life...) removes Death through the engine (an op), then the
+            // ability script sets the HP directly
+            foreach (BattleOp op in ev.Ops)
+            {
+                if (op.Kind != OpKind.Remove || op.A != (Int32)BattleStatusId.Death)
+                    continue;
+                UnitState u = ev.State.Find(op.Unit);
+                BTL_DATA btl = BattleSync.FindBtl(op.Unit);
+                if (u != null && btl != null && btl.cur.hp != u.Hp && u.Hp > 0)
+                {
+                    btl.cur.hp = u.Hp;
+                    ReviveWrites++;
                 }
             }
             List<String> diffs = ev.State.ApplyToBattle();

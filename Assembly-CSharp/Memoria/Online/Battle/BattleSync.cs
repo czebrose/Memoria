@@ -93,6 +93,7 @@ namespace Memoria.Online.Battle
         {
             Recorder = null;
             Replayer = null;
+            BattleEntry.ClearDebugStart();
             CalcDepth = 0;
             _opDepth = 0;
             if (!Configuration.Battle.SFXRework || Configuration.Battle.Speed >= 3)

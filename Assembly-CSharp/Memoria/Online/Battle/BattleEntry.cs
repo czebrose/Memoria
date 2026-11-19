@@ -127,7 +127,7 @@ namespace Memoria.Online.Battle
         public static void BeforeBattleInit() => Guard(() => { Instance?.BattleInitStart(); return 0; }, 0);
 
         /// <summary>[Online] HonoluluBattleMain.Start, after InitBattleScene.</summary>
-        public static void AfterBattleInit() => Guard(() => { _debugForced = null; Instance?.BattleInitEnd(); return 0; }, 0);
+        public static void AfterBattleInit() => Guard(() => { Instance?.BattleInitEnd(); return 0; }, 0);
 
         /// <summary>[Online] btl_init.SetupBattleEnemy: the start type (forced on a participant).</summary>
         public static battle_start_type_tags StartType(BTL_SCENE_INFO info)
@@ -139,6 +139,10 @@ namespace Memoria.Online.Battle
         }
 
         private static BattleStartData _debugForced;
+
+        /// <summary>The start type is drawn in btl_init.SetupBattleEnemy, during the battle's loading loop (after
+        /// InitBattleScene), so a forced value must live until the next battle scene starts.</summary>
+        public static void ClearDebugStart() => _debugForced = null;
 
         /// <summary>Debug record / replay (BattleSync, OnlineDebug): this PC's next battle is forced to a recorded one,
         /// through the same values a participant gets from BattleStart.</summary>
