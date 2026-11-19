@@ -9,10 +9,11 @@ namespace Memoria.Online.Battle
     ///
     ///   Presence  [20, field u16, state]                                     4 B, every PC → every peer, 2/s + on change
     ///   Pending   [21, seq u16, field u16, battle u16]                       7 B, owner → participants, at the trigger
-    ///   Start     [22, seq u16, ...BattleStartData]                          ~30 B + 17/character + 3/unit
+    ///   Start     [22, seq u16, ...BattleStartData]                          16 B + 17/character
     ///   Ready     [23, seq u16]                                              3 B, participant → owner (its battle is loaded, intro done)
     ///   Decline   [24, seq u16, reason]                                      4 B, participant → owner
-    ///   Go        [25, seq u16]                                              3 B, owner → participants (everyone ready; owner's ATB runs)
+    ///   Go        [25, seq u16, count, (unit, ATB i16)*]                     4 B + 3/unit, owner → participants (everyone ready; owner's ATB runs;
+    ///                                                                        the units and their initial ATB: btl_list is only complete after the intro)
     ///   End       [26, seq u16, result]                                      4 B, owner → participants (FF9StateGlobal.BTL_RESULT_*; 0 = cancelled)
     ///   Alive     [27, seq u16]                                              3 B, owner → participants, 1/s while its battle runs
     /// </summary>
@@ -40,6 +41,31 @@ namespace Memoria.Online.Battle
         }
 
         public static UInt16 Seq(Byte[] data) => (UInt16)(data[1] | (data[2] << 8));
+
+        /// <summary>Go [25, seq u16, count, (unit, ATB i16)*]: every unit in btl_list order (character id, or 0x80 | enemy type) and its initial ATB.</summary>
+        public static Byte[] GoWithUnits(UInt16 seq, List<KeyValuePair<Byte, Int16>> units)
+        {
+            Byte[] extra = new Byte[1 + units.Count * 3];
+            extra[0] = (Byte)units.Count;
+            for (Int32 i = 0; i < units.Count; i++)
+            {
+                extra[1 + i * 3] = units[i].Key;
+                extra[2 + i * 3] = (Byte)units[i].Value;
+                extra[3 + i * 3] = (Byte)(units[i].Value >> 8);
+            }
+            return Short(Go, seq, extra);
+        }
+
+        public static List<KeyValuePair<Byte, Int16>> ReadUnits(Byte[] go)
+        {
+            List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
+            if (go.Length < 4)
+                return units;
+            Int32 count = go[3];
+            for (Int32 i = 0; i < count && 6 + i * 3 <= go.Length; i++)
+                units.Add(new KeyValuePair<Byte, Int16>(go[4 + i * 3], (Int16)(go[5 + i * 3] | (go[6 + i * 3] << 8))));
+            return units;
+        }
     }
 
     /// <summary>What a participant's PC needs to start the owner's battle: same scene, enemies, layout, flags, party.</summary>
@@ -65,7 +91,6 @@ namespace Memoria.Online.Battle
         public UInt16 Field;         // the owner's field (the participant must be on it: battle music and the return spot)
         public Int32 Seed;           // a fresh UnityEngine.Random seed (applied on both PCs at battle init; extra safety, not relied on)
         public readonly List<Member> Members = new List<Member>();  // battle party, in battle order
-        public readonly List<KeyValuePair<Byte, Int16>> Units = new List<KeyValuePair<Byte, Int16>>(); // every unit in btl_list order: (character id | 0x80+enemy type, initial ATB)
 
         public Byte[] Serialize()
         {
@@ -86,12 +111,6 @@ namespace Memoria.Online.Battle
                 U32(b, (UInt32)m.Status);
                 U32(b, (UInt32)(m.Status >> 32));
                 b.Add(m.Trance);
-            }
-            b.Add((Byte)Units.Count);
-            foreach (KeyValuePair<Byte, Int16> u in Units)
-            {
-                b.Add(u.Key);
-                U16(b, (UInt16)u.Value);
             }
             return b.ToArray();
         }
@@ -116,12 +135,6 @@ namespace Memoria.Online.Battle
                 m.Trance = d[o++];
                 s.Members.Add(m);
             }
-            Int32 units = d[o++];
-            for (Int32 i = 0; i < units; i++)
-            {
-                Byte key = d[o++];
-                s.Units.Add(new KeyValuePair<Byte, Int16>(key, (Int16)R16(d, ref o)));
-            }
             if (o != d.Length)
                 throw new FormatException($"BattleStart: {d.Length} bytes, {o} read");
             return s;
@@ -132,10 +145,7 @@ namespace Memoria.Online.Battle
             List<String> members = new List<String>();
             foreach (Member m in Members)
                 members.Add($"{m.Character} (hp {m.Hp}, mp {m.Mp}{(m.Status != 0 ? $", status 0x{m.Status:X}" : "")})");
-            List<String> units = new List<String>();
-            foreach (KeyValuePair<Byte, Int16> u in Units)
-                units.Add($"{((u.Key & 0x80) != 0 ? $"enemy type {u.Key & 0x7F}" : $"char {u.Key}")} at {u.Value}");
-            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, field {Field}, party [{String.Join(", ", members.ToArray())}], units [{String.Join(", ", units.ToArray())}]";
+            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, field {Field}, party [{String.Join(", ", members.ToArray())}]";
         }
 
         private static void U16(List<Byte> b, UInt16 v) { b.Add((Byte)v); b.Add((Byte)(v >> 8)); }

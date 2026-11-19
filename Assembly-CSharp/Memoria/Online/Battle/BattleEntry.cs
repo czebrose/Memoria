@@ -324,8 +324,7 @@ namespace Memoria.Online.Battle
                 foreach (PLAYER p in FF9StateSystem.Common.FF9.party.member)
                     if (p != null)
                         d.Members.Add(new BattleStartData.Member { Character = (Byte)p.info.slot_no, Hp = p.cur.hp, Mp = p.cur.mp, Status = (UInt64)p.status, Trance = p.trance });
-                ReadUnits(d.Units);
-                Byte[] message = d.Serialize();
+                Byte[] message = d.Serialize(); // the units aren't in btl_list yet here: they go with Go
                 foreach (UInt64 peer in c.Participants)
                     SendTo(peer, message);
                 c.StartSent = true;
@@ -335,28 +334,43 @@ namespace Memoria.Online.Battle
             }
             else
             {
-                // Same battle? Compare with the owner's description, then force the initial ATB
-                List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
-                ReadUnits(units);
+                // Same scene? (the units are compared when Go brings the owner's list)
                 BattleStartData d = c.Data;
                 List<String> diffs = new List<String>();
                 if (FF9StateSystem.Battle.battleMapIndex != d.BattleId) diffs.Add($"battle {FF9StateSystem.Battle.battleMapIndex}");
                 if (btl.btl_scene.PatNum != d.Pattern) diffs.Add($"pattern {btl.btl_scene.PatNum}");
                 if ((Byte)btl.btl_scene.Info.StartType != d.StartType) diffs.Add($"start type {(Byte)btl.btl_scene.Info.StartType}");
-                if (units.Count != d.Units.Count) diffs.Add($"{units.Count} units (owner {d.Units.Count})");
-                Int32 atbForced = 0;
-                Int32 i = 0;
-                for (BTL_DATA b = btl.btl_list.next; b != null && i < d.Units.Count; b = b.next, i++)
-                {
-                    if (units[i].Key != d.Units[i].Key)
-                        diffs.Add($"unit {i}: {units[i].Key} (owner {d.Units[i].Key})");
-                    if (b.cur.at != d.Units[i].Value)
-                        atbForced++;
-                    b.cur.at = d.Units[i].Value;
-                }
-                Log.Message($"[Online] Battle entry: #{c.Seq} battle loaded, {(diffs.Count == 0 ? "same as the owner's" : $"DIFFERS from the owner's: {String.Join(", ", diffs.ToArray())}")}; initial ATB set from the owner on {atbForced} of {units.Count} unit(s) (the rest already matched)");
+                Log.Message($"[Online] Battle entry: #{c.Seq} battle loaded, {(diffs.Count == 0 ? "scene, pattern and start type same as the owner's" : $"DIFFERS from the owner's: {String.Join(", ", diffs.ToArray())}")}");
             }
         }
+
+        /// <summary>Participant, on Go: the same units as the owner's? Then its initial ATB (ATB doesn't run while held).</summary>
+        private void ApplyOwnerUnits(Current c, List<KeyValuePair<Byte, Int16>> owner)
+        {
+            if (!c.InBattle || PersistenSingleton<EventEngine>.Instance.gMode != 2)
+            {
+                Log.Warning($"[Online] Battle entry: #{c.Seq} Go arrived before this PC's battle was up; units not checked");
+                return;
+            }
+            List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
+            ReadUnits(units);
+            List<String> diffs = new List<String>();
+            if (units.Count != owner.Count)
+                diffs.Add($"{units.Count} units (owner {owner.Count})");
+            Int32 atbForced = 0, i = 0;
+            for (BTL_DATA b = FF9StateSystem.Battle.FF9Battle.btl_list.next; b != null && i < owner.Count; b = b.next, i++)
+            {
+                if (units[i].Key != owner[i].Key)
+                    diffs.Add($"unit {i}: {UnitName(units[i].Key)} (owner {UnitName(owner[i].Key)})");
+                if (b.cur.at != owner[i].Value)
+                    atbForced++;
+                b.cur.at = owner[i].Value;
+            }
+            List<String> names = owner.ConvertAll(u => $"{UnitName(u.Key)} at {u.Value}");
+            Log.Message($"[Online] Battle entry: #{c.Seq} units {(diffs.Count == 0 ? "same as the owner's" : $"DIFFER from the owner's: {String.Join(", ", diffs.ToArray())}")} [{String.Join(", ", names.ToArray())}]; initial ATB set from the owner on {atbForced} of {units.Count} (the rest already matched)");
+        }
+
+        private static String UnitName(Byte key) => (key & 0x80) != 0 ? $"enemy type {key & 0x7F}" : $"char {key}";
 
         private static void ReadUnits(List<KeyValuePair<Byte, Int16>> units)
         {
@@ -386,8 +400,12 @@ namespace Memoria.Online.Battle
                 if (!c.GoSent)
                 {
                     c.GoSent = true;
+                    List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
+                    ReadUnits(units); // every unit exists now, and no ATB has run yet: these are the initial values
+                    Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units);
                     foreach (UInt64 peer in c.Participants)
-                        SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Go, c.Seq));
+                        SendTo(peer, go);
+                    Log.Message($"[Online] Battle entry: #{c.Seq} Go: {go.Length} bytes, {units.Count} units [{String.Join(", ", units.ConvertAll(u => $"{UnitName(u.Key)} at {u.Value}").ToArray())}]");
                     Log.Message($"[Online] Battle entry: #{c.Seq} everyone ready ({c.Participants.Count} participant(s)); the battle runs, {_now - c.TriggeredAt:0} ms after the trigger");
                 }
                 return true;
@@ -664,7 +682,10 @@ namespace Memoria.Online.Battle
                     {
                         _current.LastFromOwner = _now;
                         if (d[0] == BattleEntryMessages.Go)
-                            Log.Message($"[Online] Battle entry: #{seq} the owner's battle runs (Go)");
+                        {
+                            Log.Message($"[Online] Battle entry: #{seq} the owner's battle runs (Go, {d.Length} bytes)");
+                            ApplyOwnerUnits(_current, BattleEntryMessages.ReadUnits(d));
+                        }
                     }
                     break;
                 case BattleEntryMessages.End:
