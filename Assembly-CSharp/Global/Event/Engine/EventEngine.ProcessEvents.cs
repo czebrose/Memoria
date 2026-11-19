@@ -174,7 +174,7 @@ public partial class EventEngine
                         if (obj.uid == this._context.controlUID)
                         {
                             EIcon.ProcessHereIcon(actor);
-                            if (this.GetUserControl() && !Memoria.Online.Session.GuestGuard.Spectating) // [Online] a watching guest doesn't interact
+                            if (this.GetUserControl() && !Memoria.Online.Session.GuestGuard.Spectating && !Memoria.Online.Session.GuestGuard.Frozen) // [Online] a watching or frozen guest doesn't interact
                                 this.CollisionRequest(actor);
                         }
                     }

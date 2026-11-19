@@ -68,3 +68,51 @@ What the event-byte log already shows (material for steps 3-4):
   and states. These are field-local and must **not** be forwarded.
 - **Byte 464:** a real flag (100 on 502, then 101 on 106 after an interaction). This is the kind of byte tier 2
   forwards.
+
+## Parts 2 and 3, as built (2026-11-18): finds, flags, the host's scenes
+
+### "Acted on this field"
+`GuestGuard.ActedOnThisField` is false from a field (or world map) load until the PC first has player control there.
+A field's opening scripts run on every PC that loads it (and again on a meeting reload), so what they give or set is
+never forwarded. When a field is left, its last changes (an exit scene) are flushed first, so they still count.
+
+### Tier 1: finds (`Party/GuestFinds.cs`)
+- `[Online]` hooks on the script opcodes AddItem / RemoveItem (`ff9item.FF9Item_*_Generic`: items, key items and
+  cards) and AddGil / RemoveGil record what a guest's scripts give or take, once the guest has acted on the field.
+- The next party request carries them as `found`. The item, gil, key item and card differences they caused are left
+  out of the request; any other story change in the same diff isn't sent (logged), so the host's game decides.
+- The host replays the finds with the same game functions, then broadcasts as usual.
+- Log: guest `Finds: a script gave item N xK (sent to the host)`; host `Party: request N ... (found: item N +K)
+  applied`.
+- Not covered: a guest's shop purchases are still rejected (M4: "only the host can change gil").
+
+### Tier 2: flags (`EventWatch.cs`, `SessionLobby.Meet.cs`)
+- Every 250 ms, a guest that has acted on its field sends its changed event bytes to the host (`MsgFlags`: index and
+  value). Bytes 2-63 (field bookkeeping) are never sent; bytes 0-1 (scenario counter) and 64+ are.
+- The host applies them to its live game. Log: `Event bytes: N applied from #tag on field F: [i] a->b`. Other
+  guests get them at their next meeting resync.
+- Not covered: `gScriptVector` / `gScriptDictionary` changes (logged nowhere yet).
+
+### Part 3: the host's scenes and battles
+- The host sends its state (`MsgHostState`: Playing / Scene / Menu / Battle / WorldMap, and its field) on each change
+  and every second. "Scene" = no control on a field for 1 s or more (so a door or a quick sign doesn't count, but a
+  long dialog does).
+- A guest on the host's field freezes while the host is in a Scene or a Battle: it can't move or interact, and sees
+  "The host is in a scene..." / "...in a battle...". Guests elsewhere aren't affected. The freeze lifts if the host's
+  state goes 3.5 s without an update.
+- The freeze notice and the toasts now show without the status box too.
+
+## R2 test steps (two PCs; same save as R1)
+
+1. **Chest alone:** guest walks to a field without the host and opens a chest (or takes an NPC gift). Guest log:
+   `Finds: a script gave item ...`. Host log: `request ... (found: item ...) applied`. The host's inventory has it
+   right away (open the host's Item menu).
+2. **Chest flag:** the host walks to that field afterwards: the chest is already open on the host.
+3. **NPC flag alone:** guest talks to an NPC whose dialog changes after the first talk. Host log:
+   `Event bytes: N applied from #tag`. When the host talks to that NPC, it gets the "second time" line.
+4. **Gil:** if any script gives gil (a reward), the host's gil goes up by the same amount.
+5. **Scene freeze:** both on one field; the host starts a scene or a long dialog. Guest: "The host is in a
+   scene...", can't move or talk; free again when the host is. A guest on another field keeps moving.
+6. **Field openings don't count:** walk into fields with intro scenes (e.g. the ship) on the guest. The guest log says
+   `field opening: not sent` for those changes, and the host log shows nothing applied from them.
+7. Send both logs (Memoria.log and output_log.txt).

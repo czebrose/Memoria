@@ -645,7 +645,7 @@ public partial class FieldMapActorController : HonoBehavior
             movingLeft &= PersistenSingleton<EventEngine>.Instance.GetUserControl();
             movingRight &= PersistenSingleton<EventEngine>.Instance.GetUserControl();
         }
-        if (this.isPlayer && Memoria.Online.Session.GuestGuard.Spectating) // [Online] a watching guest doesn't move
+        if (this.isPlayer && (Memoria.Online.Session.GuestGuard.Spectating || Memoria.Online.Session.GuestGuard.Frozen)) // [Online] a watching or frozen guest doesn't move
             movingUp = movingDown = movingLeft = movingRight = false;
         if (movingUp || movingDown || movingLeft || movingRight)
             this.ClearMoveTargetAndPath();

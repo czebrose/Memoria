@@ -367,6 +367,7 @@
     <Compile Include="Memoria\Online\ITransport.cs" />
     <Compile Include="Memoria\Online\Party\PartyState.cs" />
     <Compile Include="Memoria\Online\Party\PartySync.cs" />
+    <Compile Include="Memoria\Online\Party\GuestFinds.cs" />
     <Compile Include="Memoria\Online\SteamCallbacks.cs" />
     <Compile Include="Memoria\Online\SteamLobby.cs" />
     <Compile Include="Memoria\Online\SteamNative.cs" />

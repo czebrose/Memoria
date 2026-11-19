@@ -145,6 +145,7 @@ namespace Memoria.Online.Party
             _pending.Clear();
             _deferredUpdate = null;
             _hostBaselineSet = false;
+            GuestFinds.Clear();
         }
 
         private void Reset(String reason)
@@ -226,6 +227,8 @@ namespace Memoria.Online.Party
             {
                 ApplyChanges(state, request, character);
                 PartyState.Apply(state);
+                if (request["found"] != null && request["found"].AsArray != null)
+                    GuestFinds.Apply(request["found"].AsArray); // M5: a guest's chests, gifts, quest items, gil
                 _hostFingerprint = PartyState.Fingerprint();
                 Log.Message($"[Online] Party: request {seq} from {SteamNative.Tag(peer)} ({Describe(request)}) applied");
             }
@@ -371,12 +374,33 @@ namespace Memoria.Online.Party
                 return;
             }
             UInt32 fingerprint = PartyState.Fingerprint();
-            if (fingerprint == _expectedFingerprint)
+            if (fingerprint == _expectedFingerprint && !GuestFinds.Any)
                 return;
             JSONClass now = PartyState.Capture();
             JSONClass changes = PartyState.Diff(_expected, now);
             _expected = now;
             _expectedFingerprint = fingerprint;
+            if (GuestFinds.Any)
+            {
+                // M5: what the scripts gave or took is sent as finds (the host replays them); the item, gil, key item
+                // and card differences they caused aren't requests of their own. Other story changes stay the host's.
+                if (changes == null)
+                    changes = new JSONClass();
+                changes.Remove("items");
+                changes.Remove("gil");
+                JSONArray other = changes["other"].AsArray;
+                if (other != null)
+                {
+                    List<String> dropped = new List<String>();
+                    foreach (JSONNode o in other)
+                        dropped.Add(o.Value);
+                    changes.Remove("other");
+                    dropped.RemoveAll(o => o == "rareItems" || o == "rareItemsEx" || o == "cards");
+                    if (dropped.Count > 0)
+                        Log.Message($"[Online] Party: with the finds, not sent (the host's game decides): {String.Join(", ", dropped.ToArray())}");
+                }
+                changes.Add("found", GuestFinds.Take());
+            }
             if (changes == null)
                 return;
             Int32 seq = _nextSeq++;
@@ -517,6 +541,7 @@ namespace Memoria.Online.Party
         // ---- Blocks on guests ([Online] hooks) -----------------------------------------------------------------
 
         private static Boolean IsGuest => Instance != null && Instance.Active && !Instance._isHost();
+        internal static Boolean IsGuestNow => IsGuest;
 
         /// <summary>[Online] hook, SaveLoadUI (choosing a file to save): guests can't save.</summary>
         public static Boolean BlockGuestSave() => Block("Only the host can save.");
@@ -586,6 +611,8 @@ namespace Memoria.Online.Party
             JSONArray other = request["other"].AsArray;
             if (other != null && other.Count > 0)
                 parts.Add($"other: {Join(other)}");
+            if (request["found"] != null && request["found"].AsArray != null)
+                parts.Add(GuestFinds.Describe(request["found"].AsArray));
             return String.Join(", ", parts.ToArray());
         }
 

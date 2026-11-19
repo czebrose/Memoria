@@ -22,6 +22,17 @@ namespace Memoria.Online.Session
         /// </summary>
         public static Boolean Spectating;
 
+        /// <summary>M5: the host is in a scene (or a battle) on this guest's field: the guest can't move or interact.</summary>
+        public static Boolean Frozen;
+        /// <summary>M5: why, shown on screen while frozen.</summary>
+        public static String FrozenMessage;
+
+        /// <summary>
+        /// M5: this PC has had player control on the current field (or world map) since it loaded. Before that, the
+        /// field's opening scripts run (on every PC that loads it): what they give or set isn't a guest's own doing.
+        /// </summary>
+        public static Boolean ActedOnThisField;
+
         public static void BeginGuestSession()
         {
             if (!IsGuestSession)

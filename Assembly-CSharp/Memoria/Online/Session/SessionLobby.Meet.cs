@@ -57,12 +57,195 @@ namespace Memoria.Online.Session
         {
             _lastMeetNowMs = nowMs;
             if (Phase != SessionPhase.Playing)
+            {
+                SetFrozen(null);
+                GuestGuard.ActedOnThisField = false;
                 return;
-            EventWatch.Update(nowMs, IsHost ? "host" : WithHost ? "guest, with the host" : "guest, alone");
+            }
+            TrackActed(nowMs);
+            WatchEvents(nowMs, false);
             if (IsHost)
+            {
                 HostMeet();
+                HostPublishState(nowMs);
+            }
             else
+            {
                 GuestMeet(nowMs);
+                GuestFreeze(nowMs);
+            }
+        }
+
+        // ---- Event bytes (tier 2) and "acted on this field" -------------------------------------------------------
+
+        public const Byte MsgFlags = 8;
+        private const Int32 MaxFlagsPerMessage = 300;
+        private const String WorldMapPlace = "world map";
+        private System.Object _actedOn; // the field map (or the world map) GuestGuard.ActedOnThisField is about
+        public Int32 FlagsSent { get; private set; }
+        public Int32 FlagsApplied { get; private set; }
+
+        /// <summary>
+        /// GuestGuard.ActedOnThisField: false from a field (or world map) load until this PC first has control on it.
+        /// Changes are flushed at both edges, so a field's last changes (an exit scene) are still forwarded, and its
+        /// opening scripts' changes never are. A battle keeps the field's state.
+        /// </summary>
+        private void TrackActed(Double nowMs)
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            if (engine == null || ui == null)
+                return;
+            System.Object place = engine.gMode == 1 ? engine.fieldmap : engine.gMode == 3 ? WorldMapPlace : _actedOn;
+            if (!ReferenceEquals(place, _actedOn))
+            {
+                WatchEvents(nowMs, true); // the old place's last changes, forwarded if we had acted there
+                _actedOn = place;
+                GuestGuard.ActedOnThisField = false;
+            }
+            if (GuestGuard.ActedOnThisField)
+                return;
+            Boolean control = (engine.gMode == 1 && engine.fieldmap?.playerController != null && engine.GetUserControl() && ui.State == UIManager.UIState.FieldHUD)
+                              || (engine.gMode == 3 && ui.State == UIManager.UIState.WorldHUD);
+            if (!control)
+                return;
+            WatchEvents(nowMs, true); // the opening scripts' changes: logged, not forwarded
+            GuestGuard.ActedOnThisField = true;
+        }
+
+        private void WatchEvents(Double nowMs, Boolean force)
+        {
+            String who = IsHost ? "host" : $"guest, {(WithHost ? "with the host" : "alone")}{(GuestGuard.ActedOnThisField ? "" : ", field opening: not sent")}";
+            List<KeyValuePair<Int32, Byte>> changes = EventWatch.Update(nowMs, who, force);
+            if (changes == null || IsHost || !GuestGuard.ActedOnThisField)
+                return;
+            changes.RemoveAll(c => !EventWatch.IsForwarded(c.Key));
+            for (Int32 start = 0; start < changes.Count; start += MaxFlagsPerMessage)
+            {
+                Int32 count = Math.Min(MaxFlagsPerMessage, changes.Count - start);
+                Byte[] message = new Byte[3 + count * 3];
+                message[0] = MsgFlags;
+                message[1] = (Byte)count;
+                message[2] = (Byte)(count >> 8);
+                for (Int32 i = 0; i < count; i++)
+                {
+                    KeyValuePair<Int32, Byte> c = changes[start + i];
+                    message[3 + i * 3] = (Byte)c.Key;
+                    message[4 + i * 3] = (Byte)(c.Key >> 8);
+                    message[5 + i * 3] = c.Value;
+                }
+                _transport.Send(_lobby.OwnerId, TransportChannel.Control, message, message.Length, true);
+                FlagsSent += count;
+            }
+        }
+
+        private Boolean OnFlagsMessage(UInt64 peer, Byte[] data)
+        {
+            if (data.Length < 3 || data[0] != MsgFlags)
+                return false;
+            Int32 count = data[1] | (data[2] << 8);
+            if (data.Length != 3 + count * 3)
+                return false;
+            if (!IsHost || Phase != SessionPhase.Playing)
+                return true;
+            List<KeyValuePair<Int32, Byte>> changes = new List<KeyValuePair<Int32, Byte>>(count);
+            for (Int32 i = 0; i < count; i++)
+                changes.Add(new KeyValuePair<Int32, Byte>(data[3 + i * 3] | (data[4 + i * 3] << 8), data[5 + i * 3]));
+            WatchEvents(_lastMeetNowMs, true); // the host's own changes so far are logged as the host's
+            EventWatch.ApplyFromGuest(SteamNative.Tag(peer), changes);
+            FlagsApplied += count;
+            return true;
+        }
+
+        // ---- Host state: guests on the host's field wait during its scenes and battles -------------------------------
+
+        public const Byte MsgHostState = 9;
+        public enum HostActivity : byte { Playing = 0, Scene = 1, Menu = 2, Battle = 3, WorldMap = 4, Other = 5 }
+        private const Double SceneAfterMs = 1000; // control off this long on a field = a scene (not a door or a sign)
+        private const Double HostStateEveryMs = 1000;
+        private const Double HostStateStaleMs = 3500;
+
+        // Host
+        private HostActivity _published = HostActivity.Other;
+        private Double _nextHostState;
+        private Double _noControlSince = -1;
+
+        // Guest
+        private HostActivity _hostActivity = HostActivity.Other;
+        private UInt16 _hostActivityField = GhostState.NotOnField;
+        private Double _hostActivityAt = Double.MinValue;
+
+        public HostActivity HostActivityNow => IsHost ? _published : _hostActivity;
+
+        private void HostPublishState(Double nowMs)
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            HostActivity activity = HostActivity.Other;
+            if (engine != null && ui != null)
+            {
+                if (engine.gMode == 2)
+                {
+                    activity = HostActivity.Battle;
+                }
+                else if (engine.gMode == 3)
+                {
+                    activity = ui.State == UIManager.UIState.WorldHUD ? HostActivity.WorldMap : HostActivity.Menu;
+                }
+                else if (engine.gMode == 1 && ui.State != UIManager.UIState.FieldHUD)
+                {
+                    activity = ui.State == UIManager.UIState.Title || ui.State == UIManager.UIState.GameOver ? HostActivity.Other : HostActivity.Menu;
+                }
+                else if (engine.gMode == 1)
+                {
+                    if (engine.GetUserControl())
+                        _noControlSince = -1;
+                    else if (_noControlSince < 0)
+                        _noControlSince = nowMs;
+                    activity = _noControlSince >= 0 && nowMs - _noControlSince >= SceneAfterMs ? HostActivity.Scene : HostActivity.Playing;
+                }
+            }
+            if (activity == _published && nowMs < _nextHostState)
+                return;
+            if (activity != _published)
+                Log.Message($"[Online] Host state: {activity}{(activity == HostActivity.Scene || activity == HostActivity.Battle ? $" (guests on field {FF9StateSystem.Common.FF9.fldMapNo} wait)" : "")}");
+            _published = activity;
+            _nextHostState = nowMs + HostStateEveryMs;
+            UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            Byte[] message = { MsgHostState, (Byte)activity, (Byte)field, (Byte)(field >> 8) };
+            foreach (UInt64 peer in _transport.Peers)
+                _transport.Send(peer, TransportChannel.Control, message, message.Length, true);
+        }
+
+        private Boolean OnHostStateMessage(UInt64 peer, Byte[] data)
+        {
+            if (data.Length != 4 || data[0] != MsgHostState)
+                return false;
+            if (IsHost || peer != _lobby.OwnerId)
+                return true;
+            _hostActivity = (HostActivity)data[1];
+            _hostActivityField = (UInt16)(data[2] | (data[3] << 8));
+            _hostActivityAt = _lastMeetNowMs;
+            return true;
+        }
+
+        private void GuestFreeze(Double nowMs)
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            Boolean fresh = nowMs - _hostActivityAt < HostStateStaleMs;
+            Boolean busy = _hostActivity == HostActivity.Scene || _hostActivity == HostActivity.Battle;
+            Boolean here = engine != null && engine.gMode == 1 && _hostActivityField == FF9StateSystem.Common.FF9.fldMapNo;
+            SetFrozen(fresh && busy && here ? (_hostActivity == HostActivity.Battle ? "The host is in a battle..." : "The host is in a scene...") : null);
+        }
+
+        private static void SetFrozen(String message)
+        {
+            Boolean frozen = message != null;
+            if (frozen == GuestGuard.Frozen && (!frozen || message == GuestGuard.FrozenMessage))
+                return;
+            GuestGuard.Frozen = frozen;
+            GuestGuard.FrozenMessage = message;
+            Log.Message(frozen ? $"[Online] Freeze: {message} (field {FF9StateSystem.Common.FF9.fldMapNo})" : "[Online] Freeze: off");
         }
 
         // ---- Guest ------------------------------------------------------------------------------------------------
@@ -234,6 +417,13 @@ namespace Memoria.Online.Session
             _restoreSpot = null;
             _meetRequests.Clear();
             EventWatch.Reset();
+            _actedOn = null;
+            GuestGuard.ActedOnThisField = false;
+            SetFrozen(null);
+            _published = HostActivity.Other;
+            _noControlSince = -1;
+            _hostActivity = HostActivity.Other;
+            _hostActivityAt = Double.MinValue;
         }
     }
 }

@@ -473,7 +473,7 @@ namespace Memoria.Online.Session
         /// <summary>Control-channel messages for the session; false if the message isn't one.</summary>
         public Boolean OnControlMessage(UInt64 peer, Byte[] data)
         {
-            if (OnMeetMessage(peer, data))
+            if (OnMeetMessage(peer, data) || OnFlagsMessage(peer, data) || OnHostStateMessage(peer, data))
                 return true;
             if ((data.Length != 10 && !(data.Length == 12 && data[0] == MsgResync)) || (data[0] != MsgStart && data[0] != MsgResync))
                 return false;

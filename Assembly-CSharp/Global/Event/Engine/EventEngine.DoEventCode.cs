@@ -1426,6 +1426,7 @@ public partial class EventEngine
                 Int32 itemID = this.getv2(); // arg1: item to add
                 Int32 count = this.getv1(); // arg2: amount to add
                 ff9item.FF9Item_Add_Generic(itemID, count);
+                Memoria.Online.Party.GuestFinds.OnItem(itemID, count); // [Online] a guest's find goes to the host
                 EMinigame.Auction10TimesAchievement(this.gCur);
                 if (itemID == 288)
                     EMinigame.ViviWinHuntAchievement();
@@ -1442,6 +1443,7 @@ public partial class EventEngine
                 Int32 itemID = this.getv2(); // arg1: item to remove
                 Int32 count = this.getv1(); // arg2: amount to remove
                 ff9item.FF9Item_Remove_Generic(itemID, count);
+                Memoria.Online.Party.GuestFinds.OnItem(itemID, -count); // [Online] a guest's find goes to the host
                 if (itemID == 324)
                     EMinigame.MognetCentralAchievement();
                 return 0;
@@ -2599,15 +2601,19 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.GILADD: // 0xCE, "AddGi", "Give gil to the player"
             {
+                UInt32 gilBefore = this._ff9.party.gil; // [Online]
                 if ((this._ff9.party.gil += this.getv3u()) > 9999999U) // arg1: gil amount
                     this._ff9.party.gil = 9999999U;
+                Memoria.Online.Party.GuestFinds.OnGil((Int64)this._ff9.party.gil - gilBefore); // [Online] a guest's find goes to the host
                 return 0;
             }
             case EBin.event_code_binary.GILDELETE: // 0xCF, "RemoveGi", "Remove gil from the player"
             {
                 UInt32 gilDecrease = this.getv3u(); // arg1: gil amount
+                UInt32 gilBefore = this._ff9.party.gil; // [Online]
                 if ((this._ff9.party.gil -= gilDecrease) > 9999999U)
                     this._ff9.party.gil = 0U;
+                Memoria.Online.Party.GuestFinds.OnGil((Int64)this._ff9.party.gil - gilBefore); // [Online] a guest's find goes to the host
                 if (this.isPosObj(this.gCur))
                     EMinigame.StiltzkinAchievement((PosObj)this.gCur, gilDecrease);
                 return 0;

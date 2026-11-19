@@ -774,13 +774,28 @@ namespace Memoria.Online
 
         private void OnGUI()
         {
-            if (!_showStatus || _init == InitState.Waiting)
+            if (_init == InitState.Waiting)
                 return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14, wordWrap = false };
                 _style.normal.textColor = Color.white;
             }
+            // Always shown (status box or not): the M5 freeze notice, then the toasts
+            String notice = GuestGuard.Frozen ? GuestGuard.FrozenMessage : null;
+            String toast = PartySync.CurrentToast;
+            Single noticeY = Screen.height * 0.75f;
+            foreach (String line in new[] { notice, toast })
+            {
+                if (line == null)
+                    continue;
+                GUIContent message = new GUIContent(line);
+                Vector2 messageSize = _style.CalcSize(message);
+                GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, noticeY, messageSize.x + 16, messageSize.y + 8), message, _style);
+                noticeY += messageSize.y + 14;
+            }
+            if (!_showStatus)
+                return;
             StringBuilder text = new StringBuilder();
             if (_init == InitState.NoSteam)
             {
@@ -821,13 +836,6 @@ namespace Memoria.Online
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
             _session?.OnGUI();
             _session?.OnControlGUI();
-            String toast = PartySync.CurrentToast;
-            if (toast != null)
-            {
-                GUIContent message = new GUIContent(toast);
-                Vector2 messageSize = _style.CalcSize(message);
-                GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, Screen.height * 0.75f, messageSize.x + 16, messageSize.y + 8), message, _style);
-            }
         }
 
         private Boolean IsConnected(UInt64 peer)
