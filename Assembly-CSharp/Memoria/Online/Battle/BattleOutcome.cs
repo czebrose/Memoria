@@ -20,6 +20,8 @@ namespace Memoria.Online.Battle
         public Byte Targetable, Disappear;
         public Int16 Atb;
 
+        public Boolean IsDown => Hp == 0 || (Status & (UInt64)BattleStatus.Death) != 0;
+
         public static UnitState Capture(BTL_DATA btl)
         {
             return new UnitState
@@ -111,13 +113,15 @@ namespace Memoria.Online.Battle
             foreach (UnitState u in Units)
             {
                 UnitState o = actual.Find(u.Id);
-                if (o == null)
+                if (o == null && !u.IsDown)
                     diffs.Add($"{BattleSpike.UnitName(u.Id)} missing");
+                else if (o == null)
+                    continue; // a dead unit leaves btl_list at the end of its die sequence: timing, not state
                 else
                     u.Diff(o, diffs);
             }
             foreach (UnitState o in actual.Units)
-                if (Find(o.Id) == null)
+                if (Find(o.Id) == null && !o.IsDown)
                     diffs.Add($"{BattleSpike.UnitName(o.Id)} extra");
             if (Gil != actual.Gil)
                 diffs.Add($"gil {Gil}->{actual.Gil}");
@@ -153,8 +157,14 @@ namespace Memoria.Online.Battle
         {
             BattleSnapshot now = Capture();
             List<String> changed = now.Diff(this);
-            if (changed.Count == 0)
-                return changed;
+            BattleSpike.Applying++;
+            try { ApplyCore(now); }
+            finally { BattleSpike.Applying--; }
+            return changed;
+        }
+
+        private void ApplyCore(BattleSnapshot now)
+        {
             foreach (UnitState u in Units)
             {
                 BTL_DATA btl = BattleSpike.FindBtl(u.Id);
@@ -194,7 +204,6 @@ namespace Memoria.Online.Battle
                 if (kv.Value > have)
                     ff9item.FF9Item_Add((RegularItem)kv.Key, kv.Value - have);
             }
-            return changed;
         }
 
         public override String ToString()
@@ -218,6 +227,9 @@ namespace Memoria.Online.Battle
         Kill = 7,       // BattleUnit.Kill(Other)
         Figure = 8,     // btl2d.Btl2dReqInstant(unit, (UInt16)A, B, C)
         StatFigure = 9, // btl2d.Btl2dStatReq(unit, A, B)
+        Message = 10,   // BattleHUD.SetBattleMessage(Text, (Byte)A)
+        ScriptUnitSet = 11,   // btl_scrp.SetCharacterData(unit, (UInt32)A, B): a battle script changing a unit
+        ScriptBattleSet = 12, // btl_scrp.SetBattleData((UInt32)A, B): a battle script changing the battle
     }
 
     /// <summary>Spike C: one engine-level "apply" call made while calculating an action (or a status tick). Replaying
@@ -231,6 +243,7 @@ namespace Memoria.Online.Battle
         public Object[] Params;
         public UInt32 Result;
         public Boolean Discard;
+        public String Text;
 
         public void Write(BinaryWriter w)
         {
@@ -256,6 +269,11 @@ namespace Memoria.Online.Battle
                     w.Write((UInt16)A); w.Write(B); w.Write(C); break;
                 case OpKind.StatFigure:
                     w.Write(A); w.Write(B); break;
+                case OpKind.Message:
+                    w.Write((Byte)A); w.Write(Text ?? String.Empty); break;
+                case OpKind.ScriptUnitSet:
+                case OpKind.ScriptBattleSet:
+                    w.Write((Byte)A); w.Write(B); break;
             }
         }
 
@@ -280,6 +298,16 @@ namespace Memoria.Online.Battle
         /// <summary>Run the op on the passive client. Returns a mismatch description, or null.</summary>
         public String Apply(CMD_DATA cmd)
         {
+            if (Kind == OpKind.Message)
+            {
+                UIManager.Battle.SetBattleMessage(Text, (Byte)A);
+                return null;
+            }
+            if (Kind == OpKind.ScriptBattleSet)
+            {
+                btl_scrp.SetBattleData((UInt32)A, B);
+                return null;
+            }
             BTL_DATA btl = BattleSpike.FindBtl(Unit);
             if (btl == null)
                 return $"op {Kind} on missing unit {BattleSpike.UnitName(Unit)}";
@@ -307,6 +335,7 @@ namespace Memoria.Online.Battle
                 }
                 case OpKind.Figure: btl2d.Btl2dReqInstant(btl, (UInt16)A, B, C); break;
                 case OpKind.StatFigure: btl2d.Btl2dStatReq(btl, A, B); break;
+                case OpKind.ScriptUnitSet: btl_scrp.SetCharacterData(unit, (UInt32)A, B); break;
             }
             return null;
         }
@@ -325,6 +354,9 @@ namespace Memoria.Online.Battle
                 case OpKind.Kill: return $"Kill {u} by {BattleSpike.UnitName(Other)}";
                 case OpKind.Figure: return $"Figure {u} info {A:X} hp {B} mp {C}";
                 case OpKind.StatFigure: return $"StatFigure {u} hp {A} mp {B}";
+                case OpKind.Message: return $"Message \"{Text}\" priority {A}";
+                case OpKind.ScriptUnitSet: return $"ScriptUnitSet {u} [{A}] = {B}";
+                case OpKind.ScriptBattleSet: return $"ScriptBattleSet [{A}] = {B}";
             }
             return Kind.ToString();
         }

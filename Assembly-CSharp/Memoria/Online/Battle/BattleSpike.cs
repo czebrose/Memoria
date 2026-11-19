@@ -26,6 +26,8 @@ namespace Memoria.Online.Battle
         public static BattleLog LastLog;
         public static String LastSummary = String.Empty;
         public static Int32 CalcDepth;
+        public static Int32 Applying; // > 0 while the replayer applies the owner's ops / state
+        public static Int32 BlockedScriptWrites;
         private static Int32 _opDepth;
 
         public static Boolean Passive => Replayer != null;
@@ -206,6 +208,7 @@ namespace Memoria.Online.Battle
         {
             LastLog = log;
             Recorder = null;
+            Mode = SpikeMode.Replay; // one recording per Record: the next battle replays it
             String path = Path.Combine(LogFolder, $"record-{DateTime.Now:yyyyMMdd-HHmmss}-battle{log.MapNo}.txt");
             log.Save(path);
             LastSummary = $"Recorded battle {log.MapNo}: {log.CountOf(BattleEventType.Command)} commands, {log.CountOf(BattleEventType.Effect)} effects. {log.SizeReport()}";
@@ -331,11 +334,43 @@ namespace Memoria.Online.Battle
             return Recorder.AddOp(kind, unit, a, b, c, other, parameters);
         }
 
+        /// <summary>btl_scrp.SetCharacterData / SetBattleData: true = don't run it (a passive battle's own battle
+        /// script; the owner's writes arrive as ops). Writes made by a command's sequence run everywhere.</summary>
+        public static Boolean BlockScriptWrite(String what)
+        {
+            if (Replayer == null || !Replayer.Started || Applying > 0 || BattleTape.Context != null)
+                return false;
+            BlockedScriptWrites++;
+            Note("Replay: blocked a local battle-script write: " + what);
+            return true;
+        }
+
+        /// <summary>Script writes are recorded wherever they happen, except in code every PC runs (a command's steps).</summary>
+        public static BattleOp ScriptOpEnter(OpKind kind, BTL_DATA unit, Int32 id, Int32 value)
+        {
+            _opDepth++;
+            if (_opDepth != 1 || Recorder == null || (BattleTape.Context != null && CalcDepth == 0))
+                return null;
+            return Recorder.AddScriptOp(kind, unit, id, value);
+        }
+
+        public static BattleOp MessageOpEnter(String text, Byte priority)
+        {
+            _opDepth++;
+            if (_opDepth != 1 || Recorder == null)
+                return null;
+            BattleOp op = Recorder.AddOp(OpKind.Message, null, priority, 0, 0, null, null);
+            if (op != null)
+                op.Text = text;
+            return op;
+        }
+
         public static void OpExit(BattleOp op, UInt32 result = 0)
         {
             _opDepth--;
             if (op == null)
                 return;
+            Recorder?.OpDone(op);
             op.Result = result;
             if (op.Kind == OpKind.Alter && result != btl_stat.ALTER_SUCCESS && result != btl_stat.ALTER_SUCCESS_NO_SET)
                 op.Discard = true; // no effect on the owner: nothing to replay

@@ -243,9 +243,35 @@ namespace Memoria.Online.Battle
         {
             if (_collecting == null)
                 return null;
-            BattleOp op = new BattleOp { Kind = kind, Unit = unit.btl_id, A = a, B = b, C = c, Other = other?.btl_id ?? 0, Params = parameters };
+            BattleOp op = new BattleOp { Kind = kind, Unit = unit?.btl_id ?? 0, A = a, B = b, C = c, Other = other?.btl_id ?? 0, Params = parameters };
             _collecting.Ops.Add(op);
             return op;
+        }
+
+        private BattleEvent _scriptEvent;
+
+        /// <summary>A battle script write: part of the current calculation / tick, else an event of its own.</summary>
+        public BattleOp AddScriptOp(OpKind kind, BTL_DATA unit, Int32 id, Int32 value)
+        {
+            if (!_started)
+                return null;
+            if (_collecting != null)
+                return AddOp(kind, unit, id, value, 0, null, null);
+            Checkpoint();
+            _scriptEvent = new BattleEvent { Type = BattleEventType.Script, Target = unit?.btl_id ?? 0 };
+            BattleOp op = new BattleOp { Kind = kind, Unit = unit?.btl_id ?? 0, A = id, B = value };
+            _scriptEvent.Ops.Add(op);
+            Add(_scriptEvent);
+            return op;
+        }
+
+        public void OpDone(BattleOp op)
+        {
+            if (_scriptEvent == null || !_scriptEvent.Ops.Contains(op))
+                return;
+            _scriptEvent.State = BattleSnapshot.Capture();
+            _baseline = _scriptEvent.State;
+            _scriptEvent = null;
         }
     }
 }

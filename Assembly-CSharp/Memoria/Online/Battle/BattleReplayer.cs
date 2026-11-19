@@ -29,6 +29,7 @@ namespace Memoria.Online.Battle
         private readonly Stopwatch _blocked = new Stopwatch();
         private Boolean _stallLogged;
 
+        public Boolean Started => _started;
         public Int32 Mismatches, Corrections, Syncs, TapeMisses, Actions, Effects, LocalQueueDrops, TranceWrites;
 
         public BattleReplayer(BattleLog log)
@@ -36,7 +37,7 @@ namespace Memoria.Online.Battle
             Log = log;
         }
 
-        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops}{(_ended ? " | ended" : "")}";
+        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSpike.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
 
         private void Mismatch(String what)
         {
@@ -105,6 +106,7 @@ namespace Memoria.Online.Battle
                         _pos++;
                         break;
                     case BattleEventType.Tick:
+                    case BattleEventType.Script:
                         ApplyTick(ev);
                         _pos++;
                         break;
@@ -159,15 +161,28 @@ namespace Memoria.Online.Battle
             Pump();
         }
 
+        private void ApplyOps(BattleEvent ev, CMD_DATA cmd)
+        {
+            BattleSpike.Applying++;
+            try
+            {
+                foreach (BattleOp op in ev.Ops)
+                {
+                    String problem = op.Apply(cmd);
+                    if (problem != null)
+                        Mismatch(problem);
+                }
+            }
+            finally
+            {
+                BattleSpike.Applying--;
+            }
+        }
+
         private void ApplyEffect(BattleEvent ev, CMD_DATA cmd, BTL_DATA target)
         {
             Effects++;
-            foreach (BattleOp op in ev.Ops)
-            {
-                String problem = op.Apply(cmd);
-                if (problem != null)
-                    Mismatch(problem);
-            }
+            ApplyOps(ev, cmd);
             for (BTL_DATA btl = FF9StateSystem.Battle.FF9Battle.btl_list.next; btl != null; btl = btl.next)
             {
                 btl.fig.info = 0;
@@ -201,13 +216,8 @@ namespace Memoria.Online.Battle
 
         private void ApplyTick(BattleEvent ev)
         {
-            foreach (BattleOp op in ev.Ops)
-            {
-                String problem = op.Apply(null);
-                if (problem != null)
-                    Mismatch(problem);
-            }
-            Correct(ev, "tick");
+            ApplyOps(ev, null);
+            Correct(ev, ev.Type == BattleEventType.Script ? "script" : "tick");
         }
 
         /// <summary>State the ops didn't reproduce: set it from the owner's snapshot and count it.</summary>

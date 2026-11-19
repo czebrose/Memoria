@@ -16,6 +16,7 @@ namespace Memoria.Online.Battle
         Sync = 6,    // state changed outside any command / tick / calculation (AI script, queue checks, ...)
         Atb = 7,     // ATB gauges (display)
         End = 8,     // the battle ended: result and rewards
+        Script = 9,  // a battle script (AI / event) changed a unit or the battle outside a calculation
     }
 
     /// <summary>One entry of the owner's battle log. A single class with optional parts keeps the spike small.</summary>
@@ -103,6 +104,7 @@ namespace Memoria.Online.Battle
                     w.Write((UInt16)Seq);
                     break;
                 case BattleEventType.Tick:
+                case BattleEventType.Script:
                     w.Write((Byte)BattleSpike.UnitIndex(Target));
                     w.Write((Byte)Ops.Count);
                     foreach (BattleOp op in Ops)
@@ -163,6 +165,7 @@ namespace Memoria.Online.Battle
                     sb.Append($" #{Seq}\n{State}");
                     break;
                 case BattleEventType.Tick:
+                case BattleEventType.Script:
                     sb.Append($" {BattleSpike.UnitName(Target)}");
                     foreach (BattleOp op in Ops)
                         sb.Append("\n      ").Append(op);
