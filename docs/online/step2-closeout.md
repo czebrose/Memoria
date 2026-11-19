@@ -55,6 +55,12 @@ Known bugs and gaps:
 - Vayle and character 10 have no field body (a guest playing them shows the stand-in Clove body).
 - Ghosts only play stand / walk / run.
 
+Fixed after close-out:
+- Snapshot loads replayed the field's entrance (found in spike C): `GameSnapshot.Load` re-entered the field with the
+  entrance it was originally entered by, so the field's `Main_Init` replayed it; the mod's field 507 re-ran its New
+  Game party setup and dropped Duskly and Vayle. This hit the debug Ctrl+Shift+R restore and guests' resync loads
+  alike. Fix: on a field, `Load` sets `FieldEntrance = 10000` like a moogle-save load (cherry-picked from b9529e02).
+
 Mod bugs (in the mod's scripts, not here): "Error Env Play() Slot=0" after the Pilot (field 100) and likely Vivi
 (field 300) send you to the ship: brief in `handoff-mod-bug-pilot-exit-ambient-sound.md` (Memoria-Multiplayer
 folder).

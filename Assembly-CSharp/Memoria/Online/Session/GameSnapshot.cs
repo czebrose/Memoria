@@ -177,6 +177,16 @@ namespace Memoria.Online.Session
                 ? "[Online] Snapshot check right after parsing (before the field starts): the game state matches the snapshot exactly"
                 : $"[Online] Snapshot check right after parsing: {(differences.Count >= 25 ? "25+" : differences.Count.ToString())} difference(s): {String.Join("; ", differences.ToArray())}");
 
+            // A snapshot is taken mid-field, not at a save point: General_LoadedGame (set by moogle scripts just before the
+            // save menu) is 0 and General_FieldEntrance is still the entrance the field was entered by, so the field's
+            // Main_Init would replay that entrance (e.g. the mod's field 507 re-ran its New Game party setup and dropped
+            // Duskly and Vayle). Enter it as a loaded game does: field scripts turn General_LoadedGame into entrance 10000.
+            if (PersistenSingleton<FF9StateSystem>.Instance.mode == 1)
+            {
+                Log.Message($"[Online] Snapshot load: field entrance {FF9StateSystem.EventState.FieldEntrance} -> 10000 (as a loaded game)");
+                FF9StateSystem.EventState.FieldEntrance = 10000;
+            }
+
             UIManager ui = PersistenSingleton<UIManager>.Instance;
             if (ui.State == UIManager.UIState.Title)
                 ui.TitleScene.Hide(() => EnterLoadedGame(asGuest));
