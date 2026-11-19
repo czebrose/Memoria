@@ -52,14 +52,17 @@ namespace Memoria.Online.Battle
         {
             if (!_enabled)
                 return;
-            if (BattleSync.Mode == DebugReplayMode.Off && BattleSync.Recorder == null && BattleSync.Replayer == null)
+            if (BattleSync.Mode == DebugReplayMode.Off && BattleSync.Recorder == null && BattleSync.Replayer == null && !(BattleSync.OwnerStream != null && InBattle))
                 return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 13, wordWrap = true };
                 _style.normal.textColor = Color.white;
             }
-            String text = $"Spike C [{BattleSync.Mode}]  (Ctrl+Shift+E mode, A inject attack, Q dump)";
+            String text = $"Battle sync [debug {BattleSync.Mode}]  (Ctrl+Shift+E record/replay, A inject attack, Q dump)";
+            String shared = BattleSync.StatusLine;
+            if (shared != null)
+                text += "\nshared battle " + shared;
             if (BattleSync.Recorder != null)
                 text += $"\nrecording: {BattleSync.Recorder.EventCount} events";
             if (BattleSync.Replayer != null)

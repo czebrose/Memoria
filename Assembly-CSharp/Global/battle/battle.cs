@@ -144,7 +144,7 @@ public static class battle
                     SceneDirector.FF9Wipe_FadeOutEx(32);
                     ff9Battle.btl_seq = FF9StateBattleSystem.SEQ_VICTORY_WAIT;
                 }
-                else if (ff9Battle.btl_seq == FF9StateBattleSystem.SEQ_VICTORY_WAIT && ff9Battle.btl_fade_time++ > 32)
+                else if (ff9Battle.btl_seq == FF9StateBattleSystem.SEQ_VICTORY_WAIT && Memoria.Online.Battle.BattleSync.MayEndBattle() && ff9Battle.btl_fade_time++ > 32) // [Online] Step 3: a passive battle waits for the owner's End
                 {
                     return btl_sys.ManageBattleEnd(ff9Battle);
                 }
@@ -169,7 +169,7 @@ public static class battle
                             SceneDirector.FF9Wipe_FadeOutEx(32);
                         ff9Battle.btl_seq = FF9StateBattleSystem.SEQ_DEFEATCLOSE_WAIT;
                     }
-                    else if (ff9Battle.btl_seq == FF9StateBattleSystem.SEQ_DEFEATCLOSE_WAIT && ff9Battle.btl_fade_time++ > 32)
+                    else if (ff9Battle.btl_seq == FF9StateBattleSystem.SEQ_DEFEATCLOSE_WAIT && Memoria.Online.Battle.BattleSync.MayEndBattle() && ff9Battle.btl_fade_time++ > 32) // [Online] Step 3: a passive battle waits for the owner's End
                     {
                         return btl_sys.ManageBattleEnd(ff9Battle);
                     }

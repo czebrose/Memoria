@@ -370,6 +370,8 @@
     <Compile Include="Memoria\Online\Battle\BattleReplayer.cs" />
     <Compile Include="Memoria\Online\Battle\BattleSync.cs" />
     <Compile Include="Memoria\Online\Battle\BattleSyncHud.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleStream.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleWire.cs" />
     <Compile Include="Memoria\Online\Battle\BattleTape.cs" />
     <Compile Include="Memoria\Online\Battle\CommandInjector.cs" />
     <Compile Include="Memoria\Online\Battle\PassiveBattle.cs" />

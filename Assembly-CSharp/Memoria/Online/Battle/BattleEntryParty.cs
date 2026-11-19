@@ -94,13 +94,14 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>The battle's effect on the party: { "battle": id, "characters": [...], "diff": PartyState.Diff }; null if none.</summary>
-        public static Byte[] PackResult(Int32 battleId, ICollection<Int32> characters, JSONClass before, JSONClass after)
+        public static Byte[] PackResult(Int32 battleId, Int32 seq, ICollection<Int32> characters, JSONClass before, JSONClass after)
         {
             JSONClass diff = PartyState.Diff(before, after);
             if (diff == null)
                 return null;
             JSONClass body = new JSONClass();
             body.Add("battle", new JSONData(battleId));
+            body.Add("seq", new JSONData(seq));
             JSONArray chars = new JSONArray();
             foreach (Int32 c in characters)
                 chars.Add(new JSONData(c));
@@ -121,7 +122,8 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>Host: puts a guest battle's results into the host's game (the battle characters' records, items, gil).</summary>
-        public static String ApplyResult(JSONClass body)
+        /// <param name="playedHere">The host watched this battle to its own end: its rewards (items, gil) are already in.</param>
+        public static String ApplyResult(JSONClass body, Boolean playedHere)
         {
             HashSet<Int32> characters = new HashSet<Int32>();
             foreach (JSONNode c in body["characters"].AsArray)
@@ -151,6 +153,11 @@ namespace Memoria.Online.Battle
                 }
             }
             JSONArray items = diff["items"].AsArray;
+            if (playedHere && (items != null || diff["gil"] != null))
+            {
+                ignored.Add("items and gil (already won in this PC's copy of the battle)");
+                items = null;
+            }
             if (items != null)
             {
                 foreach (JSONNode item in items)
@@ -159,7 +166,7 @@ namespace Memoria.Online.Battle
                     applied.Add($"item {item["id"].AsInt} {(item["d"].AsInt > 0 ? "+" : "")}{item["d"].AsInt}");
                 }
             }
-            if (diff["gil"] != null)
+            if (diff["gil"] != null && !playedHere)
             {
                 Int64 gil = Math.Max(0, Math.Min(9999999, state[PartyState.Common]["gil"].AsLong + diff["gil"].AsLong));
                 state[PartyState.Common]["gil"] = new JSONData(gil.ToString());

@@ -2,6 +2,7 @@ using FF9;
 using Memoria.Data;
 using Memoria.Prime;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Memoria.Online.Battle
@@ -71,7 +72,7 @@ namespace Memoria.Online.Battle
         {
             get
             {
-                String folder = Path.Combine(Directory.GetCurrentDirectory(), "SpikeC");
+                String folder = Path.Combine(Directory.GetCurrentDirectory(), "BattleLogs");
                 if (!Directory.Exists(folder))
                     Directory.CreateDirectory(folder);
                 return folder;
@@ -96,8 +97,15 @@ namespace Memoria.Online.Battle
             BattleEntry.ClearDebugStart();
             CalcDepth = 0;
             _opDepth = 0;
-            if (!Configuration.Battle.SFXRework || Configuration.Battle.Speed >= 3)
-                Note($"warning: the spike assumes SFXRework=1 and Speed<3 (have {Configuration.Battle.SFXRework}, {Configuration.Battle.Speed})");
+            OwnerStream = null;
+            if (BattleEntry.InSharedBattle)
+            {
+                if (Mode != DebugReplayMode.Off)
+                    Note($"Debug {Mode} mode ignored: this is a shared battle");
+                return; // BattleEntry.BeforeBattleInit sets up the owner's recorder or the passive replay
+            }
+            if (Mode != DebugReplayMode.Off && (!Configuration.Battle.SFXRework || Configuration.Battle.Speed >= 3))
+                Note($"warning: replay assumes SFXRework=1 and Speed<3 (have {Configuration.Battle.SFXRework}, {Configuration.Battle.Speed})");
             if (Mode == DebugReplayMode.Replay && LastLog != null && LastLog.Complete)
             {
                 // The recorded battle, pattern and start type are forced through BattleEntry, like a participant's
@@ -132,6 +140,7 @@ namespace Memoria.Online.Battle
             try
             {
                 Recorder?.AfterFrame(battleResult);
+                OwnerStream?.SampleAtb();
                 Replayer?.AfterFrame(battleResult);
                 EndWatchdog(battleResult);
             }
@@ -193,7 +202,7 @@ namespace Memoria.Online.Battle
 
         public static void OnRecordingDone(BattleLog log)
         {
-            LastLog = log;
+            LastLog = CheckWire(log) ?? log; // the debug replay plays what came back through the wire format
             Recorder = null;
             Mode = DebugReplayMode.Replay; // one recording per Record: the next battle replays it
             String path = Path.Combine(LogFolder, $"record-{DateTime.Now:yyyyMMdd-HHmmss}-battle{log.MapNo}.txt");
@@ -202,10 +211,125 @@ namespace Memoria.Online.Battle
             Note(LastSummary + " → " + path);
         }
 
-        public static void OnReplayDone(String summary)
+        public static void OnReplayDone(BattleReplayer replayer)
         {
-            LastSummary = summary;
-            Note(summary);
+            LastSummary = $"{(replayer.Live ? "Shared battle (watched)" : "Replay")} done: {replayer.Status}";
+            if (replayer.Live)
+            {
+                LastSummary += $"; {replayer.Stream.Status}";
+                if (replayer.StartFixes > 0)
+                    LastSummary += $"; {replayer.StartFixes} initial difference(s) set from the owner's";
+                if (Configuration.Debug.OnlineDebug)
+                    replayer.Log.Save(Path.Combine(LogFolder, $"watched-{DateTime.Now:yyyyMMdd-HHmmss}-battle{replayer.Log.MapNo}.txt"));
+            }
+            Note(LastSummary);
+            Replayer = null;
+        }
+
+        // ---- Step 3: shared battles (driven by BattleEntry) -----------------------------------------------------------
+
+        /// <summary>The owner of a shared battle streams it to the participants.</summary>
+        public static BattleStreamOut OwnerStream;
+
+        /// <summary>BattleEntry, owner, battle init: record this battle for the participants.</summary>
+        public static void BeginOwner()
+        {
+            Recorder = new BattleRecorder { Network = true };
+            OwnerStream = new BattleStreamOut(Recorder);
+            Note($"Shared battle {FF9StateSystem.Common.FF9.btlMapNo}: this PC owns it and streams it");
+        }
+
+        /// <summary>BattleEntry, participant, battle init: play the owner's battle passively.</summary>
+        public static void BeginPassive()
+        {
+            BattleStreamIn stream = new BattleStreamIn();
+            Replayer = new BattleReplayer(stream.Log, stream);
+            Note($"Shared battle {FF9StateSystem.Common.FF9.btlMapNo}: watching the owner's");
+        }
+
+        /// <summary>BattleEntry, participant: a BattleStream message from the owner.</summary>
+        public static void OnStream(Byte[] message)
+        {
+            BattleStreamIn stream = Replayer?.Stream;
+            if (stream == null)
+            {
+                Note($"Stream: {message.Length} bytes arrived with no shared battle running here; dropped");
+                return;
+            }
+            try { stream.OnMessage(message); }
+            catch (Exception err) { Log.Error(err, "[Battle] Can't read the owner's battle stream"); }
+        }
+
+        /// <summary>BattleEntry, owner: the next message for the participants (null: nothing new).</summary>
+        public static Byte[] TakeStream(UInt16 seq) => OwnerStream?.TakeMessage(seq);
+
+        /// <summary>The owner's stream has sent its End (the participants may end their battles).</summary>
+        public static Boolean OwnerStreamEnded => OwnerStream != null && OwnerStream.EndSent;
+
+        /// <summary>A participant's battle is being left early (owner gone, dropped): stop playing the stream.</summary>
+        public static void AbortLive()
+        {
+            if (Replayer != null && Replayer.Live && !Replayer.Aborted)
+            {
+                Replayer.Aborted = true;
+                Note("Shared battle: stopped playing the owner's events");
+            }
+        }
+
+        public static Boolean LivePassive => Replayer != null && Replayer.Live;
+
+        /// <summary>The owner's recording ended (its battle is over): summary; the stream sends what's left.</summary>
+        public static void OnOwnerBattleDone(BattleLog log)
+        {
+            Recorder = null;
+            CheckWire(log);
+            if (OwnerStream != null)
+            {
+                Int32 oldAtb = OwnerStream.OldAtbBytes();
+                LastSummary = $"Shared battle {log.MapNo} done (owner): {log.CountOf(BattleEventType.Command)} commands, {log.CountOf(BattleEventType.Effect)} effects; {OwnerStream.Status}; "
+                            + $"ATB in the spike's format would have been {oldAtb} B";
+                Note(LastSummary);
+            }
+            if (Configuration.Debug.OnlineDebug)
+                log.Save(Path.Combine(LogFolder, $"owned-{DateTime.Now:yyyyMMdd-HHmmss}-battle{log.MapNo}.txt"));
+        }
+
+        /// <summary>Self-check of the wire format on a finished log (logged); the copy, or null if it failed.</summary>
+        private static BattleLog CheckWire(BattleLog log)
+        {
+            try
+            {
+                List<String> problems = new List<String>();
+                BattleLog copy = BattleWire.RoundTrip(log, problems);
+                Note(problems.Count == 0 ? $"Wire check: all {log.Events.Count} events came back the same" : $"Wire check: {problems.Count} difference(s): {String.Join(" | ", problems.GetRange(0, Math.Min(10, problems.Count)).ToArray())}");
+                return copy;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, "[Battle] Wire check failed");
+                return null;
+            }
+        }
+
+        /// <summary>battle.cs, before the battle closes (last fade): false holds it there (a passive battle waits for
+        /// the owner's End).</summary>
+        public static Boolean MayEndBattle()
+        {
+            try { return Replayer == null || Replayer.MayEnd(); }
+            catch (Exception err) { Log.Error(err, "[Battle] MayEndBattle"); return true; }
+        }
+
+        /// <summary>One line for the status box.</summary>
+        public static String StatusLine
+        {
+            get
+            {
+                if (OwnerStream != null)
+                    return $"owner: {OwnerStream.Status}";
+                if (Replayer != null && Replayer.Live)
+                    return $"watching: {Replayer.Stream.Status}; applied {Replayer.Applied}, corrections {Replayer.Corrections}, mismatches {Replayer.Mismatches}";
+                return null;
+            }
         }
 
         // ---- command flow (btl_cmd) ---------------------------------------------------------------------------------

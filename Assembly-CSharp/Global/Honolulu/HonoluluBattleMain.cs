@@ -132,8 +132,8 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
         {
             this.cameraController = GameObject.Find("Battle Camera").GetComponent<BattleMapCameraController>();
             Memoria.Debugging.BattleLaunch.ApplyBattleSeed();
-            Memoria.Online.Battle.BattleEntry.BeforeBattleInit(); // [Online] Spike D: battle party, owner's seed and stats
-            Memoria.Online.Battle.BattleSync.OnBattleSceneStart(); // [Online] Spike C: record / passive replay
+            Memoria.Online.Battle.BattleSync.OnBattleSceneStart(); // [Online] battle record / replay (debug); reset
+            Memoria.Online.Battle.BattleEntry.BeforeBattleInit(); // [Online] shared battle: battle party, owner's seed and stats, stream or passive play
             this.InitBattleScene();
             Memoria.Online.Battle.BattleEntry.AfterBattleInit(); // [Online] Spike D: send / check the BattleStart
             FPSManager.SetTargetFPS(Configuration.Graphics.BattleFPS);

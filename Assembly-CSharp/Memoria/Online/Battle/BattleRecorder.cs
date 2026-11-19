@@ -25,6 +25,40 @@ namespace Memoria.Online.Battle
         private Byte _targetDodgeBefore;
 
         public Int32 EventCount => Log.Events.Count;
+        public Boolean Started => _started;
+
+        /// <summary>Step 3: recording for participants (the log is streamed by <see cref="BattleStreamOut"/>), not the debug tool.</summary>
+        public Boolean Network;
+        private readonly Dictionary<CMD_DATA, Int32> _runningIndex = new Dictionary<CMD_DATA, Int32>();
+
+        /// <summary>Index of the first command still running (its tape isn't complete yet), or <paramref name="none"/>.</summary>
+        public Int32 FirstOpenCommandIndex(Int32 none)
+        {
+            Int32 first = none;
+            foreach (Int32 index in _runningIndex.Values)
+                if (index < first)
+                    first = index;
+            return first;
+        }
+
+        /// <summary>A command that left cur_cmd_list without FinishCommand (killed): close it so the stream goes on.</summary>
+        private void CloseOrphans()
+        {
+            if (_running.Count == 0)
+                return;
+            List<CMD_DATA> gone = null;
+            foreach (CMD_DATA cmd in _running.Keys)
+                if (!FF9StateSystem.Battle.FF9Battle.cur_cmd_list.Contains(cmd))
+                    (gone ?? (gone = new List<CMD_DATA>())).Add(cmd);
+            if (gone == null)
+                return;
+            foreach (CMD_DATA cmd in gone)
+            {
+                BattleEvent ev = _running[cmd];
+                BattleSync.Note($"Record: command #{ev.Seq} ({ev.CmdNo}) left the battle without finishing");
+                OnCommandFinished(cmd);
+            }
+        }
 
         private BattleEvent Add(BattleEvent ev)
         {
@@ -60,6 +94,7 @@ namespace Memoria.Online.Battle
             if (!_started || Log.Complete)
                 return;
             Checkpoint();
+            CloseOrphans();
             if (_frame % 3 == 0)
                 RecordAtb();
             if (battleResult == 1)
@@ -106,7 +141,12 @@ namespace Memoria.Online.Battle
                 State = BattleSnapshot.Capture()
             });
             Log.Complete = true;
-            BattleSync.OnRecordingDone(Log);
+            _running.Clear();
+            _runningIndex.Clear();
+            if (Network)
+                BattleSync.OnOwnerBattleDone(Log);
+            else
+                BattleSync.OnRecordingDone(Log);
         }
 
         /// <summary>Anything changed since the last context ended is outside the model: log it as a Sync.</summary>
@@ -166,6 +206,7 @@ namespace Memoria.Online.Battle
             ev.AbilType = cmd.AbilityType;
             ev.ShortRange = cmd.IsShortRange;
             ev.AbilityStatus = (UInt64)cmd.AbilityStatus;
+            _runningIndex[cmd] = Log.Events.Count;
             Add(ev);
             _running[cmd] = ev;
         }
@@ -200,6 +241,7 @@ namespace Memoria.Online.Battle
             if (!_running.TryGetValue(cmd, out BattleEvent ev))
                 return;
             _running.Remove(cmd);
+            _runningIndex.Remove(cmd);
             _baseline = BattleSnapshot.Capture();
             Add(new BattleEvent { Type = BattleEventType.CommandEnd, Seq = ev.Seq, State = _baseline });
         }

@@ -407,6 +407,11 @@ namespace Memoria.Online
                 BattleEntry.FreeCharactersJoinHost = !BattleEntry.FreeCharactersJoinHost; // Spike D
                 Log.Message($"[Online] Battle entry: party members nobody plays {(BattleEntry.FreeCharactersJoinHost ? "join" : "sit out")} the battles the host takes part in");
             }
+            else if (Input.GetKeyDown(KeyCode.Alpha7))
+            {
+                BattleEntry.StartAtTrigger = !BattleEntry.StartAtTrigger; // Step 3: measure trigger-to-Go both ways
+                Log.Message($"[Online] Battle entry: BattleStart goes {(BattleEntry.StartAtTrigger ? "at the trigger (pattern and start type rolled there)" : "after the owner's battle init (spike D)")}");
+            }
             else if (Input.GetKeyDown(KeyCode.Alpha1)) // not V: the game opens its menu on V
             {
                 Int32 scene = PersistenSingleton<EventEngine>.Instance != null ? PersistenSingleton<EventEngine>.Instance.OnlineDebugEncounter() : 0; // Spike D
