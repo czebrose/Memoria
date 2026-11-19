@@ -116,3 +116,20 @@ never forwarded. When a field is left, its last changes (an exit scene) are flus
 6. **Field openings don't count:** walk into fields with intro scenes (e.g. the ship) on the guest. The guest log says
    `field opening: not sent` for those changes, and the host log shows nothing applied from them.
 7. Send both logs (Memoria.log and output_log.txt).
+
+## R2 test results (2026-11-18)
+
+Two PCs, cargo ship fields (502/504/505/507).
+- **Find:** guest opened a chest alone (item 1001). Guest `Finds: a script gave item 1001 x1`; host `request 2
+  (found: item 1001 +1) applied` 5 s later (incl. the guest's ~5 s clock offset: same moment).
+- **Flags:** host applied the guest's bytes 1063 (0->4, with the chest), 220, 243-249 and 1000. Bytes 243-249
+  changed together (0->195/1/75/239/191): a multi-byte value (a timer or counter?), worth a look if it causes
+  trouble.
+- **Freeze:** the host was in a Scene 10 times; the guest froze and was released 7 times (only while on the host's
+  field), every time within about a second.
+- **Meeting resyncs:** still fine (3 more), kept the guest's spot.
+- No exceptions on either PC. Host Unity log: one `Can't add component 'Animation' to 9004` (Clove's hood model,
+  harmless warning, M3 body code or the mod's model swap).
+- **At session start** the guest's first party request was rejected (`character 1: info, character 3: info, item
+  238 +8, other: slot`: the field opening's party setup) and showed a "didn't accept that" toast. Harmless, listed as
+  a known bug.

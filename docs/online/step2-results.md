@@ -3,7 +3,7 @@
 Branch `online-step2` (from `online-ghosts`). Code: `Assembly-CSharp/Memoria/Online/` (`Session/` for this step).
 M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.md).
 
-**Status: M1-M3 done and tested on two PCs; M4 party sync and control changes tested on two PCs; M5 part 1 tested on two PCs, parts 2-3 built; M6-M7 not started.**
+**Status: Step 2 closed on 2026-11-18 after M5 (all tested on two PCs). M6 (battles) moves into Step 3, M7 (disconnects) into the bug-fix pass after Step 3: [step2-closeout.md](step2-closeout.md).**
 
 ## Milestones
 
@@ -13,9 +13,9 @@ M1 (save transfer) details: [step2-m1-save-transfer.md](step2-m1-save-transfer.m
 | M2 | Title-screen lobby, character pick, start | **Done** (two PCs, 2026-11-16); New Game party declared by the mod, picks by character (after the test, not run yet). |
 | M3 | Each player plays their own character | **Done** (approach D, Player/Cast modes, the scene toolkit; bodies for Clove, Duskly, B.Waltz; Vayle has no field model yet). Tested on one PC and on two PCs (2026-11-17): [step2-m3-own-leader.md](step2-m3-own-leader.md#10-implementation-2026-11-17), [script-toolkit.md](script-toolkit.md) |
 | M4 | Host-authoritative party state | **Sync done** (guest requests validated and applied by the host, full-state updates, guest blocks for save/arrange/card discard/order), tested on two PCs (2026-11-18): [step2-m4-party-state.md](step2-m4-party-state.md#7-two-pc-test-of-the-sync-2026-11-18). Control changes (Take/Swap/Release, watching) tested on two PCs (C1, 2026-11-18). |
-| M5 | Free roaming, meeting resyncs, guests' changes to the host (revised from "tether") | part 1 (meeting resync keeping the guest's spot, Join host, event-byte log) tested on two PCs (R1, 2026-11-18); parts 2-3 (guests' finds and flags to the host, freeze during the host's scenes) built, R2 test pending: [step2-m5-roaming.md](step2-m5-roaming.md); plan: [step2-m5-m7-plan.md](step2-m5-m7-plan.md) |
-| M6 | Host-only battles | not started |
-| M7 | Disconnects | not started |
+| M5 | Free roaming, meeting resyncs, guests' changes to the host (revised from "tether") | part 1 (meeting resync keeping the guest's spot, Join host, event-byte log) tested on two PCs (R1, 2026-11-18); parts 2-3 (guests' finds and flags to the host, freeze during the host's scenes) tested (R2): [step2-m5-roaming.md](step2-m5-roaming.md); plan: [step2-m5-m7-plan.md](step2-m5-m7-plan.md) |
+| M6 | Host-only battles | moved into Step 3 (battles): [step2-closeout.md](step2-closeout.md#what-step-3-inherits-battles) |
+| M7 | Disconnects | moved to the bug-fix pass after Step 3: [step2-closeout.md](step2-closeout.md#deferred-to-the-bug-fix-pass-m7-and-known-bugs) |
 
 ## What changed
 
