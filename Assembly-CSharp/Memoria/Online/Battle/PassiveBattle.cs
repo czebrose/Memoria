@@ -17,7 +17,7 @@ namespace Memoria.Online.Battle
     /// </summary>
     public static class PassiveBattle
     {
-        public static Boolean Active => BattleSpike.Passive;
+        public static Boolean Active => BattleSync.Passive;
 
         public static void VisualTick(BattleUnit unit)
         {

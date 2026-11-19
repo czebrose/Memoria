@@ -407,10 +407,6 @@ namespace Memoria.Online
                 BattleEntry.FreeCharactersJoinHost = !BattleEntry.FreeCharactersJoinHost; // Spike D
                 Log.Message($"[Online] Battle entry: party members nobody plays {(BattleEntry.FreeCharactersJoinHost ? "join" : "sit out")} the battles the host takes part in");
             }
-            else if (Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                Log.Message($"[Online] Battle entry: screen state: {BattleEntry.DumpResultScreen()}"); // Spike D: the stuck result screen
-            }
             else if (Input.GetKeyDown(KeyCode.Alpha1)) // not V: the game opens its menu on V
             {
                 Int32 scene = PersistenSingleton<EventEngine>.Instance != null ? PersistenSingleton<EventEngine>.Instance.OnlineDebugEncounter() : 0; // Spike D

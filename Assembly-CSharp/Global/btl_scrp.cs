@@ -415,11 +415,11 @@ public class btl_scrp
     // [Online] Spike C: battle-script writes are recorded on the owner and come only from the owner in a passive battle
     public static void SetCharacterData(BattleUnit unit, UInt32 id, Int32 val)
     {
-        if (Memoria.Online.Battle.BattleSpike.BlockScriptWrite("unit " + Memoria.Online.Battle.BattleSpike.UnitName(unit?.Id ?? 0) + " [" + id + "] = " + val))
+        if (Memoria.Online.Battle.BattleSync.BlockScriptWrite("unit " + Memoria.Online.Battle.BattleSync.UnitName(unit?.Id ?? 0) + " [" + id + "] = " + val))
             return;
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.ScriptOpEnter(Memoria.Online.Battle.OpKind.ScriptUnitSet, unit?.Data, (Int32)id, val);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.ScriptOpEnter(Memoria.Online.Battle.OpKind.ScriptUnitSet, unit?.Data, (Int32)id, val);
         try { SetCharacterDataCore(unit, id, val); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static void SetCharacterDataCore(BattleUnit unit, UInt32 id, Int32 val)
@@ -777,11 +777,11 @@ public class btl_scrp
 
     public static void SetBattleData(UInt32 id, Int32 val)
     {
-        if (Memoria.Online.Battle.BattleSpike.BlockScriptWrite("battle [" + id + "] = " + val)) // [Online] Spike C
+        if (Memoria.Online.Battle.BattleSync.BlockScriptWrite("battle [" + id + "] = " + val)) // [Online] Spike C
             return;
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.ScriptOpEnter(Memoria.Online.Battle.OpKind.ScriptBattleSet, null, (Int32)id, val);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.ScriptOpEnter(Memoria.Online.Battle.OpKind.ScriptBattleSet, null, (Int32)id, val);
         try { SetBattleDataCore(id, val); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static void SetBattleDataCore(UInt32 id, Int32 val)

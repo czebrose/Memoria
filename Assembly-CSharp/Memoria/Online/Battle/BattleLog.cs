@@ -75,7 +75,7 @@ namespace Memoria.Online.Battle
                     State.Write(w);
                     break;
                 case BattleEventType.Command:
-                    w.Write((UInt16)Seq); w.Write((Byte)BattleSpike.UnitIndex(Caster)); w.Write(Slot);
+                    w.Write((UInt16)Seq); w.Write((Byte)BattleSync.UnitIndex(Caster)); w.Write(Slot);
                     w.Write((Byte)CmdNo); w.Write((UInt16)SubNo); w.Write(TarId);
                     w.Write((Byte)(Cursor | (Priority << 2) | (MonReflec << 4) | (ShortRange ? 0x80 : 0)));
                     w.Write((Byte)Menu); w.Write((Int16)CustomMp); w.Write(MagicCaster);
@@ -91,14 +91,14 @@ namespace Memoria.Online.Battle
                     }
                     break;
                 case BattleEventType.Effect:
-                    w.Write((UInt16)Seq); w.Write((Byte)BattleSpike.UnitIndex(Caster)); w.Write((Byte)BattleSpike.UnitIndex(Target));
+                    w.Write((UInt16)Seq); w.Write((Byte)BattleSync.UnitIndex(Caster)); w.Write((Byte)BattleSync.UnitIndex(Target));
                     w.Write((Byte)Ops.Count);
                     foreach (BattleOp op in Ops)
                         op.Write(w);
                     w.Write((Byte)Figs.Count);
                     foreach (FigState f in Figs)
                     {
-                        w.Write((Byte)BattleSpike.UnitIndex(f.Unit)); w.Write(f.Info); w.Write(f.Hp); w.Write(f.Mp);
+                        w.Write((Byte)BattleSync.UnitIndex(f.Unit)); w.Write(f.Info); w.Write(f.Hp); w.Write(f.Mp);
                     }
                     w.Write((Byte)(CmdDodge | (TargetDodge << 1)));
                     break;
@@ -107,7 +107,7 @@ namespace Memoria.Online.Battle
                     break;
                 case BattleEventType.Tick:
                 case BattleEventType.Script:
-                    w.Write((Byte)BattleSpike.UnitIndex(Target));
+                    w.Write((Byte)BattleSync.UnitIndex(Target));
                     w.Write((Byte)Ops.Count);
                     foreach (BattleOp op in Ops)
                         op.Write(w);
@@ -152,14 +152,14 @@ namespace Memoria.Online.Battle
                     sb.Append($" battle {MapNo} pattern {Pattern} start {StartType}\n{State}");
                     break;
                 case BattleEventType.Command:
-                    sb.Append($" #{Seq} {BattleSpike.UnitName(Caster)}[{Slot}] {CmdNo} sub {SubNo} → {TarId:X2} script {ScriptId}{(ShortSummon >= 0 ? $" summon {(ShortSummon != 0 ? "short" : "long")}" : "")} tape [{String.Join(",", Tape.ConvertAll(t => t.ToString()).ToArray())}]");
+                    sb.Append($" #{Seq} {BattleSync.UnitName(Caster)}[{Slot}] {CmdNo} sub {SubNo} → {TarId:X2} script {ScriptId}{(ShortSummon >= 0 ? $" summon {(ShortSummon != 0 ? "short" : "long")}" : "")} tape [{String.Join(",", Tape.ConvertAll(t => t.ToString()).ToArray())}]");
                     break;
                 case BattleEventType.Effect:
-                    sb.Append($" #{Seq} {BattleSpike.UnitName(Caster)} → {BattleSpike.UnitName(Target)}");
+                    sb.Append($" #{Seq} {BattleSync.UnitName(Caster)} → {BattleSync.UnitName(Target)}");
                     foreach (BattleOp op in Ops)
                         sb.Append("\n      ").Append(op);
                     foreach (FigState f in Figs)
-                        sb.Append($"\n      fig {BattleSpike.UnitName(f.Unit)} info {f.Info:X} hp {f.Hp} mp {f.Mp}");
+                        sb.Append($"\n      fig {BattleSync.UnitName(f.Unit)} info {f.Info:X} hp {f.Hp} mp {f.Mp}");
                     if (CmdDodge != 0 || TargetDodge != 0)
                         sb.Append($"\n      dodge cmd {CmdDodge} target {TargetDodge}");
                     break;
@@ -168,7 +168,7 @@ namespace Memoria.Online.Battle
                     break;
                 case BattleEventType.Tick:
                 case BattleEventType.Script:
-                    sb.Append($" {BattleSpike.UnitName(Target)}");
+                    sb.Append($" {BattleSync.UnitName(Target)}");
                     foreach (BattleOp op in Ops)
                         sb.Append("\n      ").Append(op);
                     break;
@@ -252,7 +252,7 @@ namespace Memoria.Online.Battle
             }
             catch (Exception err)
             {
-                Prime.Log.Error(err, "[SpikeC] Can't write the battle log");
+                Prime.Log.Error(err, "[Battle] Can't write the battle log");
             }
         }
     }

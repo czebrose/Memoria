@@ -6,7 +6,7 @@ using System.IO;
 
 namespace Memoria.Online.Battle
 {
-    public enum SpikeMode { Off, Record, Replay }
+    public enum DebugReplayMode { Off, Record, Replay }
 
     /// <summary>
     /// Spike C: "calculate on one PC, play back on the others", tested on one PC by record and replay.
@@ -18,9 +18,9 @@ namespace Memoria.Online.Battle
     /// <see cref="BattleReplayer"/> injects the recorded commands and replaces each calculation by its recorded ops,
     /// and compares the state after every action.
     /// </summary>
-    public static class BattleSpike
+    public static class BattleSync
     {
-        public static SpikeMode Mode = SpikeMode.Off;
+        public static DebugReplayMode Mode = DebugReplayMode.Off;
         public static BattleRecorder Recorder;
         public static BattleReplayer Replayer;
         public static BattleLog LastLog;
@@ -64,7 +64,7 @@ namespace Memoria.Online.Battle
 
         public static void Note(String message)
         {
-            Log.Message("[SpikeC] " + message);
+            Log.Message("[Battle] " + message);
         }
 
         public static String LogFolder
@@ -80,8 +80,8 @@ namespace Memoria.Online.Battle
 
         public static void CycleMode()
         {
-            Mode = Mode == SpikeMode.Off ? SpikeMode.Record : Mode == SpikeMode.Record ? SpikeMode.Replay : SpikeMode.Off;
-            if (Mode == SpikeMode.Replay && (LastLog == null || !LastLog.Complete))
+            Mode = Mode == DebugReplayMode.Off ? DebugReplayMode.Record : Mode == DebugReplayMode.Record ? DebugReplayMode.Replay : DebugReplayMode.Off;
+            if (Mode == DebugReplayMode.Replay && (LastLog == null || !LastLog.Complete))
                 Note("Replay mode, but no complete recording yet: battles run normally");
             Note($"Mode: {Mode}");
         }
@@ -97,32 +97,18 @@ namespace Memoria.Online.Battle
             _opDepth = 0;
             if (!Configuration.Battle.SFXRework || Configuration.Battle.Speed >= 3)
                 Note($"warning: the spike assumes SFXRework=1 and Speed<3 (have {Configuration.Battle.SFXRework}, {Configuration.Battle.Speed})");
-            if (Mode == SpikeMode.Replay && LastLog != null && LastLog.Complete)
+            if (Mode == DebugReplayMode.Replay && LastLog != null && LastLog.Complete)
             {
-                FF9StateGlobal ff9 = FF9StateSystem.Common.FF9;
-                if (ff9.btlMapNo != LastLog.MapNo || FF9StateSystem.Battle.battleMapIndex != LastLog.MapNo)
-                    Note($"Replay: this encounter is battle {ff9.btlMapNo}; forcing the recorded battle {LastLog.MapNo}");
-                ff9.btlMapNo = (Int16)LastLog.MapNo;
-                FF9StateSystem.Battle.battleMapIndex = LastLog.MapNo;
-                ff9.btlSubMapNo = (SByte)LastLog.Pattern;
+                // The recorded battle, pattern and start type are forced through BattleEntry, like a participant's
+                BattleEntry.ForceDebugStart(LastLog.MapNo, LastLog.Pattern, LastLog.StartType);
                 Replayer = new BattleReplayer(LastLog);
                 Note($"Replay: passive battle {LastLog.MapNo} pattern {LastLog.Pattern}, {LastLog.Events.Count} events");
             }
-            else if (Mode == SpikeMode.Record)
+            else if (Mode == DebugReplayMode.Record)
             {
                 Recorder = new BattleRecorder();
                 Note($"Record: battle {FF9StateSystem.Common.FF9.btlMapNo}");
             }
-        }
-
-        /// <summary>btl_init.SetupBattleEnemy: the start type (normal / back attack / preemptive) was just drawn.</summary>
-        public static battle_start_type_tags OnStartType(battle_start_type_tags startType)
-        {
-            if (Recorder != null)
-                Recorder.Log.StartType = (Int32)startType;
-            if (Replayer != null)
-                return (battle_start_type_tags)Replayer.Log.StartType;
-            return startType;
         }
 
         /// <summary>HonoluluBattleMain.UpdateBattleFrame, before battle.BattleMain.</summary>
@@ -135,7 +121,7 @@ namespace Memoria.Online.Battle
             }
             catch (Exception err)
             {
-                Log.Error(err, "[SpikeC] BeforeFrame");
+                Log.Error(err, "[Battle] BeforeFrame");
             }
         }
 
@@ -150,7 +136,7 @@ namespace Memoria.Online.Battle
             }
             catch (Exception err)
             {
-                Log.Error(err, "[SpikeC] AfterFrame");
+                Log.Error(err, "[Battle] AfterFrame");
             }
         }
 
@@ -208,7 +194,7 @@ namespace Memoria.Online.Battle
         {
             LastLog = log;
             Recorder = null;
-            Mode = SpikeMode.Replay; // one recording per Record: the next battle replays it
+            Mode = DebugReplayMode.Replay; // one recording per Record: the next battle replays it
             String path = Path.Combine(LogFolder, $"record-{DateTime.Now:yyyyMMdd-HHmmss}-battle{log.MapNo}.txt");
             log.Save(path);
             LastSummary = $"Recorded battle {log.MapNo}: {log.CountOf(BattleEventType.Command)} commands, {log.CountOf(BattleEventType.Effect)} effects. {log.SizeReport()}";
@@ -296,7 +282,7 @@ namespace Memoria.Online.Battle
             }
             catch (Exception err)
             {
-                Log.Error(err, "[SpikeC] CalcBegin");
+                Log.Error(err, "[Battle] CalcBegin");
             }
             return CalcDepth;
         }
@@ -308,7 +294,7 @@ namespace Memoria.Online.Battle
             if (token == 1 && Recorder != null)
             {
                 try { Recorder.CalcEnd(); }
-                catch (Exception err) { Log.Error(err, "[SpikeC] CalcEnd"); }
+                catch (Exception err) { Log.Error(err, "[Battle] CalcEnd"); }
             }
             CalcDepth--;
         }

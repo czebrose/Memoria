@@ -133,7 +133,7 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
             this.cameraController = GameObject.Find("Battle Camera").GetComponent<BattleMapCameraController>();
             Memoria.Debugging.BattleLaunch.ApplyBattleSeed();
             Memoria.Online.Battle.BattleEntry.BeforeBattleInit(); // [Online] Spike D: battle party, owner's seed and stats
-            Memoria.Online.Battle.BattleSpike.OnBattleSceneStart(); // [Online] Spike C: record / passive replay
+            Memoria.Online.Battle.BattleSync.OnBattleSceneStart(); // [Online] Spike C: record / passive replay
             this.InitBattleScene();
             Memoria.Online.Battle.BattleEntry.AfterBattleInit(); // [Online] Spike D: send / check the BattleStart
             FPSManager.SetTargetFPS(Configuration.Graphics.BattleFPS);
@@ -676,11 +676,11 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
 
         HonoluluBattleMain.counterATB = 0;
         battleSPS.EffectUpdate();
-        Memoria.Online.Battle.BattleSpike.BeforeFrame(); // [Online] Spike C
+        Memoria.Online.Battle.BattleSync.BeforeFrame(); // [Online] Spike C
         this.battleResult = battle.BattleMain();
         if (!FF9StateSystem.Battle.isDebug)
         {
-            if (UIManager.Battle.FF9BMenu_IsEnable() && !Memoria.Online.Battle.BattleSpike.Passive) // [Online] Spike C: a passive battle's ATB comes from the owner
+            if (UIManager.Battle.FF9BMenu_IsEnable() && !Memoria.Online.Battle.BattleSync.Passive) // [Online] Spike C: a passive battle's ATB comes from the owner
                 this.YMenu_ManagerActiveTime();
 
             for (BTL_DATA btl = FF9StateSystem.Battle.FF9Battle.btl_list.next; btl != null; btl = btl.next)
@@ -692,7 +692,7 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
                 IsOver = true;
             }
         }
-        Memoria.Online.Battle.BattleSpike.AfterFrame(this.battleResult); // [Online] Spike C
+        Memoria.Online.Battle.BattleSync.AfterFrame(this.battleResult); // [Online] Spike C
         SceneDirector.ServiceFade();
         foreach (BattleCalculator calc in BattleCalculator.FrameAppliedEffectList)
             BattleHUD.EffectedBtlId |= calc.Target.Id;

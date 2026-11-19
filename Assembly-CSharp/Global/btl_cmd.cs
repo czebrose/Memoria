@@ -487,7 +487,7 @@ public class btl_cmd
 
     private static void RunCommandFromQueue(FF9StateBattleSystem btlsys)
     {
-        if (Memoria.Online.Battle.BattleSpike.BlockQueue(btlsys)) // [Online] Spike C: a passive battle takes its commands from the owner
+        if (Memoria.Online.Battle.BattleSync.BlockQueue(btlsys)) // [Online] Spike C: a passive battle takes its commands from the owner
             return;
         Boolean admitNewCommand = btlsys.cur_cmd == null;
         if (admitNewCommand)
@@ -561,7 +561,7 @@ public class btl_cmd
         }
         btlsys.cur_cmd_list.Add(cmd);
         KillCommand(cmd);
-        Memoria.Online.Battle.BattleSpike.OnCommandAdmitted(cmd); // [Online] Spike C
+        Memoria.Online.Battle.BattleSync.OnCommandAdmitted(cmd); // [Online] Spike C
     }
 
     public static void CommandEngine(FF9StateBattleSystem btlsys)
@@ -572,7 +572,7 @@ public class btl_cmd
             curCommandDuplicate.Add(cmd);
         foreach (CMD_DATA cmd in curCommandDuplicate)
         {
-            CMD_DATA spikeContext = Memoria.Online.Battle.BattleSpike.EnterCommand(cmd); // [Online] Spike C: this command's RNG tape
+            CMD_DATA spikeContext = Memoria.Online.Battle.BattleSync.EnterCommand(cmd); // [Online] Spike C: this command's RNG tape
             BTL_DATA caster = cmd.regist;
             switch (cmd.info.mode)
             {
@@ -669,7 +669,7 @@ public class btl_cmd
             }
             if (cmd.info.mode == command_mode_index.CMD_MODE_DONE)
                 FinishCommand(btlsys, cmd);
-            Memoria.Online.Battle.BattleSpike.ExitCommand(spikeContext); // [Online] Spike C
+            Memoria.Online.Battle.BattleSync.ExitCommand(spikeContext); // [Online] Spike C
         }
     }
 
@@ -1043,10 +1043,10 @@ public class btl_cmd
             case BattleCommandId.SummonEiko:
             case BattleCommandId.Phantom:
                 // [Online] Spike C: long / short summon depends on this PC's achievements: a passive battle takes the owner's
-                if (!Memoria.Online.Battle.BattleSpike.ReplaySummonType(cmd))
+                if (!Memoria.Online.Battle.BattleSync.ReplaySummonType(cmd))
                 {
                     DecideSummonType(cmd);
-                    Memoria.Online.Battle.BattleSpike.OnSummonTypeDecided(cmd);
+                    Memoria.Online.Battle.BattleSync.OnSummonTypeDecided(cmd);
                 }
                 break;
             case BattleCommandId.Counter:
@@ -1415,7 +1415,7 @@ public class btl_cmd
 
         if (!FF9StateSystem.Battle.isDebug)
             HonoluluBattleMain.playerEnterCommand = true;
-        Memoria.Online.Battle.BattleSpike.OnCommandFinished(cmd); // [Online] Spike C
+        Memoria.Online.Battle.BattleSync.OnCommandFinished(cmd); // [Online] Spike C
     }
 
     private static Boolean IsNeedToDecreaseTrance(BattleUnit caster, BattleCommandId commandId, CMD_DATA cmd)

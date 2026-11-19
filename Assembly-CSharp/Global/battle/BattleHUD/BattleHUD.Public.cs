@@ -312,9 +312,9 @@ public partial class BattleHUD : UIScene
     public void SetBattleMessage(String str, Byte strPriority)
     {
         // [Online] Spike C: a message shown by a calculation (steal, "can't eat"...) is recorded as an op
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.MessageOpEnter(str, strPriority);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.MessageOpEnter(str, strPriority);
         try { SetBattleMessageCore(str, strPriority); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private void SetBattleMessageCore(String str, Byte strPriority)

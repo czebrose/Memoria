@@ -368,8 +368,8 @@
     <Compile Include="Memoria\Online\Battle\BattleOutcome.cs" />
     <Compile Include="Memoria\Online\Battle\BattleRecorder.cs" />
     <Compile Include="Memoria\Online\Battle\BattleReplayer.cs" />
-    <Compile Include="Memoria\Online\Battle\BattleSpike.cs" />
-    <Compile Include="Memoria\Online\Battle\BattleSpikeHud.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleSync.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleSyncHud.cs" />
     <Compile Include="Memoria\Online\Battle\BattleTape.cs" />
     <Compile Include="Memoria\Online\Battle\CommandInjector.cs" />
     <Compile Include="Memoria\Online\Battle\PassiveBattle.cs" />
@@ -377,7 +377,6 @@
     <Compile Include="Memoria\Online\Bodies\BodySwap.cs" />
     <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
-    <Compile Include="Memoria\Online\PartyTrace.cs" />
     <Compile Include="Memoria\Online\Party\PartyState.cs" />
     <Compile Include="Memoria\Online\Party\PartySync.cs" />
     <Compile Include="Memoria\Online\Party\GuestFinds.cs" />

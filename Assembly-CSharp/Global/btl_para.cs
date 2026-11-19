@@ -115,12 +115,12 @@ public class btl_para
         return isLowHP ? BattleStatus.LowHP : 0;
     }
 
-    // [Online] Spike C: SetDamage / SetRecover / SetMpDamage / SetMpRecover are recorded as "ops" (see BattleSpike.OpEnter)
+    // [Online] Spike C: SetDamage / SetRecover / SetMpDamage / SetMpRecover are recorded as "ops" (see BattleSync.OpEnter)
     public static Int32 SetDamage(BattleUnit unit, Int32 damage, Byte dmg_mot, CMD_DATA cmd = null, Boolean requestFigureNow = false)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Damage, unit.Data, damage, dmg_mot, requestFigureNow ? 1 : 0);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.OpEnter(Memoria.Online.Battle.OpKind.Damage, unit.Data, damage, dmg_mot, requestFigureNow ? 1 : 0);
         try { return SetDamageCore(unit, damage, dmg_mot, cmd, requestFigureNow); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 SetDamageCore(BattleUnit unit, Int32 damage, Byte dmg_mot, CMD_DATA cmd, Boolean requestFigureNow)
@@ -178,9 +178,9 @@ public class btl_para
 
     public static Int32 SetRecover(BattleUnit unit, UInt32 recover, Boolean requestFigureNow = false)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.Recover, unit.Data, (Int32)recover, 0, requestFigureNow ? 1 : 0);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.OpEnter(Memoria.Online.Battle.OpKind.Recover, unit.Data, (Int32)recover, 0, requestFigureNow ? 1 : 0);
         try { return SetRecoverCore(unit, recover, requestFigureNow); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 SetRecoverCore(BattleUnit unit, UInt32 recover, Boolean requestFigureNow)
@@ -215,9 +215,9 @@ public class btl_para
 
     public static Int32 SetMpDamage(BattleUnit btl, UInt32 damage)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.MpDamage, btl.Data, (Int32)damage);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.OpEnter(Memoria.Online.Battle.OpKind.MpDamage, btl.Data, (Int32)damage);
         try { return SetMpDamageCore(btl, damage); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 SetMpDamageCore(BattleUnit btl, UInt32 damage)
@@ -245,9 +245,9 @@ public class btl_para
 
     public static Int32 SetMpRecover(BattleUnit btl, UInt32 recover)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.OpEnter(Memoria.Online.Battle.OpKind.MpRecover, btl.Data, (Int32)recover);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.OpEnter(Memoria.Online.Battle.OpKind.MpRecover, btl.Data, (Int32)recover);
         try { return SetMpRecoverCore(btl, recover); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 SetMpRecoverCore(BattleUnit btl, UInt32 recover)

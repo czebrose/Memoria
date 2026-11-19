@@ -48,7 +48,7 @@ namespace Memoria.Online.Battle
             btl.sel_mode = 1;
             btl_cmd.SetCommand(btl.cmd[0], BattleCommandId.Attack, (Int32)BattleAbilityId.Attack, enemy.btl_id, 0u);
             hud.InputFinishList.Add(playerIndex);
-            return $"P{playerIndex} → Attack {BattleSpike.UnitName(enemy.btl_id)} (queued: {btl_cmd.CheckCommandQueued(btl.cmd[0])})";
+            return $"P{playerIndex} → Attack {BattleSync.UnitName(enemy.btl_id)} (queued: {btl_cmd.CheckCommandQueued(btl.cmd[0])})";
         }
 
         /// <summary>Passive replay: run a recorded command now. Returns the command, or null with <paramref name="error"/>.</summary>
@@ -65,10 +65,10 @@ namespace Memoria.Online.Battle
             }
             else
             {
-                caster = BattleSpike.FindBtl(ev.Caster);
+                caster = BattleSync.FindBtl(ev.Caster);
                 if (caster == null)
                 {
-                    error = $"caster {BattleSpike.UnitName(ev.Caster)} not in the battle";
+                    error = $"caster {BattleSync.UnitName(ev.Caster)} not in the battle";
                     return null;
                 }
                 while (caster.cmd.Count <= ev.Slot)
@@ -82,7 +82,7 @@ namespace Memoria.Online.Battle
             }
             if (btlsys.cur_cmd_list.Contains(cmd))
             {
-                error = $"slot {ev.Slot} of {BattleSpike.UnitName(ev.Caster)} is still running {cmd.cmd_no}";
+                error = $"slot {ev.Slot} of {BattleSync.UnitName(ev.Caster)} is still running {cmd.cmd_no}";
                 return null;
             }
             if (btl_cmd.CheckCommandQueued(cmd))

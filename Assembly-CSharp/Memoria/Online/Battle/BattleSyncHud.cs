@@ -9,7 +9,7 @@ namespace Memoria.Online.Battle
     /// recording). Ctrl+Shift+A: C2, the first ready character attacks the first enemy without the menu.
     /// Ctrl+Shift+Q: write the battle state to Memoria.log.
     /// </summary>
-    public sealed class BattleSpikeHud : MonoBehaviour
+    public sealed class BattleSyncHud : MonoBehaviour
     {
         private Boolean _enabled;
         private GUIStyle _style;
@@ -30,19 +30,19 @@ namespace Memoria.Online.Battle
                 return;
             if (Input.GetKeyDown(KeyCode.E))
             {
-                BattleSpike.CycleMode();
+                BattleSync.CycleMode();
             }
             else if (Input.GetKeyDown(KeyCode.A))
             {
                 if (!InBattle)
                     return;
                 _lastAction = "C2 inject: " + CommandInjector.InjectAttackForReadyPlayer();
-                BattleSpike.Note(_lastAction);
+                BattleSync.Note(_lastAction);
             }
             else if (Input.GetKeyDown(KeyCode.Q))
             {
                 if (InBattle)
-                    BattleSpike.Note("State:\n" + BattleSnapshot.Capture());
+                    BattleSync.Note("State:\n" + BattleSnapshot.Capture());
             }
         }
 
@@ -52,22 +52,22 @@ namespace Memoria.Online.Battle
         {
             if (!_enabled)
                 return;
-            if (BattleSpike.Mode == SpikeMode.Off && BattleSpike.Recorder == null && BattleSpike.Replayer == null)
+            if (BattleSync.Mode == DebugReplayMode.Off && BattleSync.Recorder == null && BattleSync.Replayer == null)
                 return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 13, wordWrap = true };
                 _style.normal.textColor = Color.white;
             }
-            String text = $"Spike C [{BattleSpike.Mode}]  (Ctrl+Shift+E mode, A inject attack, Q dump)";
-            if (BattleSpike.Recorder != null)
-                text += $"\nrecording: {BattleSpike.Recorder.EventCount} events";
-            if (BattleSpike.Replayer != null)
-                text += "\n" + BattleSpike.Replayer.Status;
-            else if (BattleSpike.Mode == SpikeMode.Replay)
-                text += BattleSpike.LastLog != null && BattleSpike.LastLog.Complete ? $"\nnext battle replays battle {BattleSpike.LastLog.MapNo} ({BattleSpike.LastLog.Events.Count} events)" : "\nno recording yet";
-            if (!String.IsNullOrEmpty(BattleSpike.LastSummary))
-                text += "\nlast: " + BattleSpike.LastSummary;
+            String text = $"Spike C [{BattleSync.Mode}]  (Ctrl+Shift+E mode, A inject attack, Q dump)";
+            if (BattleSync.Recorder != null)
+                text += $"\nrecording: {BattleSync.Recorder.EventCount} events";
+            if (BattleSync.Replayer != null)
+                text += "\n" + BattleSync.Replayer.Status;
+            else if (BattleSync.Mode == DebugReplayMode.Replay)
+                text += BattleSync.LastLog != null && BattleSync.LastLog.Complete ? $"\nnext battle replays battle {BattleSync.LastLog.MapNo} ({BattleSync.LastLog.Events.Count} events)" : "\nno recording yet";
+            if (!String.IsNullOrEmpty(BattleSync.LastSummary))
+                text += "\nlast: " + BattleSync.LastSummary;
             if (!String.IsNullOrEmpty(_lastAction))
                 text += "\n" + _lastAction;
             Single width = Mathf.Min(720f, Screen.width - 20f);

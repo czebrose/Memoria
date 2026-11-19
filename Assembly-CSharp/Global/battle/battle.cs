@@ -225,11 +225,11 @@ public static class battle
             }
 
             BattleUnit unit = new BattleUnit(next);
-            if (Memoria.Online.Battle.BattleSpike.TickBegin(unit)) // [Online] Spike C: owner records status ticks; a passive battle skips them
+            if (Memoria.Online.Battle.BattleSync.TickBegin(unit)) // [Online] Spike C: owner records status ticks; a passive battle skips them
             {
                 btl_para.CheckPointData(unit);
                 btl_stat.CheckStatusLoop(unit);
-                Memoria.Online.Battle.BattleSpike.TickEnd(unit);
+                Memoria.Online.Battle.BattleSync.TickEnd(unit);
             }
         }
         if (showTargetCursor)

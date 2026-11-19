@@ -31,10 +31,10 @@ public static class UnifiedBattleSequencer
             SFXChannel.ExecuteLoop();
             for (Int32 i = 0; i < runningActions.Count; i++)
             {
-                CMD_DATA spikeContext = Memoria.Online.Battle.BattleSpike.EnterCommand(runningActions[i].cmd); // [Online] Spike C: this command's RNG tape
+                CMD_DATA spikeContext = Memoria.Online.Battle.BattleSync.EnterCommand(runningActions[i].cmd); // [Online] Spike C: this command's RNG tape
                 Boolean actionDone;
                 try { actionDone = runningActions[i].ExecuteLoop(); }
-                finally { Memoria.Online.Battle.BattleSpike.ExitCommand(spikeContext); }
+                finally { Memoria.Online.Battle.BattleSync.ExitCommand(spikeContext); }
                 if (actionDone)
                 {
                     if (FF9StateSystem.Battle.FF9Battle.btl_phase == FF9StateBattleSystem.PHASE_NORMAL && runningActions[i].useCameraTarget)

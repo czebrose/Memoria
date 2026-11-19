@@ -244,9 +244,9 @@ public class ff9item
     // [Online] Spike C: items gained / lost inside a battle calculation (steal, ...) are recorded as ops
     public static Int32 FF9Item_Add(RegularItem id, Int32 count)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.ItemOpEnter(Memoria.Online.Battle.OpKind.ItemAdd, (Int32)id, count);
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.ItemOpEnter(Memoria.Online.Battle.OpKind.ItemAdd, (Int32)id, count);
         try { return FF9Item_AddCore(id, count); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 FF9Item_AddCore(RegularItem id, Int32 count)
@@ -278,9 +278,9 @@ public class ff9item
 
     public static Int32 FF9Item_Remove(RegularItem id, Int32 count)
     {
-        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSpike.ItemOpEnter(Memoria.Online.Battle.OpKind.ItemRemove, (Int32)id, count); // [Online] Spike C
+        Memoria.Online.Battle.BattleOp op = Memoria.Online.Battle.BattleSync.ItemOpEnter(Memoria.Online.Battle.OpKind.ItemRemove, (Int32)id, count); // [Online] Spike C
         try { return FF9Item_RemoveCore(id, count); }
-        finally { Memoria.Online.Battle.BattleSpike.OpExit(op); }
+        finally { Memoria.Online.Battle.BattleSync.OpExit(op); }
     }
 
     private static Int32 FF9Item_RemoveCore(RegularItem id, Int32 count)

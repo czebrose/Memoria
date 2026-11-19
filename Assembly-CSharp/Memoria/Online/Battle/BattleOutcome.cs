@@ -50,7 +50,7 @@ namespace Memoria.Online.Battle
 
         public void Diff(UnitState o, List<String> diffs)
         {
-            String n = BattleSpike.UnitName(Id);
+            String n = BattleSync.UnitName(Id);
             if (Hp != o.Hp) diffs.Add($"{n}.hp {Hp}->{o.Hp}");
             if (Mp != o.Mp) diffs.Add($"{n}.mp {Mp}->{o.Mp}");
             if (MaxHp != o.MaxHp) diffs.Add($"{n}.maxhp {MaxHp}->{o.MaxHp}");
@@ -75,7 +75,7 @@ namespace Memoria.Online.Battle
 
         public override String ToString()
         {
-            return $"{BattleSpike.UnitName(Id)} hp {Hp}/{MaxHp} mp {Mp}/{MaxMp} st [{(BattleStatus)Status}] tr {Trance} at {Atb}";
+            return $"{BattleSync.UnitName(Id)} hp {Hp}/{MaxHp} mp {Mp}/{MaxMp} st [{(BattleStatus)Status}] tr {Trance} at {Atb}";
         }
     }
 
@@ -114,7 +114,7 @@ namespace Memoria.Online.Battle
             {
                 UnitState o = actual.Find(u.Id);
                 if (o == null && !u.IsDown)
-                    diffs.Add($"{BattleSpike.UnitName(u.Id)} missing");
+                    diffs.Add($"{BattleSync.UnitName(u.Id)} missing");
                 else if (o == null)
                     continue; // a dead unit leaves btl_list at the end of its die sequence: timing, not state
                 else
@@ -122,7 +122,7 @@ namespace Memoria.Online.Battle
             }
             foreach (UnitState o in actual.Units)
                 if (Find(o.Id) == null && !o.IsDown)
-                    diffs.Add($"{BattleSpike.UnitName(o.Id)} extra");
+                    diffs.Add($"{BattleSync.UnitName(o.Id)} extra");
             if (Gil != actual.Gil)
                 diffs.Add($"gil {Gil}->{actual.Gil}");
             foreach (KeyValuePair<Int32, Int32> kv in Items)
@@ -157,9 +157,9 @@ namespace Memoria.Online.Battle
         {
             BattleSnapshot now = Capture();
             List<String> changed = now.Diff(this);
-            BattleSpike.Applying++;
+            BattleSync.Applying++;
             try { ApplyCore(now); }
-            finally { BattleSpike.Applying--; }
+            finally { BattleSync.Applying--; }
             return changed;
         }
 
@@ -167,7 +167,7 @@ namespace Memoria.Online.Battle
         {
             foreach (UnitState u in Units)
             {
-                BTL_DATA btl = BattleSpike.FindBtl(u.Id);
+                BTL_DATA btl = BattleSync.FindBtl(u.Id);
                 if (btl == null)
                     continue;
                 BattleUnit unit = new BattleUnit(btl);
@@ -250,7 +250,7 @@ namespace Memoria.Online.Battle
         public void Write(BinaryWriter w)
         {
             w.Write((Byte)Kind);
-            w.Write((Byte)BattleSpike.UnitIndex(Unit));
+            w.Write((Byte)BattleSync.UnitIndex(Unit));
             switch (Kind)
             {
                 case OpKind.Damage:
@@ -261,12 +261,12 @@ namespace Memoria.Online.Battle
                 case OpKind.MpRecover:
                     w.Write(A); break;
                 case OpKind.Alter:
-                    w.Write((Byte)A); w.Write((Byte)BattleSpike.UnitIndex(Other)); w.Write((Byte)Result);
+                    w.Write((Byte)A); w.Write((Byte)BattleSync.UnitIndex(Other)); w.Write((Byte)Result);
                     WriteParams(w, Params); break;
                 case OpKind.Remove:
                     w.Write((Byte)A); break;
                 case OpKind.Kill:
-                    w.Write((Byte)BattleSpike.UnitIndex(Other)); break;
+                    w.Write((Byte)BattleSync.UnitIndex(Other)); break;
                 case OpKind.Figure:
                     w.Write((UInt16)A); w.Write(B); w.Write(C); break;
                 case OpKind.StatFigure:
@@ -296,7 +296,7 @@ namespace Memoria.Online.Battle
                 else if (o is Single) { w.Write((Byte)3); w.Write((Single)o); }
                 else if (o is String) { w.Write((Byte)4); w.Write((String)o); }
                 else if (o is IConvertible) { w.Write((Byte)5); w.Write(t.Name); w.Write(Convert.ToInt64(o)); }
-                else { w.Write((Byte)6); w.Write(t.Name); BattleSpike.Note($"status parameter of type {t.Name} can't be serialised"); }
+                else { w.Write((Byte)6); w.Write(t.Name); BattleSync.Note($"status parameter of type {t.Name} can't be serialised"); }
             }
         }
 
@@ -323,9 +323,9 @@ namespace Memoria.Online.Battle
                 ff9item.FF9Item_Remove((RegularItem)A, B);
                 return null;
             }
-            BTL_DATA btl = BattleSpike.FindBtl(Unit);
+            BTL_DATA btl = BattleSync.FindBtl(Unit);
             if (btl == null)
-                return $"op {Kind} on missing unit {BattleSpike.UnitName(Unit)}";
+                return $"op {Kind} on missing unit {BattleSync.UnitName(Unit)}";
             BattleUnit unit = new BattleUnit(btl);
             switch (Kind)
             {
@@ -335,16 +335,16 @@ namespace Memoria.Online.Battle
                 case OpKind.MpRecover: btl_para.SetMpRecover(unit, (UInt32)A); break;
                 case OpKind.Alter:
                 {
-                    BTL_DATA inflicter = BattleSpike.FindBtl(Other);
+                    BTL_DATA inflicter = BattleSync.FindBtl(Other);
                     UInt32 r = btl_stat.AlterStatus(unit, (BattleStatusId)A, inflicter != null ? new BattleUnit(inflicter) : null, false, Params ?? new Object[0]);
                     if (r != Result)
-                        return $"AlterStatus {(BattleStatusId)A} on {BattleSpike.UnitName(Unit)} returned {r}, owner {Result}";
+                        return $"AlterStatus {(BattleStatusId)A} on {BattleSync.UnitName(Unit)} returned {r}, owner {Result}";
                     break;
                 }
                 case OpKind.Remove: btl_stat.RemoveStatus(unit, (BattleStatusId)A); break;
                 case OpKind.Kill:
                 {
-                    BTL_DATA killer = BattleSpike.FindBtl(Other);
+                    BTL_DATA killer = BattleSync.FindBtl(Other);
                     unit.Kill(killer);
                     break;
                 }
@@ -357,16 +357,16 @@ namespace Memoria.Online.Battle
 
         public override String ToString()
         {
-            String u = BattleSpike.UnitName(Unit);
+            String u = BattleSync.UnitName(Unit);
             switch (Kind)
             {
                 case OpKind.Damage: return $"Damage {u} {A}{(B != 0 ? " +motion" : "")}{(C != 0 ? " now" : "")}";
                 case OpKind.Recover: return $"Recover {u} {A}";
                 case OpKind.MpDamage: return $"MpDamage {u} {A}";
                 case OpKind.MpRecover: return $"MpRecover {u} {A}";
-                case OpKind.Alter: return $"Alter {u} {(BattleStatusId)A} by {BattleSpike.UnitName(Other)} = {Result}{(Params != null && Params.Length > 0 ? $" ({Params.Length} params)" : "")}";
+                case OpKind.Alter: return $"Alter {u} {(BattleStatusId)A} by {BattleSync.UnitName(Other)} = {Result}{(Params != null && Params.Length > 0 ? $" ({Params.Length} params)" : "")}";
                 case OpKind.Remove: return $"Remove {u} {(BattleStatusId)A}";
-                case OpKind.Kill: return $"Kill {u} by {BattleSpike.UnitName(Other)}";
+                case OpKind.Kill: return $"Kill {u} by {BattleSync.UnitName(Other)}";
                 case OpKind.Figure: return $"Figure {u} info {A:X} hp {B} mp {C}";
                 case OpKind.StatFigure: return $"StatFigure {u} hp {A} mp {B}";
                 case OpKind.Message: return $"Message \"{Text}\" priority {A}";

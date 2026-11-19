@@ -29,18 +29,18 @@ namespace Memoria.Online.Battle
 
         public static Int32 Filter(TapeKind kind, Int32 value)
         {
-            if (_context == null || BattleSpike.CalcDepth > 0)
+            if (_context == null || BattleSync.CalcDepth > 0)
                 return value;
-            if (BattleSpike.Recorder != null)
-                return BattleSpike.Recorder.Tape(_context, kind, value);
-            if (BattleSpike.Replayer != null)
-                return BattleSpike.Replayer.Tape(_context, kind, value);
+            if (BattleSync.Recorder != null)
+                return BattleSync.Recorder.Tape(_context, kind, value);
+            if (BattleSync.Replayer != null)
+                return BattleSync.Replayer.Tape(_context, kind, value);
             return value;
         }
 
         public static Single Filter(Single value)
         {
-            if (_context == null || BattleSpike.CalcDepth > 0)
+            if (_context == null || BattleSync.CalcDepth > 0)
                 return value;
             Int32 bits = BitConverter.ToInt32(BitConverter.GetBytes(value), 0);
             Int32 result = Filter(TapeKind.RangeSingle, bits);

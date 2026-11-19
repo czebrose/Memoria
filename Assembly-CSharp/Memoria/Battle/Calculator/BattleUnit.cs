@@ -570,9 +570,9 @@ namespace Memoria
         }
         public void Kill(BTL_DATA killer = null)
         {
-            Online.Battle.BattleOp op = Online.Battle.BattleSpike.OpEnter(Online.Battle.OpKind.Kill, Data, 0, 0, 0, killer); // [Online] Spike C
+            Online.Battle.BattleOp op = Online.Battle.BattleSync.OpEnter(Online.Battle.OpKind.Kill, Data, 0, 0, 0, killer); // [Online] Spike C
             try { KillCore(killer); }
-            finally { Online.Battle.BattleSpike.OpExit(op); }
+            finally { Online.Battle.BattleSync.OpExit(op); }
         }
 
         private void KillCore(BTL_DATA killer)

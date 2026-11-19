@@ -37,12 +37,12 @@ namespace Memoria.Online.Battle
             Log = log;
         }
 
-        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSpike.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
+        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSync.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
 
         private void Mismatch(String what)
         {
             Mismatches++;
-            BattleSpike.Note($"Replay MISMATCH (event {_pos}, frame {_frame}): {what}");
+            BattleSync.Note($"Replay MISMATCH (event {_pos}, frame {_frame}): {what}");
         }
 
         public void BeforeFrame()
@@ -62,7 +62,7 @@ namespace Memoria.Online.Battle
                 if (_blocked.Elapsed.TotalSeconds > 20 && !_stallLogged)
                 {
                     _stallLogged = true;
-                    BattleSpike.Note($"Replay stalled 20 s at event {_pos}: {Log.Events[_pos].ToString().Split('\n')[0]}");
+                    BattleSync.Note($"Replay stalled 20 s at event {_pos}: {Log.Events[_pos].ToString().Split('\n')[0]}");
                 }
             }
         }
@@ -74,9 +74,9 @@ namespace Memoria.Online.Battle
             List<String> diffs = start.State.Diff(BattleSnapshot.Capture());
             if (diffs.Count > 0)
                 Mismatch("initial state: " + String.Join("; ", diffs.ToArray()));
-            SetAtb(start.State);
+            BattleEntry.SetInitialAtb(start.State.Units.ConvertAll(u => u.Atb)); // initial ATB: the same path as a participant's Go
             _pos = 1;
-            BattleSpike.Note($"Replay: started, initial state {(diffs.Count == 0 ? "matches" : "differs")}");
+            BattleSync.Note($"Replay: started, initial state {(diffs.Count == 0 ? "matches" : "differs")}");
         }
 
         /// <summary>Consume events until one has to wait for the engine.</summary>
@@ -95,8 +95,8 @@ namespace Memoria.Online.Battle
                         if (ev.Seq >= 0 && _bySeq.ContainsKey(ev.Seq))
                             return; // the running command will reach this effect point
                         if (ev.Seq >= 0 && _finished.Contains(ev.Seq))
-                            Mismatch($"command #{ev.Seq} finished before its effect on {BattleSpike.UnitName(ev.Target)}");
-                        ApplyEffect(ev, null, BattleSpike.FindBtl(ev.Target)); // an effect outside a command
+                            Mismatch($"command #{ev.Seq} finished before its effect on {BattleSync.UnitName(ev.Target)}");
+                        ApplyEffect(ev, null, BattleSync.FindBtl(ev.Target)); // an effect outside a command
                         _pos++;
                         break;
                     case BattleEventType.CommandEnd:
@@ -153,7 +153,7 @@ namespace Memoria.Online.Battle
             BattleEvent ev = _pos < Log.Events.Count ? Log.Events[_pos] : null;
             if (ev == null || ev.Type != BattleEventType.Effect || ev.Seq != seq || ev.Target != target.btl_id)
             {
-                Mismatch($"engine reached an effect point (#{seq} {cmd?.cmd_no} → {BattleSpike.UnitName(target.btl_id)}) but the log has {(ev == null ? "nothing" : ev.ToString().Split('\n')[0])}; skipped");
+                Mismatch($"engine reached an effect point (#{seq} {cmd?.cmd_no} → {BattleSync.UnitName(target.btl_id)}) but the log has {(ev == null ? "nothing" : ev.ToString().Split('\n')[0])}; skipped");
                 return;
             }
             ApplyEffect(ev, cmd, target);
@@ -163,7 +163,7 @@ namespace Memoria.Online.Battle
 
         private void ApplyOps(BattleEvent ev, CMD_DATA cmd)
         {
-            BattleSpike.Applying++;
+            BattleSync.Applying++;
             try
             {
                 foreach (BattleOp op in ev.Ops)
@@ -175,7 +175,7 @@ namespace Memoria.Online.Battle
             }
             finally
             {
-                BattleSpike.Applying--;
+                BattleSync.Applying--;
             }
         }
 
@@ -191,7 +191,7 @@ namespace Memoria.Online.Battle
             }
             foreach (FigState f in ev.Figs)
             {
-                BTL_DATA btl = BattleSpike.FindBtl(f.Unit);
+                BTL_DATA btl = BattleSync.FindBtl(f.Unit);
                 if (btl == null)
                     continue;
                 btl.fig.info = f.Info;
@@ -228,7 +228,7 @@ namespace Memoria.Online.Battle
             // Known direct write: the Trance gauge (CalcResult's CheckDamageReaction, FinishCommand) isn't an op
             foreach (UnitState u in ev.State.Units)
             {
-                BTL_DATA btl = BattleSpike.FindBtl(u.Id);
+                BTL_DATA btl = BattleSync.FindBtl(u.Id);
                 if (btl != null && btl.trance != u.Trance)
                 {
                     btl.trance = u.Trance;
@@ -240,7 +240,7 @@ namespace Memoria.Online.Battle
             if (ev.Type == BattleEventType.Tick)
             {
                 UnitState u = ev.State.Find(ev.Target);
-                BTL_DATA btl = BattleSpike.FindBtl(ev.Target);
+                BTL_DATA btl = BattleSync.FindBtl(ev.Target);
                 if (u != null && btl != null && (btl.cur.hp != u.Hp || btl.cur.mp != u.Mp) && u.Hp > 0)
                 {
                     btl.cur.hp = u.Hp;
@@ -252,7 +252,7 @@ namespace Memoria.Online.Battle
             if (diffs.Count == 0)
                 return;
             Corrections += diffs.Count;
-            BattleSpike.Note($"Replay correction after {what} (event {_pos}{(ev.Seq >= 0 ? $", #{ev.Seq}" : "")}): {String.Join("; ", diffs.ToArray())}");
+            BattleSync.Note($"Replay correction after {what} (event {_pos}{(ev.Seq >= 0 ? $", #{ev.Seq}" : "")}): {String.Join("; ", diffs.ToArray())}");
         }
 
         private void ApplySync(BattleEvent ev)
@@ -261,7 +261,7 @@ namespace Memoria.Online.Battle
             if (diffs.Count == 0)
                 return;
             Syncs++;
-            BattleSpike.Note($"Replay sync (event {_pos}): {String.Join("; ", diffs.ToArray())}");
+            BattleSync.Note($"Replay sync (event {_pos}): {String.Join("; ", diffs.ToArray())}");
         }
 
         private void CompareAfterAction(BattleEvent ev)
@@ -286,7 +286,7 @@ namespace Memoria.Online.Battle
             if (tapeOwner != null && _tapePos.TryGetValue(seq, out Int32 used) && used != tapeOwner.Tape.Count)
             {
                 TapeMisses++;
-                BattleSpike.Note($"Replay tape: command #{seq} used {used} of {tapeOwner.Tape.Count} random numbers");
+                BattleSync.Note($"Replay tape: command #{seq} used {used} of {tapeOwner.Tape.Count} random numbers");
             }
             Pump(); // compares at its CommandEnd if that is next
         }
@@ -319,7 +319,7 @@ namespace Memoria.Online.Battle
             if (ev == null || index >= ev.Tape.Count || ev.Tape[index].Kind != kind)
             {
                 TapeMisses++;
-                BattleSpike.Note($"Replay tape miss: command #{seq} draw {index} ({kind}) not on the tape ({ev?.Tape.Count ?? 0} values)");
+                BattleSync.Note($"Replay tape miss: command #{seq} draw {index} ({kind}) not on the tape ({ev?.Tape.Count ?? 0} values)");
                 return value;
             }
             _tapePos[seq] = index + 1;
@@ -332,7 +332,7 @@ namespace Memoria.Online.Battle
             for (CMD_DATA cmd = btlsys.cmd_queue.next; cmd != null; cmd = btlsys.cmd_queue.next)
             {
                 LocalQueueDrops++;
-                BattleSpike.Note($"Replay: dropped a locally queued command {cmd.cmd_no} by {BattleSpike.UnitName(cmd.regist?.btl_id ?? 0)}");
+                BattleSync.Note($"Replay: dropped a locally queued command {cmd.cmd_no} by {BattleSync.UnitName(cmd.regist?.btl_id ?? 0)}");
                 btl_cmd.KillCommand(cmd);
                 if (btlsys.cmd_queue.next == cmd)
                     break; // KillCommand didn't dequeue it (shouldn't happen)
@@ -345,7 +345,7 @@ namespace Memoria.Online.Battle
         {
             foreach (UnitState u in state.Units)
             {
-                BTL_DATA btl = BattleSpike.FindBtl(u.Id);
+                BTL_DATA btl = BattleSync.FindBtl(u.Id);
                 if (btl != null)
                     btl.cur.at = u.Atb;
             }
@@ -382,7 +382,7 @@ namespace Memoria.Online.Battle
                     Mismatch("final state: " + String.Join("; ", diffs.ToArray()));
                 BONUS bonus = battle.btl_bonus;
                 if (bonus.exp != end.Exp || bonus.gil != end.BonusGil || bonus.ap != end.Ap || bonus.card != end.Card || bonus.item.Count != end.BonusItems.Count)
-                    BattleSpike.Note($"Replay: rewards computed locally (exp {bonus.exp} gil {bonus.gil} ap {bonus.ap} card {bonus.card} items {bonus.item.Count}) replaced by the owner's (exp {end.Exp} gil {end.BonusGil} ap {end.Ap} card {end.Card} items {end.BonusItems.Count})");
+                    BattleSync.Note($"Replay: rewards computed locally (exp {bonus.exp} gil {bonus.gil} ap {bonus.ap} card {bonus.card} items {bonus.item.Count}) replaced by the owner's (exp {end.Exp} gil {end.BonusGil} ap {end.Ap} card {end.Card} items {end.BonusItems.Count})");
                 bonus.exp = end.Exp;
                 bonus.gil = end.BonusGil;
                 bonus.ap = end.Ap;
@@ -390,8 +390,8 @@ namespace Memoria.Online.Battle
                 bonus.item = new List<RegularItem>(end.BonusItems);
                 _pos = Log.Events.Count;
             }
-            BattleSpike.OnReplayDone($"Replay done: {Status}");
-            BattleSpike.Replayer = null;
+            BattleSync.OnReplayDone($"Replay done: {Status}");
+            BattleSync.Replayer = null;
         }
     }
 }

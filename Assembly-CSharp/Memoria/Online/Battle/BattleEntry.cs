@@ -127,15 +127,43 @@ namespace Memoria.Online.Battle
         public static void BeforeBattleInit() => Guard(() => { Instance?.BattleInitStart(); return 0; }, 0);
 
         /// <summary>[Online] HonoluluBattleMain.Start, after InitBattleScene.</summary>
-        public static void AfterBattleInit() => Guard(() => { Instance?.BattleInitEnd(); return 0; }, 0);
+        public static void AfterBattleInit() => Guard(() => { _debugForced = null; Instance?.BattleInitEnd(); return 0; }, 0);
 
         /// <summary>[Online] btl_init.SetupBattleEnemy: the start type (forced on a participant).</summary>
         public static battle_start_type_tags StartType(BTL_SCENE_INFO info)
         {
-            BattleStartData forced = Instance?._current?.Role == Role.Participant ? Instance._current.Data : null;
+            BattleStartData forced = Instance?._current?.Role == Role.Participant ? Instance._current.Data : _debugForced;
             if (forced != null)
                 return (battle_start_type_tags)forced.StartType;
             return FF9.btl_sys.StartType(info);
+        }
+
+        private static BattleStartData _debugForced;
+
+        /// <summary>Debug record / replay (BattleSync, OnlineDebug): this PC's next battle is forced to a recorded one,
+        /// through the same values a participant gets from BattleStart.</summary>
+        public static void ForceDebugStart(Int32 battleId, Int32 pattern, Int32 startType)
+        {
+            FF9StateGlobal ff9 = FF9StateSystem.Common.FF9;
+            if (ff9.btlMapNo != battleId)
+                Log.Message($"[Online] Battle entry: debug replay forces battle {battleId} (this encounter is {ff9.btlMapNo})");
+            _debugForced = new BattleStartData { BattleId = (UInt16)battleId, Pattern = (Byte)pattern, StartType = (Byte)startType };
+            ff9.btlMapNo = (Int16)battleId;
+            FF9StateSystem.Battle.battleMapIndex = battleId;
+            ff9.btlSubMapNo = (SByte)pattern;
+        }
+
+        /// <summary>The owner's initial ATB, in btl_list order (a participant's Go, or a debug replay's start).</summary>
+        public static Int32 SetInitialAtb(IList<Int16> values)
+        {
+            Int32 changed = 0, i = 0;
+            for (BTL_DATA b = FF9StateSystem.Battle.FF9Battle.btl_list.next; b != null && i < values.Count; b = b.next, i++)
+            {
+                if (b.cur.at != values[i])
+                    changed++;
+                b.cur.at = values[i];
+            }
+            return changed;
         }
 
         /// <summary>[Online] battle.BattleMain, PHASE_MENU_ON once the intro is done: false holds the battle there.</summary>
@@ -174,7 +202,6 @@ namespace Memoria.Online.Battle
                 return;
             }
             PublishPresence(now);
-            WatchResultScreen(now);
             UpdateIncoming(now);
             UpdateCurrent(now);
             ApplyPendingResult();
@@ -182,53 +209,6 @@ namespace Memoria.Online.Battle
             if (_current != null && _current.InBattle && PersistenSingleton<SceneDirector>.Instance.CurrentScene != SceneDirector.BattleMapSceneName
                 && PersistenSingleton<FF9StateSystem>.Instance.mode != 2 && PersistenSingleton<FF9StateSystem>.Instance.mode != 8)
                 BattleLeft("left the battle scene without the result screen");
-        }
-
-        // ---- Diagnostics: the result screen that wouldn't move (first two-PC run) ------------------------------
-
-        private Double _resultScreenSince = -1, _nextResultDump;
-
-        /// <summary>While the result screen is up for more than 10 s, its state goes to the log every 10 s.</summary>
-        private void WatchResultScreen(Double now)
-        {
-            if (PersistenSingleton<UIManager>.Instance.State != UIManager.UIState.BattleResult)
-            {
-                _resultScreenSince = -1;
-                return;
-            }
-            if (_resultScreenSince < 0)
-            {
-                _resultScreenSince = now;
-                _nextResultDump = now + 10000;
-            }
-            if (now >= _nextResultDump)
-            {
-                _nextResultDump = now + 10000;
-                Log.Message($"[Online] Battle entry: result screen up for {(now - _resultScreenSince) / 1000:0} s: {DumpResultScreen()}");
-            }
-        }
-
-        /// <summary>Debug (Ctrl+Shift+2, and automatically): what the result screen and the input are doing.</summary>
-        public static String DumpResultScreen()
-        {
-            UIManager ui = PersistenSingleton<UIManager>.Instance;
-            BattleResultUI r = ui.BattleResultScene;
-            System.Text.StringBuilder s = new System.Text.StringBuilder();
-            s.Append($"ui {ui.State}, menu control {ui.IsMenuControlEnable}, player control {ui.IsPlayerControlEnable}, group '{ButtonGroupState.ActiveGroup}', button {(ButtonGroupState.ActiveButton != null ? ButtonGroupState.ActiveButton.name : "none")}");
-            s.Append($", quit dialog {ui.QuitScene?.isShowQuitUI}, fading {PersistenSingleton<SceneDirector>.Instance.IsFading}, mode {PersistenSingleton<FF9StateSystem>.Instance.mode}, btl_result {FF9StateSystem.Common.FF9.btl_result}, event bonus {battle.btl_bonus.Event}");
-            if (r != null)
-            {
-                System.Reflection.BindingFlags f = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-                Object Field(String name) { try { return typeof(BattleResultUI).GetField(name, f)?.GetValue(r); } catch { return "?"; } }
-                s.Append($"; result screen: active {r.gameObject.activeInHierarchy}, loading {r.Loading}, state {Field("currentState")}, exp done {Field("expEndTick")}, ap done {Field("apEndTick")}");
-                if (Field("abilityLearned") is List<Int32>[] learned)
-                    s.Append($", abilities waiting [{String.Join(" ", Array.ConvertAll(learned, l => (l?.Count ?? -1).ToString()))}]");
-                if (Field("isReadyToShowNextAbil") is Boolean[] ready)
-                    s.Append($", next ability ready [{String.Join(" ", Array.ConvertAll(ready, b => b ? "1" : "0"))}]");
-            }
-            PLAYER[] members = FF9StateSystem.Common.FF9.party.member;
-            s.Append($"; party slots [{String.Join(" ", Array.ConvertAll(members, p => p != null ? ((Int32)p.info.slot_no).ToString() : "-"))}], battle party altered {BattleEntryParty.Altered}");
-            return s.ToString();
         }
 
         private void PublishPresence(Double now)

@@ -41,10 +41,11 @@ namespace Memoria.Online.Battle
             FF9StateBattleSystem btlsys = FF9StateSystem.Battle.FF9Battle;
             Log.MapNo = FF9StateSystem.Battle.battleMapIndex;
             Log.Pattern = btlsys.btl_scene.PatNum;
+            Log.StartType = (Int32)btlsys.btl_scene.Info.StartType;
             _baseline = BattleSnapshot.Capture();
             Log.StartPhase = btlsys.btl_phase;
             Add(new BattleEvent { Type = BattleEventType.Start, MapNo = Log.MapNo, Pattern = Log.Pattern, StartType = Log.StartType, Result = btlsys.btl_phase, State = _baseline });
-            BattleSpike.Note($"Record: started in phase {btlsys.btl_phase} (battle {Log.MapNo}, pattern {Log.Pattern}, start type {Log.StartType})");
+            BattleSync.Note($"Record: started in phase {btlsys.btl_phase} (battle {Log.MapNo}, pattern {Log.Pattern}, start type {Log.StartType})");
         }
 
         public void BeforeFrame()
@@ -105,7 +106,7 @@ namespace Memoria.Online.Battle
                 State = BattleSnapshot.Capture()
             });
             Log.Complete = true;
-            BattleSpike.OnRecordingDone(Log);
+            BattleSync.OnRecordingDone(Log);
         }
 
         /// <summary>Anything changed since the last context ended is outside the model: log it as a Sync.</summary>
@@ -118,7 +119,7 @@ namespace Memoria.Online.Battle
             if (diffs.Count > 0)
             {
                 Add(new BattleEvent { Type = BattleEventType.Sync, State = now });
-                BattleSpike.Note($"Record: sync at frame {_frame}: {String.Join("; ", diffs.ToArray())}");
+                BattleSync.Note($"Record: sync at frame {_frame}: {String.Join("; ", diffs.ToArray())}");
             }
             _baseline = now;
         }
@@ -147,7 +148,7 @@ namespace Memoria.Online.Battle
                 ev.Caster = cmd.regist.btl_id;
                 ev.Slot = (SByte)cmd.regist.cmd.IndexOf(cmd);
                 if (ev.Slot < 0)
-                    BattleSpike.Note($"Record: command {cmd.cmd_no} isn't in its caster's command slots");
+                    BattleSync.Note($"Record: command {cmd.cmd_no} isn't in its caster's command slots");
             }
             ev.CmdNo = cmd.cmd_no;
             ev.SubNo = cmd.sub_no;
