@@ -105,8 +105,13 @@ namespace Memoria.Online.Battle
                         CompareAfterAction(ev);
                         _pos++;
                         break;
-                    case BattleEventType.Tick:
                     case BattleEventType.Script:
+                        if (!PhaseReached(ev))
+                            return; // the owner's script wrote in another battle phase: wait for this battle to get there
+                        ApplyTick(ev);
+                        _pos++;
+                        break;
+                    case BattleEventType.Tick:
                         ApplyTick(ev);
                         _pos++;
                         break;
@@ -127,6 +132,33 @@ namespace Memoria.Online.Battle
                 _blocked.Reset();
                 _stallLogged = false;
             }
+        }
+
+        private readonly Stopwatch _phaseWait = new Stopwatch();
+
+        /// <summary>
+        /// A battle-script write acts according to the battle phase (SetBattleData "end battle" only works in
+        /// PHASE_EVENT, which the passive reaches after its own die sequences). Applying it before this battle reaches the
+        /// owner's phase makes it a no-op and the battle never ends (seen in battle 45). Waits up to 10 s.
+        /// </summary>
+        private Boolean PhaseReached(BattleEvent ev)
+        {
+            Byte phase = FF9StateSystem.Battle.FF9Battle.btl_phase;
+            if (ev.Phase == 0 || phase == ev.Phase)
+            {
+                _phaseWait.Reset();
+                return true;
+            }
+            if (!_phaseWait.IsRunning)
+            {
+                _phaseWait.Start();
+                BattleSync.Note($"Replay: script write (event {_pos}) waits for battle phase {ev.Phase} (now {phase})");
+            }
+            if (_phaseWait.Elapsed.TotalSeconds < 10)
+                return false;
+            _phaseWait.Reset();
+            Mismatch($"script write waited 10 s for battle phase {ev.Phase} (still {phase}); applied anyway");
+            return true;
         }
 
         private void Inject(BattleEvent ev)

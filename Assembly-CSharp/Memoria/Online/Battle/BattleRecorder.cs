@@ -265,7 +265,7 @@ namespace Memoria.Online.Battle
             if (_collecting != null)
                 return AddOp(kind, unit, id, value, 0, null, null);
             Checkpoint();
-            _scriptEvent = new BattleEvent { Type = BattleEventType.Script, Target = unit?.btl_id ?? 0 };
+            _scriptEvent = new BattleEvent { Type = BattleEventType.Script, Target = unit?.btl_id ?? 0, Phase = FF9StateSystem.Battle.FF9Battle.btl_phase };
             BattleOp op = new BattleOp { Kind = kind, Unit = unit?.btl_id ?? 0, A = id, B = value };
             _scriptEvent.Ops.Add(op);
             Add(_scriptEvent);

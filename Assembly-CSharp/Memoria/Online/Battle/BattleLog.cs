@@ -57,6 +57,9 @@ namespace Memoria.Online.Battle
         // Start
         public Int32 MapNo, Pattern, StartType;
 
+        // Script: the owner's battle phase when the script wrote (some writes only act in one phase, e.g. "end battle" in PHASE_EVENT)
+        public Byte Phase;
+
         // End
         public Byte Result;
         public UInt32 Exp;
@@ -107,6 +110,8 @@ namespace Memoria.Online.Battle
                     break;
                 case BattleEventType.Tick:
                 case BattleEventType.Script:
+                    if (Type == BattleEventType.Script)
+                        w.Write(Phase);
                     w.Write((Byte)BattleSync.UnitIndex(Target));
                     w.Write((Byte)Ops.Count);
                     foreach (BattleOp op in Ops)
@@ -168,7 +173,7 @@ namespace Memoria.Online.Battle
                     break;
                 case BattleEventType.Tick:
                 case BattleEventType.Script:
-                    sb.Append($" {BattleSync.UnitName(Target)}");
+                    sb.Append($" {BattleSync.UnitName(Target)}{(Type == BattleEventType.Script ? $" (phase {Phase})" : "")}");
                     foreach (BattleOp op in Ops)
                         sb.Append("\n      ").Append(op);
                     break;

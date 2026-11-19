@@ -149,7 +149,15 @@ namespace Memoria
             }
             // TODO: Smoothen some animated background objects (battlebg.getBbgObjAnimation) - NOTE: thunders in the Nova Dragon battle should most likely not be smoothened anyway (but things like the Crystal against Trance Kuja should)
             // Camera
-            Camera camera = Camera.main ? Camera.main : GameObject.Find("Battle Camera").GetComponent<BattleMapCameraController>().GetComponent<Camera>();
+            // [Online] null guard: when leaving a battle this can run once more after the battle camera is gone (NullReferenceException in
+            // output_log.txt, seen with and without a session; docs/online/step3-m1-results.md)
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                GameObject battleCameraGo = GameObject.Find("Battle Camera");
+                BattleMapCameraController controller = battleCameraGo != null ? battleCameraGo.GetComponent<BattleMapCameraController>() : null;
+                camera = controller != null ? controller.GetComponent<Camera>() : null;
+            }
             if (camera != null)
             {
                 if (_cameraRegistered)
@@ -194,7 +202,7 @@ namespace Memoria
                 next.gameObject.transform.localScale = Vector3.Lerp(next._smoothUpdateScalePrevious, next._smoothUpdateScaleActual, smoothFactor);
 
                 Animation anim = next.gameObject.GetComponent<Animation>();
-                AnimationState animState = anim[next._smoothUpdateAnimNamePrevious];
+                AnimationState animState = anim != null ? anim[next._smoothUpdateAnimNamePrevious] : null; // [Online] null guard: NRE seen when leaving a battle
                 if (animState != null && next.bi.stop_anim == 0)
                 {
                     animState.time = Mathf.Lerp(next._smoothUpdateAnimTimePrevious, next._smoothUpdateAnimTimePrevious + next._smoothUpdateAnimSpeed, smoothFactor);
@@ -225,7 +233,15 @@ namespace Memoria
                 HonoluluBattleMain.battleSPS.GenerateSPS();
             }
             // Camera
-            Camera camera = Camera.main ? Camera.main : GameObject.Find("Battle Camera").GetComponent<BattleMapCameraController>().GetComponent<Camera>();
+            // [Online] null guard: when leaving a battle this can run once more after the battle camera is gone (NullReferenceException in
+            // output_log.txt, seen with and without a session; docs/online/step3-m1-results.md)
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                GameObject battleCameraGo = GameObject.Find("Battle Camera");
+                BattleMapCameraController controller = battleCameraGo != null ? battleCameraGo.GetComponent<BattleMapCameraController>() : null;
+                camera = controller != null ? controller.GetComponent<Camera>() : null;
+            }
             if (_cameraRegistered && camera != null)
             {
                 Vector3 cameraMove = MatrixGetTranslation(_cameraW2CMatrixActual) - MatrixGetTranslation(_cameraW2CMatrixPrevious);
@@ -268,7 +284,15 @@ namespace Memoria
             {
                 _bg.localRotation = _bgRotActual;
             }
-            Camera camera = Camera.main ? Camera.main : GameObject.Find("Battle Camera").GetComponent<BattleMapCameraController>().GetComponent<Camera>();
+            // [Online] null guard: when leaving a battle this can run once more after the battle camera is gone (NullReferenceException in
+            // output_log.txt, seen with and without a session; docs/online/step3-m1-results.md)
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                GameObject battleCameraGo = GameObject.Find("Battle Camera");
+                BattleMapCameraController controller = battleCameraGo != null ? battleCameraGo.GetComponent<BattleMapCameraController>() : null;
+                camera = controller != null ? controller.GetComponent<Camera>() : null;
+            }
             if (_cameraRegistered && camera != null)
             {
                 camera.worldToCameraMatrix = _cameraW2CMatrixActual;
