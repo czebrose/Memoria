@@ -201,6 +201,7 @@ namespace Assets.Scripts.Common
             GameObject onlineSession = new GameObject("OnlineSession");
             onlineSession.transform.parent = base.transform;
             onlineSession.AddComponent<Memoria.Online.OnlineSession>();
+            onlineSession.AddComponent<Memoria.Online.Battle.BattleSpikeHud>(); // [Online] Spike C: battle record / replay debug keys
         }
 
         private void Update()

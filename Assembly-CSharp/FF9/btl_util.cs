@@ -239,7 +239,7 @@ namespace FF9
                     candidates.Add(next.btl_id);
             if (candidates.Count == 0)
                 return 0;
-            return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+            return candidates[Memoria.Online.Battle.BattleTape.Filter(Memoria.Online.Battle.TapeKind.Range, UnityEngine.Random.Range(0, candidates.Count))]; // [Online] Spike C
         }
 
         public static Boolean ManageBattleSong(FF9StateGlobal sys, Int32 ticks, Int32 song_id)

@@ -34,6 +34,10 @@ namespace Memoria
 
         public static void CalcMain(BTL_DATA caster, BTL_DATA target, BattleCommand command, Int32 scriptId, BattleActionThread sfxThread)
         {
+            // [Online] Spike C: the owner records this calculation's effects; a passive battle applies the recorded ones instead
+            Int32 spikeToken = Online.Battle.BattleSpike.CalcBegin(caster, target, command);
+            if (spikeToken == Online.Battle.BattleSpike.CalcHandled)
+                return;
             try
             {
                 if (caster == null || target == null)
@@ -134,6 +138,10 @@ namespace Memoria
                 {
                     Log.Error(err);
                 }
+            }
+            finally
+            {
+                Online.Battle.BattleSpike.CalcEnd(spikeToken); // [Online] Spike C
             }
             BattleVoice.CurrentCalc = null;
         }
