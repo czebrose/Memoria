@@ -144,11 +144,62 @@ namespace Memoria.Online.Battle
             {
                 Recorder?.AfterFrame(battleResult);
                 Replayer?.AfterFrame(battleResult);
+                EndWatchdog(battleResult);
             }
             catch (Exception err)
             {
                 Log.Error(err, "[SpikeC] AfterFrame");
             }
+        }
+
+        private static Single _allEnemiesDownSince = -1f;
+        private static Boolean _watchdogLogged;
+
+        /// <summary>Debug: the battle should end once every enemy is down; if it hasn't 8 s later, log why.</summary>
+        private static void EndWatchdog(UInt32 battleResult)
+        {
+            if (!Configuration.Debug.OnlineDebug)
+                return;
+            Boolean enemyUp = false, anyEnemy = false;
+            for (BTL_DATA btl = FF9StateSystem.Battle.FF9Battle.btl_list.next; btl != null; btl = btl.next)
+                if (btl.bi.player == 0)
+                {
+                    anyEnemy = true;
+                    if (!btl_stat.CheckStatus(btl, BattleStatusConst.BattleEndFull))
+                        enemyUp = true;
+                }
+            if (enemyUp || battleResult == 1)
+            {
+                _allEnemiesDownSince = -1f;
+                _watchdogLogged = false;
+                return;
+            }
+            if (_allEnemiesDownSince < 0f)
+            {
+                _allEnemiesDownSince = UnityEngine.Time.realtimeSinceStartup;
+                Note($"watchdog: no enemy standing ({(anyEnemy ? "all down" : "none left in btl_list")})\n" + DescribeBattleFlow());
+            }
+            else if (!_watchdogLogged && UnityEngine.Time.realtimeSinceStartup - _allEnemiesDownSince > 8f)
+            {
+                _watchdogLogged = true;
+                Note("watchdog: the battle hasn't ended 8 s after the last enemy went down\n" + DescribeBattleFlow());
+            }
+        }
+
+        public static String DescribeBattleFlow()
+        {
+            FF9StateBattleSystem btlsys = FF9StateSystem.Battle.FF9Battle;
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.Append($"    phase {btlsys.btl_phase} seq {btlsys.btl_seq} result {FF9StateSystem.Common.FF9.btl_result} cmd_status {btlsys.cmd_status} SFX running {SFX.IsRunning()} actions {UnifiedBattleSequencer.runningActions.Count} enemy_die {btlsys.enemy_die}\n");
+            foreach (CMD_DATA cmd in btlsys.cur_cmd_list)
+                sb.Append($"    running: {cmd.cmd_no} sub {cmd.sub_no} by {UnitName(cmd.regist?.btl_id ?? 0)} mode {cmd.info.mode} → {cmd.tar_id:X2}\n");
+            for (CMD_DATA cmd = btlsys.cmd_queue.next; cmd != null; cmd = cmd.next)
+                sb.Append($"    queued: {cmd.cmd_no} sub {cmd.sub_no} by {UnitName(cmd.regist?.btl_id ?? 0)}\n");
+            foreach (UnifiedBattleSequencer.BattleAction action in UnifiedBattleSequencer.runningActions)
+                sb.Append($"    action: cmd {action.cmd?.cmd_no} by {UnitName(action.cmd?.regist?.btl_id ?? 0)} frame {action.frameIndex}\n");
+            for (BTL_DATA btl = btlsys.btl_list.next; btl != null; btl = btl.next)
+                sb.Append($"    {UnitName(btl.btl_id)} hp {btl.cur.hp} st [{btl.stat.cur}] die_seq {btl.die_seq} target {btl.bi.target} disappear {btl.bi.disappear} busy {btl_util.IsBtlBusy(btl, btl_util.BusyMode.ANY_CURRENT)} anim {btl.currentAnimationName} end {btl.animEndFrame}\n");
+            return sb.ToString();
         }
 
         public static void OnRecordingDone(BattleLog log)
