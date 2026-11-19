@@ -95,8 +95,11 @@ namespace Memoria.Online.Battle
         private JSONClass _pendingResult;    // host: a guest battle's results, applied once the host can touch the party
         private UInt64 _pendingResultFrom;
 
-        /// <summary>Debug (Ctrl+Shift+U): party members nobody plays join battles the host takes part in.</summary>
-        public static Boolean FreeCharactersJoinHost;
+        /// <summary>
+        /// Party members nobody plays are the host's (decided 2026-11-18): they join every battle the host takes part
+        /// in, and sit out the others. Debug toggle: Ctrl+Shift+U.
+        /// </summary>
+        public static Boolean FreeCharactersJoinHost = true;
 
         /// <summary>Shown on screen (OnlineSession): why this PC waits.</summary>
         public static String Notice { get; private set; }
