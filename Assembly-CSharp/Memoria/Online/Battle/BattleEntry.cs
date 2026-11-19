@@ -758,7 +758,7 @@ namespace Memoria.Online.Battle
         {
             Current c = _current;
             String state = c != null ? $"{c.Role} #{c.Seq}{(c.Role == Role.Owner ? $", awaiting {c.Awaiting.Count}/{c.Participants.Count}" : "")}" : _incoming != null ? $"incoming #{_incoming.Seq}" : "idle";
-            return $"Battle entry: {state}; U free characters join the host's battles {(FreeCharactersJoinHost ? "ON" : "off")}, V encounter now";
+            return $"Battle entry: {state}; U free characters join the host's battles {(FreeCharactersJoinHost ? "ON" : "off")}, 1 encounter now";
         }
 
         private static String ResultName(Byte result)

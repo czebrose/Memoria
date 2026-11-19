@@ -456,7 +456,7 @@ public partial class EventEngine
         EventEngine.sLastTalker = (PosObj)null;
     }
 
-    /// <summary>[Online] Spike D debug (Ctrl+Shift+V): a random encounter from this field's table at the next field frame.</summary>
+    /// <summary>[Online] Spike D debug (Ctrl+Shift+1): a random encounter from this field's table at the next field frame.</summary>
     public Int32 OnlineDebugEncounter()
     {
         if (this.gMode != 1 || this._context == null || this._context.usercontrol == 0)

@@ -407,7 +407,7 @@ namespace Memoria.Online
                 BattleEntry.FreeCharactersJoinHost = !BattleEntry.FreeCharactersJoinHost; // Spike D
                 Log.Message($"[Online] Battle entry: party members nobody plays {(BattleEntry.FreeCharactersJoinHost ? "join" : "sit out")} the battles the host takes part in");
             }
-            else if (Input.GetKeyDown(KeyCode.V))
+            else if (Input.GetKeyDown(KeyCode.Alpha1)) // not V: the game opens its menu on V
             {
                 Int32 scene = PersistenSingleton<EventEngine>.Instance != null ? PersistenSingleton<EventEngine>.Instance.OnlineDebugEncounter() : 0; // Spike D
                 Log.Message(scene > 0 ? $"[Online] Battle entry: debug encounter, battle {scene}" : "[Online] Battle entry: debug encounter: no random battle here (needs a field with an encounter table and player control)");
