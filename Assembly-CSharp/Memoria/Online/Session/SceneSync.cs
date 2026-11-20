@@ -1,4 +1,4 @@
-﻿using Assets.Scripts.Common;
+using Assets.Scripts.Common;
 using Memoria.Prime;
 using System;
 using System.Collections.Generic;
@@ -23,12 +23,17 @@ namespace Memoria.Online.Session
     ///   by the script (CloseWindow) close locally on each PC; the owner's notice is only logged for timing.
     /// - **Field jumps and battles** a script starts are logged with the scene clock (owner: also sent), so the doc can
     ///   say how far a follower's script runs ahead. Nothing is blocked.
+    /// - **Triggers are the owner's.** What the owner's player starts by talking, checking or walking into a region
+    ///   (EventCollision -> EventEngine.Request level 1) is sent (object uid, tag) and started the same way on every
+    ///   follower; a follower's own player triggers nothing (<see cref="PlayerRequest"/>). So a scene that begins with a
+    ///   talk (the festival: Mogwin) starts on every PC from the owner's talk.
     ///
-    /// Control messages (reliable): 40 Start, 41 Loaded (follower â†’ owner), 42 Go, 43 Window, 44 Jump, 45 End.
+    /// Control messages (reliable): 40 Start, 41 Loaded (follower -> owner), 42 Go, 43 Window, 44 Jump, 45 End,
+    /// 46 Trigger.
     /// </summary>
     public sealed class SceneSync
     {
-        public const Byte MsgStart = 40, MsgLoaded = 41, MsgGo = 42, MsgWindow = 43, MsgJump = 44, MsgEnd = 45;
+        public const Byte MsgStart = 40, MsgLoaded = 41, MsgGo = 42, MsgWindow = 43, MsgJump = 44, MsgEnd = 45, MsgTrigger = 46;
         public const Byte KindInput = 1, KindTimer = 2, KindScript = 3, KindOther = 4, KindRemote = 5;
         private const Double GateTimeoutMs = 10000, FollowerGateTimeoutMs = 20000, StuckInputMs = 30000;
 
@@ -53,7 +58,7 @@ namespace Memoria.Online.Session
         private UInt16 _fieldIndex; // field loads since the scene started (both sides count the same if they follow)
         private Boolean _gated;
         private Double _gateSince, _fieldT0 = -1, _ownerStartAt = -1;
-        private readonly Dictionary<UInt64, Int32> _peerLoaded = new Dictionary<UInt64, Int32>(); // owner: follower â†’ field it loaded and waits on
+        private readonly Dictionary<UInt64, Int32> _peerLoaded = new Dictionary<UInt64, Int32>(); // owner: follower -> field it loaded and waits on
         private Int32 _goField = -1; // follower: the last Go not used yet
 
         // Windows
@@ -136,6 +141,8 @@ namespace Memoria.Online.Session
             _peerLoaded.Clear();
             _goField = -1;
             _windows = _remoteApplied = _choicesApplied = _timerOrScript = _waitedBehind = _droppedRemote = _stuckReleased = 0;
+            _triggersSent = _triggersRun = _triggersBlocked = 0;
+            _triggers.Clear();
             _inputDrifts.Clear();
             _localDrifts.Clear();
             ResetWindows();
@@ -160,11 +167,12 @@ namespace Memoria.Online.Session
             _owner = 0;
             _gated = false;
             _pending.Clear();
+            _triggers.Clear();
         }
 
         public String Summary()
         {
-            return $"windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
+            return $"triggers sent {_triggersSent} / run from owner {_triggersRun} / own ignored {_triggersBlocked}; windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
                    $"timer/script closes {_timerOrScript}, stuck input released {_stuckReleased}; " +
                    $"owner-closed drift ms {Stats(_inputDrifts)}; local-close drift ms {Stats(_localDrifts)}";
         }
@@ -244,7 +252,10 @@ namespace Memoria.Online.Session
                 }
             }
             if (!IsOwner)
+            {
+                ApplyTriggers(now);
                 ApplyPending(now);
+            }
         }
 
         private String MissingPeers()
@@ -378,6 +389,117 @@ namespace Memoria.Online.Session
             W32(m, 8, (Int32)t);
             W16(m, 12, _seq);
             Broadcast(m);
+        }
+
+        // ---- Triggers: the owner's player starts things, followers start the same -----------------------------------
+
+        private sealed class Trigger
+        {
+            public Int32 FieldIndex, Uid, Tag, OwnerMs;
+            public Double ArrivedMs;
+        }
+
+        private const Double TriggerRetryMs = 3000;
+        private readonly List<Trigger> _triggers = new List<Trigger>();
+        private Boolean _mirroring;
+        private Double _lastBlockedLog;
+        private Int32 _triggersSent, _triggersRun, _triggersBlocked;
+
+        /// <summary>
+        /// [Online] EventCollision: the player talks to / checks / walks into an object (EventEngine.Request at level 1).
+        /// In a party scene the owner's trigger is also sent to every follower; a follower's own player triggers nothing.
+        /// </summary>
+        public static Boolean PlayerRequest(EventEngine engine, Obj obj, Int32 tag)
+        {
+            SceneSync s = Instance;
+            if (s == null || s._owner == 0 || s._mirroring || obj == null)
+                return engine.Request(obj, 1, tag, false);
+            if (!s.IsOwner)
+            {
+                // Only report a trigger that would have started something (a region asks every frame)
+                if (engine.GetIP(obj.sid, tag, obj.ebData) != engine.nil && 1 < obj.level)
+                {
+                    s._triggersBlocked++;
+                    if (NowMs - s._lastBlockedLog > 2000)
+                    {
+                        s._lastBlockedLog = NowMs;
+                        Log.Message($"[Online] Scene {s._sceneId}: this player's trigger ignored (uid {obj.uid} tag {tag}): only the owner starts things in a party scene");
+                    }
+                }
+                return false;
+            }
+            Boolean started = engine.Request(obj, 1, tag, false);
+            if (started && !s._gated)
+            {
+                Double t = s.SceneMs;
+                Byte[] m = new Byte[12];
+                m[0] = MsgTrigger;
+                W16(m, 1, s._sceneId);
+                W16(m, 3, s._fieldIndex);
+                W16(m, 5, obj.uid);
+                m[7] = (Byte)tag;
+                W32(m, 8, (Int32)t);
+                s.Broadcast(m);
+                s._triggersSent++;
+                Log.Message($"[Online] Scene {s._sceneId}: TRIGGER uid {obj.uid} tag {tag} ({TagName(tag)}) on field {s._field} at scene {t:0} ms: sent");
+            }
+            return started;
+        }
+
+        private static String TagName(Int32 tag) => tag == 3 ? "talk" : tag == 2 ? "region / push" : tag == 8 ? "special" : "tag " + tag;
+
+        /// <summary>Follower: start the owner's triggers here (once this field runs; retried while the object is busy).</summary>
+        private void ApplyTriggers(Double now)
+        {
+            if (_gated || _triggers.Count == 0)
+                return;
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine == null || engine.gMode != 1 || !engine.HasObjectList)
+                return;
+            for (Int32 i = 0; i < _triggers.Count; i++)
+            {
+                Trigger t = _triggers[i];
+                if (t.FieldIndex != _fieldIndex)
+                {
+                    if (t.FieldIndex < _fieldIndex || now - t.ArrivedMs > TriggerRetryMs)
+                    {
+                        Log.Message($"[Online] Scene {_sceneId}: owner's trigger uid {t.Uid} tag {t.Tag} was for field load #{t.FieldIndex}, here #{_fieldIndex}: dropped");
+                        _triggers.RemoveAt(i--);
+                    }
+                    continue; // the owner is ahead by a field: wait for this PC's load
+                }
+                Obj obj = engine.FindObjByUID(t.Uid);
+                Boolean started = false;
+                if (obj != null)
+                {
+                    if (t.Tag == 3 || t.Tag == 8)
+                    {
+                        Actor player = engine.getActiveActorByUID(engine.GetControlUID());
+                        if (player != null)
+                            player.listener = obj.uid;
+                    }
+                    _mirroring = true;
+                    try
+                    {
+                        started = engine.Request(obj, 1, t.Tag, false);
+                    }
+                    finally
+                    {
+                        _mirroring = false;
+                    }
+                }
+                if (started)
+                {
+                    _triggersRun++;
+                    Log.Message($"[Online] Scene {_sceneId}: TRIGGER uid {t.Uid} tag {t.Tag} ({TagName(t.Tag)}) started here at scene {SceneMs:0} ms (owner {t.OwnerMs} ms, {now - t.ArrivedMs:0} ms after it arrived, rtt {RttOwner():0})");
+                    _triggers.RemoveAt(i--);
+                }
+                else if (now - t.ArrivedMs > TriggerRetryMs)
+                {
+                    Log.Message($"[Online] Scene {_sceneId}: owner's trigger uid {t.Uid} tag {t.Tag} couldn't start here ({(obj == null ? "no such object" : $"object busy, level {obj.level}")}) for {TriggerRetryMs / 1000:0} s: dropped");
+                    _triggers.RemoveAt(i--);
+                }
+            }
         }
 
         // ---- Windows -----------------------------------------------------------------------------------------------
@@ -557,7 +679,7 @@ namespace Memoria.Online.Session
 
         private Double RttOwner() => Math.Max(0, _rttOf(_owner));
 
-        /// <summary>Follower: one line per window once both sides' times are known. Drift = here âˆ’ owner, on the scene clock.</summary>
+        /// <summary>Follower: one line per window once both sides' times are known. Drift = here - owner, on the scene clock.</summary>
         private void ReportWindow(Win w)
         {
             if (w.Reported || !w.Closed || w.OwnerCloseMs < 0)
@@ -583,7 +705,7 @@ namespace Memoria.Online.Session
 
         public Boolean OnControlMessage(UInt64 peer, Byte[] d)
         {
-            if (d.Length < 3 || d[0] < MsgStart || d[0] > MsgEnd)
+            if (d.Length < 3 || d[0] < MsgStart || d[0] > MsgTrigger)
                 return false;
             UInt16 scene = (UInt16)R16(d, 1);
             switch (d[0])
@@ -655,6 +777,13 @@ namespace Memoria.Online.Session
                 case MsgWindow:
                     if (!IsOwner && d.Length >= 21)
                         OnOwnerWindow(d);
+                    return true;
+                case MsgTrigger:
+                    if (!IsOwner && d.Length >= 12)
+                    {
+                        _triggers.Add(new Trigger { FieldIndex = R16(d, 3), Uid = R16(d, 5), Tag = d[7], OwnerMs = R32(d, 8), ArrivedMs = NowMs });
+                        ApplyTriggers(NowMs);
+                    }
                     return true;
                 case MsgJump:
                     if (!IsOwner && d.Length >= 14)

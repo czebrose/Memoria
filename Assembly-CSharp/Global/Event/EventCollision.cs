@@ -58,13 +58,13 @@ public class EventCollision
             Obj obj = instance.TreadQuad(po, 4);
             if (obj != null && EventCollision.IsQuadTalkable(po, obj))
             {
-                if (interactInput == EventInput.Special && instance.Request(obj, 1, 8, false))
+                if (interactInput == EventInput.Special && Memoria.Online.Session.SceneSync.PlayerRequest(instance, obj, 8)) // [Online] Spike E: a party scene mirrors the owner's triggers
                 {
                     EventCollision.ClearPathFinding(po);
                     EMinigame.SetQuadmistOpponentId(obj);
                     return true;
                 }
-                if (instance.Request(obj, 1, 3, false))
+                if (Memoria.Online.Session.SceneSync.PlayerRequest(instance, obj, 3)) // [Online] Spike E
                 {
                     EventCollision.ClearPathFinding(po);
                     return true;
@@ -90,14 +90,14 @@ public class EventCollision
                     ((Actor)po).listener = obj.uid;
                     if (interactInput == EventInput.Special)
                     {
-                        if (instance.Request(obj, 1, 8, false))
+                        if (Memoria.Online.Session.SceneSync.PlayerRequest(instance, obj, 8)) // [Online] Spike E
                         {
                             EventCollision.ClearPathFinding(po);
                             EMinigame.SetQuadmistOpponentId(obj);
                             return true;
                         }
                     }
-                    if (instance.Request(obj, 1, 3, false))
+                    if (Memoria.Online.Session.SceneSync.PlayerRequest(instance, obj, 3)) // [Online] Spike E
                     {
                         EventCollision.ClearPathFinding(po);
                         return true;
@@ -243,13 +243,13 @@ public class EventCollision
             }
         }
         if (interractObj != null && EventCollision.CheckNPCPush((PosObj)interractObj))
-            instance.Request(interractObj, 1, 2, false);
+            Memoria.Online.Session.SceneSync.PlayerRequest(instance, interractObj, 2); // [Online] Spike E
         if (EventCollision.CheckQuadInput(po))
             return;
         interractObj = instance.TreadQuad(po, 2);
         if (interractObj != null)
         {
-            if (EventCollision.CheckQuadPush(po, interractObj) && instance.Request(interractObj, 1, 2, false))
+            if (EventCollision.CheckQuadPush(po, interractObj) && Memoria.Online.Session.SceneSync.PlayerRequest(instance, interractObj, 2)) // [Online] Spike E
             {
                 if (instance.GetIP(interractObj.sid, 8, interractObj.ebData) != instance.nil)
                     EIcon.PollFIcon(BubbleUI.IconType.ExclamationAndDuel);
