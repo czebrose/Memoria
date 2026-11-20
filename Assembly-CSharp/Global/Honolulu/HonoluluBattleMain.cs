@@ -593,7 +593,10 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
         //    else
         //        UpdateOverFrame();
         //}
-        for (Int32 updateCount = 0; updateCount < FPSManager.MainLoopUpdateCount; updateCount++)
+        Int32 battleUpdates = FPSManager.MainLoopUpdateCount;
+        if (battleUpdates > 0 && !IsOver)
+            battleUpdates += Memoria.Online.Battle.BattleSync.PassiveExtraFrames(); // [Online] a passive battle catching up with its owner
+        for (Int32 updateCount = 0; updateCount < battleUpdates; updateCount++)
         {
             if (!IsPaused)
                 SmoothFrameUpdater_Battle.ResetState();
@@ -673,6 +676,8 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
     {
         if (IsPaused)
             return;
+        if (Memoria.Online.Battle.BattleSync.HoldPassiveFrame())
+            return; // [Online] a passive battle never runs ahead of its owner's stream
 
         HonoluluBattleMain.counterATB = 0;
         battleSPS.EffectUpdate();

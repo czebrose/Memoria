@@ -278,6 +278,21 @@ namespace Memoria.Online.Battle
 
         public static Boolean LivePassive => Replayer != null && Replayer.Live;
 
+        /// <summary>HonoluluBattleMain, before a battle frame: true = a passive battle waits for the owner (see
+        /// <see cref="BattleReplayer.HoldFrame"/>).</summary>
+        public static Boolean HoldPassiveFrame()
+        {
+            try { return Replayer != null && Replayer.HoldFrame(); }
+            catch (Exception err) { Log.Error(err, "[Battle] HoldPassiveFrame"); return false; }
+        }
+
+        /// <summary>HonoluluBattleMain: battle frames to run this update on top of the usual (a passive battle catching up).</summary>
+        public static Int32 PassiveExtraFrames()
+        {
+            try { return Replayer != null ? Replayer.ExtraFrames() : 0; }
+            catch (Exception err) { Log.Error(err, "[Battle] PassiveExtraFrames"); return 0; }
+        }
+
         /// <summary>The owner's recording ended (its battle is over): summary; the stream sends what's left.</summary>
         public static void OnOwnerBattleDone(BattleLog log)
         {

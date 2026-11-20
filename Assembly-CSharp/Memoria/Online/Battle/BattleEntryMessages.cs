@@ -43,9 +43,13 @@ namespace Memoria.Online.Battle
         public static UInt16 Seq(Byte[] data) => (UInt16)(data[1] | (data[2] << 8));
 
         /// <summary>Go [25, seq u16, count, (unit, ATB i16)*]: every unit in btl_list order (character id, or 0x80 | enemy type) and its initial ATB.</summary>
-        public static Byte[] GoWithUnits(UInt16 seq, List<KeyValuePair<Byte, Int16>> units)
+        /// <summary>Go: the units' initial ATB, then the owner's music (song id i16, -1: none; the participant may not
+        /// have heard the field script that started it).</summary>
+        public static Byte[] GoWithUnits(UInt16 seq, List<KeyValuePair<Byte, Int16>> units, Int32 music)
         {
-            Byte[] extra = new Byte[1 + units.Count * 3];
+            Byte[] extra = new Byte[1 + units.Count * 3 + 2];
+            extra[extra.Length - 2] = (Byte)music;
+            extra[extra.Length - 1] = (Byte)(music >> 8);
             extra[0] = (Byte)units.Count;
             for (Int32 i = 0; i < units.Count; i++)
             {
@@ -54,6 +58,14 @@ namespace Memoria.Online.Battle
                 extra[3 + i * 3] = (Byte)(units[i].Value >> 8);
             }
             return Short(Go, seq, extra);
+        }
+
+        public static Int32 ReadMusic(Byte[] go)
+        {
+            if (go.Length < 4)
+                return -1;
+            Int32 o = 4 + go[3] * 3;
+            return o + 2 <= go.Length ? (Int16)(go[o] | (go[o + 1] << 8)) : -1;
         }
 
         public static List<KeyValuePair<Byte, Int16>> ReadUnits(Byte[] go)

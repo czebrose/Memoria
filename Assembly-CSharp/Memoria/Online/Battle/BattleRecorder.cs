@@ -27,6 +27,10 @@ namespace Memoria.Online.Battle
         public Int32 EventCount => Log.Events.Count;
         public Boolean Started => _started;
 
+        /// <summary>The battle frame of the Start event; <see cref="RelativeFrame"/>: frames run since (the stream's clock).</summary>
+        public Int32 StartFrame { get; private set; }
+        public Int32 RelativeFrame => _started ? _frame - StartFrame : 0;
+
         /// <summary>Step 3: recording for participants (the log is streamed by <see cref="BattleStreamOut"/>), not the debug tool.</summary>
         public Boolean Network;
         private readonly Dictionary<CMD_DATA, Int32> _runningIndex = new Dictionary<CMD_DATA, Int32>();
@@ -72,6 +76,7 @@ namespace Memoria.Online.Battle
             if (_started)
                 return;
             _started = true;
+            StartFrame = _frame;
             FF9StateBattleSystem btlsys = FF9StateSystem.Battle.FF9Battle;
             Log.MapNo = FF9StateSystem.Battle.battleMapIndex;
             Log.Pattern = btlsys.btl_scene.PatNum;

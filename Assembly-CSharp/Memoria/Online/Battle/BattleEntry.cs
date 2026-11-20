@@ -37,6 +37,7 @@ namespace Memoria.Online.Battle
         private const Double JoinTimeoutMs = 8000;       // participant: busy (menu, scene, fade) this long after Start → Decline
         private const Double ReadyTimeoutMs = 20000;     // owner: Start sent, no Ready this long → go on without them
         private const Double AliveEveryMs = 1000;
+        private const Double OwnerEndedFallbackMs = 45000; // participant: the owner's End came this long ago, this battle still runs → leave
         private const Double OwnerSilentMs = 6000;       // participant: nothing from the owner this long → leave the battle
 
         private enum Role { None, Owner, Participant }
@@ -524,6 +525,16 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>Participant, on Go: the same units as the owner's? Then its initial ATB (ATB doesn't run while held).</summary>
+        /// <summary>The owner's battle music (a scripted battle's field script started it on the owner's PC only).</summary>
+        private static void PlayOwnerMusic(Int32 music)
+        {
+            Int32 local = FF9Snd.GetCurrentMusicId();
+            if (music < 0 || music == local)
+                return;
+            Log.Message($"[Online] Battle entry: playing the owner's music {music} (here: {local})");
+            btlsnd.ff9btlsnd_song_play(music);
+        }
+
         private void ApplyOwnerUnits(Current c, List<KeyValuePair<Byte, Int16>> owner)
         {
             if (!c.InBattle || PersistenSingleton<EventEngine>.Instance.gMode != 2)
@@ -581,10 +592,11 @@ namespace Memoria.Online.Battle
                     c.GoSent = true;
                     List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
                     ReadUnits(units); // every unit exists now, and no ATB has run yet: these are the initial values
-                    Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units);
+                    Int32 music = FF9Snd.GetCurrentMusicId();
+                    Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units, music);
                     foreach (UInt64 peer in c.Participants)
                         SendTo(peer, go);
-                    Log.Message($"[Online] Battle entry: #{c.Seq} Go: {go.Length} bytes, {units.Count} units [{String.Join(", ", units.ConvertAll(u => $"{UnitName(u.Key)} at {u.Value}").ToArray())}]");
+                    Log.Message($"[Online] Battle entry: #{c.Seq} Go: {go.Length} bytes, music {music}, {units.Count} units [{String.Join(", ", units.ConvertAll(u => $"{UnitName(u.Key)} at {u.Value}").ToArray())}]");
                     Log.Message($"[Online] Battle entry: #{c.Seq} everyone ready ({c.Participants.Count} participant(s)); the battle runs, {_now - c.TriggeredAt:0} ms after the trigger");
                 }
                 return true;
@@ -630,7 +642,7 @@ namespace Memoria.Online.Battle
                             SendTo(peer, stream);
                 }
                 Boolean streamed = BattleSync.OwnerStream != null;
-                if (c.StartSent && !c.EndSent && (streamed ? BattleSync.OwnerStreamEnded : ff9.btl_result != FF9StateGlobal.BTL_RESULT_INITIAL))
+                if (c.StartSent && c.GoSent && !c.EndSent && (streamed ? BattleSync.OwnerStreamEnded : ff9.btl_result != FF9StateGlobal.BTL_RESULT_INITIAL))
                 {
                     c.EndSent = true;
                     foreach (UInt64 peer in c.Participants)
@@ -642,9 +654,11 @@ namespace Memoria.Online.Battle
             // Participant, in the battle
             String ownerName = SteamNative.GetName(c.Owner);
             Notice = c.ExitRequested || c.GoReceived ? null : $"{ownerName} is running this battle...";
-            if (c.OwnerEnded && !c.ExitRequested && now - c.OwnerEndedAt > 20000 && BattlePhaseRunning())
-                RequestExit(c, c.ExitResult, "the owner's battle ended 20 s ago but this one still runs", null);
-            if (!c.ExitRequested && now - c.LastFromOwner > OwnerSilentMs)
+            // The passive plays the owner's battle a few frames behind; once the owner's End is in, it ends through its
+            // own screens shortly after. This is the fallback if it doesn't (the owner may have left already: no silence check).
+            if (c.OwnerEnded && !c.ExitRequested && now - c.OwnerEndedAt > OwnerEndedFallbackMs && BattlePhaseRunning())
+                RequestExit(c, c.ExitResult, $"the owner's battle ended {OwnerEndedFallbackMs / 1000:0} s ago but this one still runs", null);
+            if (!c.ExitRequested && !c.OwnerEnded && now - c.LastFromOwner > OwnerSilentMs)
                 RequestExit(c, 0, $"nothing from {SteamNative.Tag(c.Owner)} for {OwnerSilentMs / 1000:0} s", "The battle's owner is gone; leaving the battle.");
             if (c.ExitRequested && !c.Exiting)
                 TryExit(c);
@@ -900,6 +914,7 @@ namespace Memoria.Online.Battle
                         {
                             Log.Message($"[Online] Battle entry: #{seq} the owner's battle runs (Go, {d.Length} bytes, {_now - _current.TriggeredAt:0} ms after this PC joined)");
                             ApplyOwnerUnits(_current, BattleEntryMessages.ReadUnits(d));
+                            PlayOwnerMusic(BattleEntryMessages.ReadMusic(d));
                             _current.GoReceived = true;
                         }
                     }

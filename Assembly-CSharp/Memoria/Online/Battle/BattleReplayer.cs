@@ -21,6 +21,8 @@ namespace Memoria.Online.Battle
         public readonly BattleLog Log;
         private Int32 _pos;
         private Int32 _frame;
+        private Int32 _runFrame;      // live: battle frames run since Begin (the owner's Start event is its frame 0)
+        public Int32 HeldFrames, CaughtUpFrames, EarlyEffects;
         private Boolean _started, _ended;
         private readonly Dictionary<Int32, CMD_DATA> _bySeq = new Dictionary<Int32, CMD_DATA>();
         private readonly Dictionary<CMD_DATA, Int32> _seqOf = new Dictionary<CMD_DATA, Int32>();
@@ -44,12 +46,45 @@ namespace Memoria.Online.Battle
         public Boolean Live => _stream != null;
         public BattleStreamIn Stream => _stream;
 
-        /// <summary>Events that may be consumed: all of a recording; of a live stream, the whole actions received.</summary>
+        /// <summary>Events that may be consumed: all of a recording; of a live stream, everything received (each event
+        /// waits for its frame in <see cref="Pump"/>).</summary>
         private Int32 Available => _stream != null ? _stream.Released : Log.Events.Count;
 
         public Int32 Applied => _pos;
 
-        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} revive {ReviveWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSync.BlockedScriptWrites}{(_ended ? " | ended" : "")}";
+        /// <summary>Live: how many frames this PC runs behind the owner (by what it last heard).</summary>
+        public Int32 FramesBehind => _stream == null || !_started ? 0 : _stream.OwnerFrame - _runFrame;
+
+        /// <summary>
+        /// Live, before each battle frame: true = don't run it yet (the owner hasn't got <see cref="BattleStreamIn.Margin"/>
+        /// frames past it, so an effect the animation may reach could still be on its way). Not before the replay
+        /// started (the intro runs on its own), nor once the owner's End is in.
+        /// </summary>
+        public Boolean HoldFrame()
+        {
+            if (_stream == null || !_started || Aborted || _ended || _done || _stream.EndReceived)
+                return false;
+            if (_runFrame + BattleStreamIn.Margin <= _stream.OwnerFrame)
+                return false;
+            HeldFrames++;
+            return true;
+        }
+
+        /// <summary>Live: an extra battle frame this update when this PC fell over a second behind (load hitch, slower
+        /// animation): it catches up at double speed.</summary>
+        public Int32 ExtraFrames()
+        {
+            if (_stream == null || !_started || Aborted || _ended || _done)
+                return 0;
+            if (_stream.OwnerFrame - _runFrame > BattleStreamIn.Margin + 30)
+            {
+                CaughtUpFrames++;
+                return 1;
+            }
+            return 0;
+        }
+
+        public String Status => $"replay {_pos}/{Log.Events.Count} actions {Actions} effects {Effects} | mismatch {Mismatches} corr {Corrections} trance {TranceWrites} tickhp {TickWrites} revive {ReviveWrites} sync {Syncs} tape {TapeMisses} drop {LocalQueueDrops} blocked {BattleSync.BlockedScriptWrites}{(Live ? $" | behind {FramesBehind}f held {HeldFrames} caught up {CaughtUpFrames} early fx {EarlyEffects}" : "")}{(_ended ? " | ended" : "")}";
 
         private void Mismatch(String what)
         {
@@ -60,7 +95,9 @@ namespace Memoria.Online.Battle
         public void BeforeFrame()
         {
             _frame++;
-            _stream?.ApplyAtb();
+            if (_started)
+                _runFrame++;
+            _stream?.ApplyAtb(_started ? _runFrame : Int32.MaxValue);
             if (Aborted)
                 return;
             if (!_started)
@@ -110,15 +147,22 @@ namespace Memoria.Online.Battle
                 BattleEntry.SetInitialAtb(start.State.Units.ConvertAll(u => u.Atb)); // initial ATB: the same path as a participant's Go
             }
             _pos = 1;
+            _runFrame = 0;
             BattleSync.Note($"Replay: started, initial state {(diffs.Count == 0 ? "matches" : "differs")}");
         }
 
         /// <summary>Consume events until one has to wait for the engine.</summary>
-        private void Pump()
+        private void Pump(Boolean ignoreFrames = false)
         {
             while (_pos < Available && !Aborted)
             {
                 BattleEvent ev = Log.Events[_pos];
+                // Live: an event plays at the owner's frame for it (a command starts where it started on the owner).
+                // An effect inside a running command comes when the animation reaches it; CommandEnd and End wait for
+                // this battle anyway.
+                if (Live && !ignoreFrames && ev.Frame > _runFrame && ev.Type != BattleEventType.CommandEnd && ev.Type != BattleEventType.End
+                    && !(ev.Type == BattleEventType.Effect && ev.Seq >= 0 && _bySeq.ContainsKey(ev.Seq)))
+                    return;
                 switch (ev.Type)
                 {
                     case BattleEventType.Command:
@@ -215,11 +259,14 @@ namespace Memoria.Online.Battle
         public void ReplaceCalculation(BTL_DATA caster, BTL_DATA target, CMD_DATA cmd)
         {
             Int32 seq = cmd != null && _seqOf.TryGetValue(cmd, out Int32 s) ? s : -1;
-            Pump();
+            Pump(true); // the animation is here: what the owner had before this effect plays now, even if a frame or two early
             BattleEvent ev = _pos < Available ? Log.Events[_pos] : null;
             if (ev == null || ev.Type != BattleEventType.Effect || ev.Seq != seq || ev.Target != target.btl_id)
             {
-                Mismatch($"engine reached an effect point (#{seq} {cmd?.cmd_no} → {BattleSync.UnitName(target.btl_id)}) but the log has {(ev == null ? "nothing" : ev.ToString().Split('\n')[0])}; skipped");
+                if (ev == null && Live && !_stream.EndReceived)
+                    EarlyEffects++;
+                String where = Live ? $" (owner at frame {_stream.OwnerFrame}, this PC at {_runFrame})" : "";
+                Mismatch($"engine reached an effect point (#{seq} {cmd?.cmd_no} → {BattleSync.UnitName(target.btl_id)}) but the log has {(ev == null ? "nothing yet" : ev.ToString().Split('\n')[0])}{where}; skipped");
                 return;
             }
             ApplyEffect(ev, cmd, target);
@@ -457,7 +504,7 @@ namespace Memoria.Online.Battle
                 _endWait.Start();
             if (_stream != null && _stream.EndReceived)
                 _stream.ReleaseAll();
-            Pump();
+            Pump(true);
             Int32 endIndex = Log.Events.FindIndex(e => e.Type == BattleEventType.End);
             Double waited = _endWait.Elapsed.TotalSeconds;
             if (endIndex < 0 && waited < 20)
@@ -512,7 +559,7 @@ namespace Memoria.Online.Battle
             _ended = true;
             if (!_done)
             {
-                Pump();
+                Pump(true);
                 if (_pos < Log.Events.Count && Log.Events[_pos].Type == BattleEventType.End)
                     Finish(Log.Events[_pos]);
                 else

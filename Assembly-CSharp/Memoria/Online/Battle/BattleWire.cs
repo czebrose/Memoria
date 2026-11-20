@@ -8,7 +8,11 @@ namespace Memoria.Online.Battle
     /// <summary>
     /// Step 3: the battle event stream on the wire (owner → participants, control channel, reliable and ordered).
     ///
-    ///   BattleStream [28, seq u16, (type u8, length u16, body)*]
+    ///   BattleStream [28, seq u16, owner frame u32, (type u8, length u16, frame u32, body)*]
+    ///
+    /// Frames count the owner's battle frames from its Start event (frame 0). The message's frame says "the owner has
+    /// run up to here": the passive PC never runs a battle frame the owner hasn't run plus a margin, and plays each event
+    /// at its frame (see <see cref="BattleStreamIn"/>).
     ///
     /// Bodies (little-endian; a unit is its btl_id, u16; 0 = none):
     ///   Start      map u16, pattern u8, start type u8, phase u8, state
@@ -21,7 +25,9 @@ namespace Memoria.Online.Battle
     ///   Script     phase u8, target, ops, state
     ///   Sync       state
     ///   End        result u8, exp u32, gil i32, ap u16, card u16, items count u8, item u16*, state
-    ///   AtbSample  count u8, (unit, value i16, rate i16 per second)*   (applied on arrival, outside the ordered stream)
+    ///   AtbSample  count u8, (unit, value i16, rate i16 per second)*   (applied at its frame)
+    ///   CmdMore    seq u16, short summon s8, tape count u8, (kind u8, value i32)*   (what a running command drew since
+    ///              its Command went out; commands go out when they start, their tape grows while they run)
     ///
     /// "state" is the safety net: the units (and the party's gil / items) that changed since the last state sent, as
     /// <see cref="WriteState"/> describes. The passive PC keeps a mirror of the owner's state from these diffs, so every
@@ -31,6 +37,7 @@ namespace Memoria.Online.Battle
     {
         public const Byte MsgStream = 28;
         public const Byte AtbSample = 10; // stream-only event type (the debug log's Atb events use the old format)
+        public const Byte CmdMore = 11;   // stream-only: tape entries / summon choice of a command already sent
 
         // ---- state diffs --------------------------------------------------------------------------------------
 
