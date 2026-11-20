@@ -2,9 +2,15 @@
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), the rules every change follows.
 
+**Installing:** [installer.md](installer.md): the one-zip installer (`tools/multiplayer/package.ps1`, `Install.bat`).
+
 **Step 3: shared battles**
 - [step3-m1-results.md](step3-m1-results.md): M1, foundation and spectator battles (results, tests, known issues).
 - [step3-m2-results.md](step3-m2-results.md): M2, playable shared battles (remote menus, followers, per-player flee, session settings, blocked battle values).
+- Merged into `online-merged` (2026-11-20):
+  - [spike-e-dialog-sync.md](spike-e-dialog-sync.md): spike E, dialog sync for party scenes.
+  - [live-flags.md](live-flags.md): live chest and flag sync on a shared field.
+  - [sleep-menu-fix.md](sleep-menu-fix.md): a guest's battle menu stuck after Sleep.
 - [step3-spike-summary.md](step3-spike-summary.md): planning input from spikes C and D.
 - [spike-c-battle-replay.md](spike-c-battle-replay.md): spike C, the command flow, forced outcomes, passive battles,
   and the record/replay tool.

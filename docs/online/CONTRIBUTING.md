@@ -111,3 +111,5 @@ Also:
   exceptions go.
 - **Build and install:** `tools/multiplayer/build.ps1`, then `install.ps1` (backs up the game's DLLs once, outside
   the game folder; `restore.ps1` puts them back).
+- **Packaging for another PC:** `tools/multiplayer/package.ps1` builds and writes one installer zip to `Output\`
+  ([installer.md](installer.md)). Don't hand-make PC2 zips, and never put mod files in one.
