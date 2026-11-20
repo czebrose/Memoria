@@ -4,6 +4,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md), the rules every change follows.
 
 **Step 3: shared battles**
 - [step3-m1-results.md](step3-m1-results.md): M1, foundation and spectator battles (results, tests, known issues).
+- [step3-m2-results.md](step3-m2-results.md): M2, playable shared battles (remote menus, followers, per-player flee, session settings, blocked battle values).
 - [step3-spike-summary.md](step3-spike-summary.md): planning input from spikes C and D.
 - [spike-c-battle-replay.md](spike-c-battle-replay.md): spike C, the command flow, forced outcomes, passive battles,
   and the record/replay tool.

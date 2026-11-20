@@ -83,10 +83,26 @@ spikes; most of them are the difference between working code and a game that cra
       owner's phase.
     → [step3-m1-results.md, section 1](step3-m1-results.md#1-what-changed)
 
-13. **Settings that change battle code paths must match.**
-    `Battle.Speed` and `SFXRework` travel in Presence and BattleStart. A PC whose settings differ sits the battle out
-    (M1 decision: refuse, don't force). Add any new such setting there.
-    → [step3-m1-results.md, section 3](step3-m1-results.md#3-settings-lock-task-3-refuse)
+13. **Sessions play by the host's battle settings, and never write a player's ini.**
+    The host's battle settings (`Configuration.SessionBattle`, the Config menu's battle options, the battle boosters)
+    are set **in memory** on every guest for the session and restored when it leaves. Nothing online calls `SaveValue`
+    or writes a save on a guest. A new setting that changes battle rules, timing, encounters or code paths goes into
+    that list (and the inventory in step3-m2-results.md); values the online code can't replay are blocked in the
+    launcher, the Config menu and `Configuration.Battle` (`MaxSupportedSpeed`). Battle start still checks Speed and
+    SFXRework as an assertion.
+    → [step3-m2-results.md, section 2](step3-m2-results.md#2-session-battle-settings-task-1)
+
+14. **A battle unit's commands come only from its controlling PC.**
+    The owner's control map (at Go) says which PC commands each player unit: its player's, or a free character's
+    leader's. The owner never opens its own menu for a remote unit (TurnReady instead), and enters a remote choice
+    only through `btl_cmd.SetCommand`, as its own menu does. A passive battle never queues a command itself: its
+    menu's `SetCommand` calls become a CommandRequest (`BattleControl.CaptureCommand`).
+    → [step3-m2-results.md, section 1](step3-m2-results.md#1-what-changed)
+
+15. **Per-player state in battle is per unit, not per battle.**
+    The run buttons (`btl_escape_key`) are one value per PC; in a shared battle each unit runs by its controlling PC's
+    (`BattleControl.EscapeKeyFor`). Code that reads a battle-wide input or flag for a player unit should go through
+    the unit's controller.
 
 Also:
 - **Logs:** use `SteamNative.Tag(steamId)` (`#1234`) in log lines; Steam names (`GetName`) are for the on-screen status
