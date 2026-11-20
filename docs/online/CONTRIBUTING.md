@@ -56,6 +56,38 @@ spikes; most of them are the difference between working code and a game that cra
    numbers are per model, so mesh visibility is kept per body (`BodySwap.OnMeshVisibility`).
    → [step2-m3-own-leader.md, section 10](step2-m3-own-leader.md#10-implementation-2026-11-17)
 
+10. **Everything a shared battle shows comes through the owner's stream, never rolled locally.**
+    Only the battle owner runs the calculation, the enemy AI and ATB filling. The participant gets:
+    - battle, pattern, start type and initial ATB in BattleStart / Go;
+    - every outcome in an Effect / Tick / Script event;
+    - every random draw outside the calculation on the command's tape.
+
+    A new random draw, script write or direct state change on the owner needs a matching op, tape entry or known
+    direct write. Otherwise the safety net corrects it every battle (logged as a correction or a Sync).
+    → [step3-m1-results.md, section 1](step3-m1-results.md#1-what-changed)
+
+11. **A passive battle plays at the owner's frames.**
+    Anything the watching PC shows at a moment carries the owner's battle frame:
+    - events;
+    - ATB samples;
+    - the run pose.
+
+    The passive never runs a frame the owner hasn't passed by `BattleStreamIn.Margin`. Don't pace by real time or by
+    whole actions: that put the watcher an action or more behind.
+    → [step3-m1-results.md, section 1](step3-m1-results.md#1-what-changed)
+
+12. **Battle start and script writes have their own moments.**
+    - The start type is drawn in `btl_init.SetupBattleEnemy`, during the load loop after `InitBattleScene`. Anything
+      forcing it must last until then.
+    - Battle-script writes act by battle phase ("end battle" only works in PHASE_EVENT). A passive applies them in the
+      owner's phase.
+    → [step3-m1-results.md, section 1](step3-m1-results.md#1-what-changed)
+
+13. **Settings that change battle code paths must match.**
+    `Battle.Speed` and `SFXRework` travel in Presence and BattleStart. A PC whose settings differ sits the battle out
+    (M1 decision: refuse, don't force). Add any new such setting there.
+    → [step3-m1-results.md, section 3](step3-m1-results.md#3-settings-lock-task-3-refuse)
+
 Also:
 - **Logs:** use `SteamNative.Tag(steamId)` (`#1234`) in log lines; Steam names (`GetName`) are for the on-screen status
   only. Logs get attached to issues and quoted in docs.
