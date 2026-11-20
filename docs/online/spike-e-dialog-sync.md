@@ -105,7 +105,10 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Build `11E582A4A49E`. PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`.
+Test build `73165262932C`: this branch merged with `online-live-flags` (live chest / flag sync, its own doc
+`live-flags.md`) in a detached commit (4c0d7385, on no branch), so one two-PC sitting tests both. The spike alone
+built as `11E582A4A49E`. PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
 2. **Host** presses Ctrl+Shift+2 (status box: "Party scene ... owner"; guest: "following").
