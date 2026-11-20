@@ -440,6 +440,7 @@ namespace Memoria.Online.Battle
                 Field = (UInt16)ff9.fldMapNo,
                 Speed = LocalSpeed,
                 Sfx = LocalSfx,
+                Music = (Int16)FF9Snd.GetCurrentMusicId(),
                 Prerolled = true
             };
             foreach (PLAYER p in members)
@@ -461,7 +462,7 @@ namespace Memoria.Online.Battle
                 if (c.Data == null)
                 {
                     Int32 seed = Environment.TickCount ^ (c.Seq * 7919);
-                    c.Data = new BattleStartData { Seq = c.Seq, Seed = seed, Speed = LocalSpeed, Sfx = LocalSfx };
+                    c.Data = new BattleStartData { Seq = c.Seq, Seed = seed, Speed = LocalSpeed, Sfx = LocalSfx, Music = (Int16)FF9Snd.GetCurrentMusicId() };
                 }
                 UnityEngine.Random.seed = c.Data.Seed;
             }
@@ -469,6 +470,7 @@ namespace Memoria.Online.Battle
             {
                 UnityEngine.Random.seed = c.Data.Seed;
                 ApplyOwnerStats(c.Data);
+                PlayOwnerMusic(c.Data.Music); // from the start of the battle; Go checks again
             }
             c.PartyApplied = BattleEntryParty.Apply(c.Characters);
             if (c.Role == Role.Owner && c.Participants.Count > 0)

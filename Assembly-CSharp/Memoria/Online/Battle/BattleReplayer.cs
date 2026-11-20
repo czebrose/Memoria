@@ -98,6 +98,8 @@ namespace Memoria.Online.Battle
             if (_started)
                 _runFrame++;
             _stream?.ApplyAtb(_started ? _runFrame : Int32.MaxValue);
+            if (_stream != null && _started)
+                FF9StateSystem.Battle.FF9Battle.btl_escape_key = Aborted ? (Byte)0 : _stream.EscapeKey; // the owner's party "running"
             if (Aborted)
                 return;
             if (!_started)

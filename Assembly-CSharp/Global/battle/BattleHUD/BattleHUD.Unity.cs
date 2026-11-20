@@ -39,6 +39,14 @@ public partial class BattleHUD : UIScene
             return;
         UpdatePlayer();
         UpdateMessage();
+        Byte? passiveEscape = Memoria.Online.Battle.BattleSync.PassiveEscapeKey; // [Online] a passive battle shows the owner's player running, never runs itself
+        if (passiveEscape.HasValue)
+        {
+            _runCounter = 0.0f;
+            FF9StateSystem.Battle.FF9Battle.btl_escape_key = passiveEscape.Value;
+            SetHudVisibility(!UIManager.Input.GetKey(Control.Special));
+            return;
+        }
         if (!_commandEnable)
             return;
         if (UIManager.Input.GetKey(Control.LeftBumper) && UIManager.Input.GetKey(Control.RightBumper) || _isTryingToRun)

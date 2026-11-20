@@ -103,6 +103,7 @@ namespace Memoria.Online.Battle
         public UInt16 Field;         // the owner's field (the participant must be on it: battle music and the return spot)
         public Int32 Seed;           // a fresh UnityEngine.Random seed (applied on both PCs at battle init; extra safety, not relied on)
         public Byte Speed, Sfx;      // the owner's Battle.Speed and SFXRework (a participant with other settings declines)
+        public Int16 Music = -1;     // the owner's music when it sent this (a scripted battle's song, started by the owner's field script only)
         public Boolean Prerolled;    // owner only, not sent: pattern and start type drawn by the owner before its battle init
         public readonly List<Member> Members = new List<Member>();  // battle party, in battle order
 
@@ -118,6 +119,7 @@ namespace Memoria.Online.Battle
             U32(b, (UInt32)Seed);
             b.Add(Speed);
             b.Add(Sfx);
+            U16(b, (UInt16)Music);
             b.Add((Byte)Members.Count);
             foreach (Member m in Members)
             {
@@ -144,6 +146,7 @@ namespace Memoria.Online.Battle
             s.Seed = (Int32)R32(d, ref o);
             s.Speed = d[o++];
             s.Sfx = d[o++];
+            s.Music = (Int16)R16(d, ref o);
             Int32 count = d[o++];
             for (Int32 i = 0; i < count; i++)
             {
@@ -163,7 +166,7 @@ namespace Memoria.Online.Battle
             List<String> members = new List<String>();
             foreach (Member m in Members)
                 members.Add($"{m.Character} (hp {m.Hp}, mp {m.Mp}{(m.Status != 0 ? $", status 0x{m.Status:X}" : "")})");
-            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, field {Field}, speed {Speed}, sfx {Sfx}, party [{String.Join(", ", members.ToArray())}]";
+            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, field {Field}, speed {Speed}, sfx {Sfx}, music {Music}, party [{String.Join(", ", members.ToArray())}]";
         }
 
         private static void U16(List<Byte> b, UInt16 v) { b.Add((Byte)v); b.Add((Byte)(v >> 8)); }

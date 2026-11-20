@@ -49,6 +49,7 @@ namespace Memoria.Online.Battle
         private readonly MemoryStream _pending = new MemoryStream();
         private readonly BinaryWriter _w;
         private Int32 _lastSentFrame = -1;
+        private Byte _escapeKey;
 
         public Int32 EventsSent, BytesSent, Messages, AtbSamples, AtbBytes, TapeLate;
         public Boolean EndSent;
@@ -79,11 +80,19 @@ namespace Memoria.Online.Battle
             _pending.Position = end;
         }
 
-        /// <summary>After each battle frame (owner): ATB samples.</summary>
+        /// <summary>After each battle frame (owner): ATB samples, and the "run" buttons.</summary>
         public void SampleAtb()
         {
             if (!_recorder.Started || EndSent)
                 return;
+            Byte escape = FF9StateSystem.Battle.FF9Battle.btl_escape_key;
+            if (escape != _escapeKey)
+            {
+                _escapeKey = escape;
+                Int64 at = BeginRecord(BattleWire.EscapeKey, _recorder.RelativeFrame);
+                _w.Write(escape);
+                EndRecord(at);
+            }
             Single now = Time.realtimeSinceStartup;
             List<KeyValuePair<UInt16, AtbTrack>> due = null;
             for (BTL_DATA btl = FF9StateSystem.Battle.FF9Battle.btl_list.next; btl != null; btl = btl.next)
@@ -250,6 +259,10 @@ namespace Memoria.Online.Battle
         private readonly BattleSnapshot _mirror = new BattleSnapshot();
         private readonly Dictionary<UInt16, AtbTarget> _atb = new Dictionary<UInt16, AtbTarget>();
         private readonly Queue<AtbQueued> _atbQueue = new Queue<AtbQueued>();
+        private readonly Queue<KeyValuePair<Int32, Byte>> _escapeQueue = new Queue<KeyValuePair<Int32, Byte>>();
+
+        /// <summary>The owner's btl_escape_key at the frame played (the party's "running away" pose).</summary>
+        public Byte EscapeKey;
         private readonly Dictionary<Int32, BattleEvent> _commands = new Dictionary<Int32, BattleEvent>();
 
         public Int32 EventsReceived, BytesReceived, AtbSamples, TapeLate;
@@ -281,6 +294,8 @@ namespace Memoria.Online.Battle
                         ReadAtb(r, frame);
                     else if (type == BattleWire.CmdMore)
                         ReadCommandMore(r);
+                    else if (type == BattleWire.EscapeKey)
+                        _escapeQueue.Enqueue(new KeyValuePair<Int32, Byte>(frame, r.ReadByte()));
                     else
                     {
                         BattleEvent ev = BattleWire.ReadEvent((BattleEventType)type, r, _mirror);
@@ -358,6 +373,8 @@ namespace Memoria.Online.Battle
         public void ApplyAtb(Int32 frame)
         {
             Single now = Time.realtimeSinceStartup;
+            while (_escapeQueue.Count > 0 && _escapeQueue.Peek().Key <= frame)
+                EscapeKey = _escapeQueue.Dequeue().Value;
             while (_atbQueue.Count > 0 && _atbQueue.Peek().Frame <= frame)
             {
                 AtbQueued q = _atbQueue.Dequeue();

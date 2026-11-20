@@ -278,6 +278,9 @@ namespace Memoria.Online.Battle
 
         public static Boolean LivePassive => Replayer != null && Replayer.Live;
 
+        /// <summary>BattleHUD: a passive battle takes the owner's "run" buttons, not this PC's (null: not passive).</summary>
+        public static Byte? PassiveEscapeKey => Replayer == null ? (Byte?)null : Replayer.Live && !Replayer.Aborted && Replayer.Stream.EndReceived == false ? Replayer.Stream.EscapeKey : (Byte)0;
+
         /// <summary>HonoluluBattleMain, before a battle frame: true = a passive battle waits for the owner (see
         /// <see cref="BattleReplayer.HoldFrame"/>).</summary>
         public static Boolean HoldPassiveFrame()
