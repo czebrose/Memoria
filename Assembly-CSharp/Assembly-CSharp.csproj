@@ -361,6 +361,7 @@
     <Compile Include="Global\SPS\CommonSPSSystem.cs" />
     <Compile Include="Global\SPS\SHPEffect.cs" />
     <Compile Include="Memoria\Application\ControllerWatcher.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleControl.cs" />
     <Compile Include="Memoria\Online\Battle\BattleEntry.cs" />
     <Compile Include="Memoria\Online\Battle\BattleEntryMessages.cs" />
     <Compile Include="Memoria\Online\Battle\BattleEntryParty.cs" />
@@ -391,6 +392,8 @@
     <Compile Include="Memoria\Online\Session\GuestGuard.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Control.cs" />
+    <Compile Include="Memoria\Online\Session\SessionSettings.cs" />
+    <Compile Include="Memoria\Online\Session\SessionSettings.Configuration.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Meet.cs" />
     <Compile Include="Memoria\Online\Session\EventWatch.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />

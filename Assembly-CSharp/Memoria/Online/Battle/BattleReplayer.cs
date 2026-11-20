@@ -253,6 +253,8 @@ namespace Memoria.Online.Battle
             _bySeq[ev.Seq] = cmd;
             _seqOf[cmd] = ev.Seq;
             _tapePos[ev.Seq] = 0;
+            if (Live)
+                BattleControl.OnInjected(ev); // M2: a command this PC asked for is running
         }
 
         // ---- engine callbacks ---------------------------------------------------------------------------------------

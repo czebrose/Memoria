@@ -1487,7 +1487,7 @@ public class JsonParser : ISharedDataParser
             if (dataSettingClass["cursor"] != null)
                 cfg.cursor = (UInt64)dataSettingClass["cursor"].AsInt;
             if (dataSettingClass["atb"] != null)
-                cfg.atb = (UInt64)dataSettingClass["atb"].AsInt;
+                cfg.atb = 0UL; // [Online] Step 3 / M2: a save's battle style Wait loads as Active (Wait is blocked)
             if (dataSettingClass["camera"] != null)
                 cfg.camera = (UInt64)dataSettingClass["camera"].AsInt;
             if (dataSettingClass["move"] != null)

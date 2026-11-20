@@ -26,7 +26,10 @@ namespace Memoria.Online.Battle
     ///   Sync       state
     ///   End        result u8, exp u32, gil i32, ap u16, card u16, items count u8, item u16*, state
     ///   AtbSample  count u8, (unit, value i16, rate i16 per second)*   (applied at its frame)
-    ///   EscapeKey  held u8   (the party turns to run while the owner holds the run buttons; applied at its frame)
+    ///   EscapeKey  held u8   (M1 only: the party turns to run while the owner holds the run buttons)
+    ///   RunMask    units u16 (M2: the player units running, each by its controlling PC's run buttons; applied at its frame)
+    ///   TurnReady  unit u16, ready u8 (M2: a remote-controlled unit's turn came / went; its controlling PC's menu opens / closes)
+    ///   UnitsLeave units u16 (M2: player units taken out of the battle because their PC fled)
     ///   CmdMore    seq u16, short summon s8, tape count u8, (kind u8, value i32)*   (what a running command drew since
     ///              its Command went out; commands go out when they start, their tape grows while they run)
     ///
@@ -40,6 +43,9 @@ namespace Memoria.Online.Battle
         public const Byte AtbSample = 10; // stream-only event type (the debug log's Atb events use the old format)
         public const Byte EscapeKey = 12; // stream-only: the owner's player started / stopped holding "run" (btl_escape_key u8)
         public const Byte CmdMore = 11;   // stream-only: tape entries / summon choice of a command already sent
+        public const Byte RunMask = 13;   // stream-only (M2, replaces EscapeKey): player units running, u16 mask of btl_ids
+        public const Byte TurnReady = 14; // stream-only (M2): unit u16, ready u8 (1: its controlling PC opens its menu; 0: the turn went)
+        public const Byte UnitsLeave = 15; // stream-only (M2): player units leaving the battle (their PC fled), u16 mask
 
         // ---- state diffs --------------------------------------------------------------------------------------
 

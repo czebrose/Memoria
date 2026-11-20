@@ -152,6 +152,10 @@ public class btl_cmd
     /// <summary>Enqueue a command for a player character</summary>
     public static void SetCommand(CMD_DATA cmd, BattleCommandId commandId, Int32 sub_no, UInt16 tar_id, UInt32 cursor, Boolean forcePriority = false, BattleCommandMenu cmdMenu = BattleCommandMenu.None)
     {
+        // [Online] M2: a passive battle's menu sends its choice to the battle owner; the owner catches a flee won for another PC
+        if (Memoria.Online.Battle.BattleControl.CaptureCommand(cmd, commandId, sub_no, tar_id, cursor, forcePriority, cmdMenu)
+            || Memoria.Online.Battle.BattleControl.CatchFleeCommand(cmd, commandId))
+            return;
         if (btl_cmd.CheckUsingCommand(cmd))
             return;
         cmd.cmd_no = commandId;

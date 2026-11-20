@@ -88,6 +88,7 @@ namespace Memoria.Online.Battle
         private readonly Func<Int32> _myCharacter;
         private readonly Func<UInt64, Int32> _characterOf;
         private readonly Func<Int32, Boolean> _isPlayed;
+        private readonly Func<Int32, UInt64> _controllerOf;   // M2: who commands a character (its player, or a free character's leader)
 
         private readonly Dictionary<UInt64, PeerPresence> _presence = new Dictionary<UInt64, PeerPresence>();
         private Double _nextPresence;
@@ -109,22 +110,26 @@ namespace Memoria.Online.Battle
         /// <summary>Settings that change battle code paths (task 3): a shared battle needs the same on every PC.</summary>
         public static Byte LocalSpeed => (Byte)Math.Min(254, Configuration.Battle.Speed);
         public static Byte LocalSfx => (Byte)(Configuration.Battle.SFXRework ? 1 : 0);
-        private static Boolean LocalSettingsSupported => Configuration.Battle.Speed < 3 && Configuration.Battle.SFXRework;
+        private static Boolean LocalSettingsSupported => Configuration.Battle.Speed < 2 && Configuration.Battle.SFXRework;
 
         /// <summary>This PC is in (or entering) a shared battle as owner or participant.</summary>
         public static Boolean InSharedBattle => Instance?._current != null && Instance.Online;
 
         /// <summary>
-        /// Party members nobody plays are the host's (decided 2026-11-18): they join every battle the host takes part
-        /// in, and sit out the others. Debug toggle: Ctrl+Shift+U.
+        /// M2: a party member nobody plays follows a player (the host by default; Follow in the party panel). It joins
+        /// the battles its leader is in, and its leader's PC commands it. Debug toggle: Ctrl+Shift+U (off: free
+        /// characters sit every shared battle out).
         /// </summary>
         public static Boolean FreeCharactersJoinHost = true;
 
         /// <summary>Shown on screen (OnlineSession): why this PC waits.</summary>
         public static String Notice { get; private set; }
 
-        public BattleEntry(SteamTransport transport, SteamLobby lobby, BlobTransfer blobs, Func<Boolean> playing, Func<Int32> myCharacter, Func<UInt64, Int32> characterOf, Func<Int32, Boolean> isPlayed)
+        public BattleEntry(SteamTransport transport, SteamLobby lobby, BlobTransfer blobs, Func<Boolean> playing, Func<Int32> myCharacter, Func<UInt64, Int32> characterOf, Func<Int32, Boolean> isPlayed, Func<Int32, UInt64> controllerOf)
         {
+            _controllerOf = controllerOf;
+            BattleControl.OnPeerFled = OnPeerFled;
+            BattleControl.OnFleeResult = OnFleeResult;
             _transport = transport;
             _lobby = lobby;
             _blobs = blobs;
@@ -226,8 +231,10 @@ namespace Memoria.Online.Battle
                 return;
             }
             PublishPresence(now);
+            TrackField();
             UpdateIncoming(now);
             UpdateCurrent(now);
+            BattleControl.Flush();
             ApplyPendingResult();
             // Fallback: the battle scene is gone without passing the result screen (game over, title...)
             if (_current != null && _current.InBattle && PersistenSingleton<SceneDirector>.Instance.CurrentScene != SceneDirector.BattleMapSceneName
@@ -288,7 +295,7 @@ namespace Memoria.Online.Battle
             }
             if (codeFlowState <= EventEngine.FLOW_STATE_WAIT && _incoming?.Start != null && CanJoinNow(out String _))
                 return JoinBattle();
-            return codeFlowState;
+            return FleeReturn(codeFlowState);
         }
 
         private void BeginOwned()
@@ -303,10 +310,9 @@ namespace Memoria.Online.Battle
             Current c = new Current { Role = Role.Owner, Seq = ++_seq, Owner = _lobby.LocalId, TriggeredAt = _now };
             UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             HashSet<Int32> chars = new HashSet<Int32> { mine };
-            Boolean hostIn = _lobby.IsHost;
             Boolean shareable = LocalSettingsSupported;
             if (!shareable)
-                Log.Message($"[Online] Battle entry: this PC's battle settings (Battle Speed {Configuration.Battle.Speed}, SFXRework {LocalSfx}) can't be shared (needs Speed < 3, SFXRework 1); nobody joins this battle");
+                Log.Error($"[Online] Battle entry: ASSERTION: this PC's battle settings (Battle Speed {Configuration.Battle.Speed}, SFXRework {LocalSfx}) can't be shared (needs Speed 0/1, SFXRework 1), although sessions force supported ones; nobody joins this battle");
             foreach (UInt64 peer in _transport.Peers)
             {
                 if (!shareable)
@@ -318,19 +324,25 @@ namespace Memoria.Online.Battle
                     continue;
                 if (p.Speed != LocalSpeed || p.Sfx != LocalSfx)
                 {
-                    Log.Message($"[Online] Battle entry: {SteamNative.Tag(peer)} sits this battle out: battle settings differ (Speed {p.Speed} vs {LocalSpeed}, SFXRework {p.Sfx} vs {LocalSfx})");
-                    PartySync.Toast("A player's battle settings differ from yours (Battle Speed / SFXRework): they sit this battle out.");
+                    // M2: the session forces the host's battle settings on every PC, so this should never happen
+                    Log.Error($"[Online] Battle entry: ASSERTION: {SteamNative.Tag(peer)}'s battle settings differ from this PC's although the session forces the host's (Speed {p.Speed} vs {LocalSpeed}, SFXRework {p.Sfx} vs {LocalSfx}); it sits this battle out");
+                    PartySync.Toast("A player's battle settings differ from yours: they sit this battle out (see the log).");
                     continue;
                 }
                 c.Participants.Add(peer);
                 c.Awaiting.Add(peer);
                 chars.Add(character);
-                hostIn |= peer == _lobby.OwnerId;
             }
-            if (FreeCharactersJoinHost && hostIn)
+            // M2: a free character joins when its leader is in the battle (the leader's PC commands it)
+            if (FreeCharactersJoinHost)
                 foreach (Int32 character in party)
-                    if (!_isPlayed(character))
+                {
+                    if (_isPlayed(character))
+                        continue;
+                    UInt64 leader = _controllerOf(character);
+                    if (leader == _lobby.LocalId || c.Participants.Contains(leader))
                         chars.Add(character);
+                }
             foreach (Int32 character in party)
                 if (chars.Contains(character))
                     c.Characters.Add(character);
@@ -597,7 +609,9 @@ namespace Memoria.Online.Battle
                     List<KeyValuePair<Byte, Int16>> units = new List<KeyValuePair<Byte, Int16>>();
                     ReadUnits(units); // every unit exists now, and no ATB has run yet: these are the initial values
                     Int32 music = FF9Snd.GetCurrentMusicId();
-                    Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units, music);
+                    Dictionary<UInt16, UInt64> control = ControlMap(c);
+                    Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units, music, control);
+                    BattleControl.BeginOwner(c.Seq, control, SendTo);
                     foreach (UInt64 peer in c.Participants)
                         SendTo(peer, go);
                     Log.Message($"[Online] Battle entry: #{c.Seq} Go: {go.Length} bytes, music {music}, {units.Count} units [{String.Join(", ", units.ConvertAll(u => $"{UnitName(u.Key)} at {u.Value}").ToArray())}]");
@@ -614,6 +628,21 @@ namespace Memoria.Online.Battle
             // Held until the owner's Go; then the battle runs in passive mode (no ATB filling, no menus, no enemy AI, no
             // calculation: the owner's stream drives it). Without the passive mode it stays held (spike D's behaviour).
             return c.GoReceived && BattleSync.LivePassive;
+        }
+
+        /// <summary>M2, owner at Go: each player unit commanded by another PC in this battle (the rest are this PC's).</summary>
+        private Dictionary<UInt16, UInt64> ControlMap(Current c)
+        {
+            Dictionary<UInt16, UInt64> map = new Dictionary<UInt16, UInt64>();
+            for (BTL_DATA b = FF9StateSystem.Battle.FF9Battle.btl_list.next; b != null; b = b.next)
+            {
+                if (b.bi.player == 0)
+                    continue;
+                UInt64 controller = _controllerOf(b.bi.slot_no);
+                if (controller != 0 && controller != _lobby.LocalId && c.Participants.Contains(controller))
+                    map[b.btl_id] = controller;
+            }
+            return map;
         }
 
         private void UpdateCurrent(Double now)
@@ -818,6 +847,7 @@ namespace Memoria.Online.Battle
         private void BattleLeft(String how)
         {
             Current c = _current;
+            BattleControl.Reset();
             BattleEntryParty.Restore(how);
             if (c == null)
                 return;
@@ -862,6 +892,70 @@ namespace Memoria.Online.Battle
             Log.Message($"[Online] Battle entry: results of {SteamNative.Tag(_pendingResultFrom)}'s battle {body["battle"].AsInt} {what}");
         }
 
+        // ---- M2: per-player flee ---------------------------------------------------------------------------------
+
+        /// <summary>Owner: that PC fled; its units are out of this battle, stop streaming to it.</summary>
+        private void OnPeerFled(UInt64 peer)
+        {
+            Current c = _current;
+            if (c == null || c.Role != Role.Owner)
+                return;
+            c.Participants.Remove(peer);
+            c.Awaiting.Remove(peer);
+            Log.Message($"[Online] Battle entry: #{c.Seq} {SteamNative.Tag(peer)} fled; {c.Participants.Count} participant(s) left");
+        }
+
+        /// <summary>Participant: the owner's answer to this PC's flee (0: its units left the battle).</summary>
+        private void OnFleeResult(Byte result)
+        {
+            Current c = _current;
+            if (c == null || c.Role != Role.Participant || result != 0)
+                return;
+            _fleeReturn = _prevField >= 0 ? new KeyValuePair<Int32, Int32>(_prevField, _prevEntrance) : new KeyValuePair<Int32, Int32>(_curField, _curEntrance);
+            Log.Message($"[Online] Battle entry: #{c.Seq} this PC fled; back to field {_fleeReturn.Value.Key} (entrance {_fleeReturn.Value.Value}, {(_prevField >= 0 ? "the field it came from" : "the way into this field: the previous one is unknown")})");
+            RequestExit(c, FF9StateGlobal.BTL_RESULT_ESCAPE, "this PC fled", "You fled.");
+        }
+
+        private Int32 _curField = -1, _curEntrance = -1, _prevField = -1, _prevEntrance = -1;
+        private KeyValuePair<Int32, Int32>? _fleeReturn;
+
+        /// <summary>The field this PC is on and the one it came from, each with the entrance it was entered by.</summary>
+        private void TrackField()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine == null || engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1)
+                return;
+            Int32 field = FF9StateSystem.Common.FF9.fldMapNo;
+            if (field == _curField)
+                return;
+            if (_curField >= 0)
+            {
+                _prevField = _curField;
+                _prevEntrance = _curEntrance;
+            }
+            _curField = field;
+            _curEntrance = FF9StateSystem.EventState.FieldEntrance;
+        }
+
+        /// <summary>[Online] field flow (OnFieldFlow): after fleeing, go back to the field this PC came from.</summary>
+        private Int32 FleeReturn(Int32 codeFlowState)
+        {
+            if (_fleeReturn == null || _current != null || codeFlowState > EventEngine.FLOW_STATE_WAIT)
+                return codeFlowState;
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (engine == null || engine.gMode != 1 || PersistenSingleton<UIManager>.Instance.State != UIManager.UIState.FieldHUD
+                || engine.fieldmap?.playerController == null || !engine.GetUserControl() || PersistenSingleton<SceneDirector>.Instance.IsFading)
+                return codeFlowState;
+            KeyValuePair<Int32, Int32> target = _fleeReturn.Value;
+            _fleeReturn = null;
+            if (target.Key < 0)
+                return codeFlowState;
+            FF9StateSystem.EventState.FieldEntrance = Math.Max(0, target.Value);
+            engine.SetNextMap(target.Key);
+            Log.Message($"[Online] Battle entry: fled: field {FF9StateSystem.Common.FF9.fldMapNo} -> field {target.Key}, entrance {target.Value}");
+            return EventEngine.FLOW_STATE_JUMP_FIELD;
+        }
+
         // ---- Messages -----------------------------------------------------------------------------------------
 
         public Boolean OnControlMessage(UInt64 peer, Byte[] d)
@@ -887,6 +981,12 @@ namespace Memoria.Online.Battle
                 }
                 return true;
             }
+            if (BattleControl.IsControlMessage(d))
+            {
+                if (Online && _current != null && _current.Seq == BattleEntryMessages.Seq(d))
+                    BattleControl.OnMessage(peer, d);
+                return true;
+            }
             if (!BattleEntryMessages.IsBattleEntry(d))
                 return false;
             if (!Online)
@@ -905,7 +1005,10 @@ namespace Memoria.Online.Battle
                     if (_current?.Role == Role.Owner && _current.Seq == seq && _current.Awaiting.Remove(peer))
                     {
                         if (d[0] == BattleEntryMessages.Decline)
+                        {
                             _current.Participants.Remove(peer);
+                            BattleControl.ReleasePeer(peer, "declined");
+                        }
                         Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)} {(d[0] == BattleEntryMessages.Ready ? $"ready, {_now - _current.StartSentAt:0} ms after Start" : $"declined (reason {d[3]})")}; {_current.Awaiting.Count} still awaited");
                     }
                     break;
@@ -919,6 +1022,11 @@ namespace Memoria.Online.Battle
                             Log.Message($"[Online] Battle entry: #{seq} the owner's battle runs (Go, {d.Length} bytes, {_now - _current.TriggeredAt:0} ms after this PC joined)");
                             ApplyOwnerUnits(_current, BattleEntryMessages.ReadUnits(d));
                             PlayOwnerMusic(BattleEntryMessages.ReadMusic(d));
+                            List<UInt16> mine = new List<UInt16>();
+                            foreach (KeyValuePair<UInt16, UInt32> kv in BattleEntryMessages.ReadControl(d))
+                                if (kv.Value == (UInt32)(_lobby.LocalId & 0xFFFFFFFF))
+                                    mine.Add(kv.Key);
+                            BattleControl.BeginPassive(seq, peer, mine, SendTo);
                             _current.GoReceived = true;
                         }
                     }
@@ -1016,7 +1124,10 @@ namespace Memoria.Online.Battle
             if (c == null)
                 return;
             if (c.Role == Role.Owner && (c.Participants.Remove(peer) | c.Awaiting.Remove(peer)))
+            {
                 Log.Message($"[Online] Battle entry: #{c.Seq} participant {SteamNative.Tag(peer)} left; its character stays in this battle (driven here)");
+                BattleControl.ReleasePeer(peer, "left the session");
+            }
             else if (c.Role == Role.Participant && c.Owner == peer)
                 RequestExit(c, 0, $"the owner {SteamNative.Tag(peer)} left the session", "The battle's owner left; leaving the battle.");
         }

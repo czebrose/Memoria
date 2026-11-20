@@ -7,11 +7,26 @@ namespace Memoria
     {
         public static class Battle
         {
-            public static Boolean SFXRework => Instance._battle.SFXRework || Speed >= 3;
+            // [Online] Step 3 / M2: values the online battle code can't replay are blocked everywhere (launcher, Config
+            // menu, here). A hand-edited Memoria.ini holding one gets the supported default, logged once.
+            public const Int32 MaxSupportedSpeed = 1; // 0 Normal, 1 Fast (2 Turn-based, 3-5 simultaneous: blocked)
+            public static Boolean SFXRework => CheckSfxRework();
             public static Int32 Speed => GetBattleSpeed();
+            private static Boolean _loggedSpeed, _loggedSfx;
+
+            private static Boolean CheckSfxRework()
+            {
+                if (!Instance._battle.SFXRework && !_loggedSfx)
+                {
+                    _loggedSfx = true;
+                    Memoria.Prime.Log.Error("[Configuration] [Battle] SFXRework = 0 isn't supported any more (online battles replay the reworked SFX only): using SFXRework = 1. Memoria.ini is left as it is.");
+                }
+                return true;
+            }
+
             public static Int32 ATBMode
             {
-                get => Instance._battle.Speed;
+                get => Speed; // [Online] M2: the clamped value (the Config menu offers Normal and Fast only)
                 set => Instance._battle.Speed.Value = value;
             }
             public static Single ATBSpeedFactor => Instance._battle.ATBSpeedFactor < 1.0f ? 1.0f : Instance._battle.ATBSpeedFactor; // [DV] 1.0f is already very slow imo.
@@ -53,7 +68,15 @@ namespace Memoria
                 Int32 value = Math.Max(Instance._battle.Speed, Instance._hacks.BattleSpeed);
                 if (value == 0)
                     return 0;
-
+                if (value > MaxSupportedSpeed || value < 0)
+                {
+                    if (!_loggedSpeed)
+                    {
+                        _loggedSpeed = true;
+                        Memoria.Prime.Log.Error($"[Configuration] [Battle] Speed = {value} isn't supported any more (online battles need the Normal or Fast ATB): using Speed = 0 (Normal). Memoria.ini is left as it is.");
+                    }
+                    return 0;
+                }
                 return value;
             }
             public static void SaveBattleSpeed()

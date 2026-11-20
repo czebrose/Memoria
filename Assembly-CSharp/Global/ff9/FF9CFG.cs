@@ -9,7 +9,7 @@ public class FF9CFG
         this.sound_effect = 0UL;
         this.control = 0UL;
         this.cursor = 0UL;
-        this.atb = 1UL;
+        this.atb = 0UL; // [Online] Step 3 / M2: Active (battle style Wait is blocked: shared battles need Active ATB)
         this.camera = 0UL;
         this.move = 1UL; // Run by default
         this.vibe = FF9CFG_VIBE_ON; // Vibration ON by default

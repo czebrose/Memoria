@@ -228,6 +228,8 @@ public class SettingsState : MonoBehaviour
 
     public void CallBoosterButtonFuntion(BoosterType buttonType, Boolean setActive = true)
     {
+        if (Memoria.Online.Session.SessionSettings.BlockBooster(buttonType)) // [Online] M2: battle boosters are the host's in a session
+            return;
         switch (buttonType)
         {
             case BoosterType.BattleAssistance:

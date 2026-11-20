@@ -12,8 +12,9 @@ namespace Memoria.Online.Battle
     ///   Start     [22, seq u16, ...BattleStartData]                          18 B + 17/character (Step 3: + speed, sfx)
     ///   Ready     [23, seq u16]                                              3 B, participant → owner (its battle is loaded, intro done)
     ///   Decline   [24, seq u16, reason]                                      4 B, participant → owner
-    ///   Go        [25, seq u16, count, (unit, ATB i16)*]                     4 B + 3/unit, owner → participants (everyone ready; owner's ATB runs;
-    ///                                                                        the units and their initial ATB: btl_list is only complete after the intro)
+    ///   Go        [25, seq u16, count, (unit, ATB i16)*, music i16,          4 B + 3/unit + 2 + 1 + 5/remote unit, owner → participants (everyone
+    ///              control count u8, (unit u8, account u32)*]                ready; the owner's ATB runs; the units and their initial ATB: btl_list is
+    ///                                                                        only complete after the intro; M2: who commands each remote unit)
     ///   End       [26, seq u16, result]                                      4 B, owner → participants (FF9StateGlobal.BTL_RESULT_*; 0 = cancelled)
     ///   Alive     [27, seq u16]                                              3 B, owner → participants, 1/s while its battle runs
     /// </summary>
@@ -45,11 +46,24 @@ namespace Memoria.Online.Battle
         /// <summary>Go [25, seq u16, count, (unit, ATB i16)*]: every unit in btl_list order (character id, or 0x80 | enemy type) and its initial ATB.</summary>
         /// <summary>Go: the units' initial ATB, then the owner's music (song id i16, -1: none; the participant may not
         /// have heard the field script that started it).</summary>
-        public static Byte[] GoWithUnits(UInt16 seq, List<KeyValuePair<Byte, Int16>> units, Int32 music)
+        public static Byte[] GoWithUnits(UInt16 seq, List<KeyValuePair<Byte, Int16>> units, Int32 music, Dictionary<UInt16, UInt64> control = null)
         {
-            Byte[] extra = new Byte[1 + units.Count * 3 + 2];
-            extra[extra.Length - 2] = (Byte)music;
-            extra[extra.Length - 1] = (Byte)(music >> 8);
+            Int32 controlCount = control?.Count ?? 0;
+            Byte[] extra = new Byte[1 + units.Count * 3 + 2 + 1 + controlCount * 5];
+            Int32 at = 1 + units.Count * 3 + 2;
+            extra[at++] = (Byte)controlCount;
+            if (control != null)
+                foreach (KeyValuePair<UInt16, UInt64> kv in control)
+                {
+                    extra[at++] = (Byte)kv.Key;
+                    UInt32 account = (UInt32)(kv.Value & 0xFFFFFFFF);
+                    extra[at++] = (Byte)account;
+                    extra[at++] = (Byte)(account >> 8);
+                    extra[at++] = (Byte)(account >> 16);
+                    extra[at++] = (Byte)(account >> 24);
+                }
+            extra[1 + units.Count * 3] = (Byte)music;
+            extra[2 + units.Count * 3] = (Byte)(music >> 8);
             extra[0] = (Byte)units.Count;
             for (Int32 i = 0; i < units.Count; i++)
             {
@@ -66,6 +80,22 @@ namespace Memoria.Online.Battle
                 return -1;
             Int32 o = 4 + go[3] * 3;
             return o + 2 <= go.Length ? (Int16)(go[o] | (go[o + 1] << 8)) : -1;
+        }
+
+        /// <summary>M2: Go's control map after the music: [count u8, (unit u8, account u32)*]: the player units another
+        /// PC commands (the rest are the owner's).</summary>
+        public static List<KeyValuePair<UInt16, UInt32>> ReadControl(Byte[] go)
+        {
+            List<KeyValuePair<UInt16, UInt32>> map = new List<KeyValuePair<UInt16, UInt32>>();
+            if (go.Length < 4)
+                return map;
+            Int32 o = 4 + go[3] * 3 + 2;
+            if (o >= go.Length)
+                return map;
+            Int32 count = go[o++];
+            for (Int32 i = 0; i < count && o + 5 <= go.Length; i++, o += 5)
+                map.Add(new KeyValuePair<UInt16, UInt32>(go[o], (UInt32)(go[o + 1] | (go[o + 2] << 8) | (go[o + 3] << 16) | (go[o + 4] << 24))));
+            return map;
         }
 
         public static List<KeyValuePair<Byte, Int16>> ReadUnits(Byte[] go)

@@ -148,8 +148,10 @@ namespace Memoria.Online.Session
             {
                 if (Phase != SessionPhase.Idle)
                     Reset("left the lobby");
+                SessionSettings.Update(Phase, IsHost, _lobby); // M2: own settings back
                 return;
             }
+            SessionSettings.Update(Phase, IsHost, _lobby); // Step 3 / M2: the host's battle settings for the session
             if (Phase == SessionPhase.Idle)
             {
                 Phase = SessionPhase.Gathering;

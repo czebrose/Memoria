@@ -1,5 +1,6 @@
 using FF9;
 using Memoria.Data;
+using Memoria.Scripts;
 using System;
 
 namespace Memoria.Online.Battle
@@ -122,8 +123,42 @@ namespace Memoria.Online.Battle
                 if (ev.CmdNo == BattleCommandId.SummonGarnet || ev.CmdNo == BattleCommandId.Phantom || ev.CmdNo == BattleCommandId.SummonEiko)
                     caster.summon_count++;
             }
+            RunOverload(cmd);
             btlsys.cur_cmd_list.Add(cmd);
             return cmd;
+        }
+
+        public static Int32 OverloadRuns, OverloadVetoes;
+
+        /// <summary>
+        /// M2 (M1 known issue 1): a mod's <see cref="IOverloadOnCommandRunScript"/> runs on the owner when the command is
+        /// admitted from the queue, which a passive battle bypasses. It changes the command's animation (the mod's
+        /// B.Waltz: his airborne / ground casting moves, the enemy spell graphics, move-list slots swapped for the
+        /// duration): local objects that can't be streamed. Running it here, on the command as the owner admitted it,
+        /// gives the same animation and so the same timing. What it changes in the outcome doesn't matter here (the
+        /// calculation is the owner's), and the stance switch it makes on the owner (Ascend → his flying move) is
+        /// already in the command's number, so it isn't redone. Commands it queues itself (his landing) are dropped
+        /// here: the owner's arrive in the stream.
+        /// </summary>
+        private static void RunOverload(CMD_DATA cmd)
+        {
+            IOverloadOnCommandRunScript overload = Memoria.Scripts.ScriptsLoader.GetOverloadedMethod(typeof(IOverloadOnCommandRunScript)) as IOverloadOnCommandRunScript;
+            if (overload == null)
+                return;
+            try
+            {
+                OverloadRuns++;
+                if (overload.OnCommandRun(new BattleCommand(cmd)))
+                {
+                    // On the owner this would have stopped the command (a Heat KO); the owner ran it, so it runs here too
+                    OverloadVetoes++;
+                    BattleSync.Note($"Replay: the mod's command hook would stop {cmd.cmd_no} here; it ran on the owner, so it runs");
+                }
+            }
+            catch (Exception err)
+            {
+                Memoria.Prime.Log.Error(err, "[Battle] The mod's command hook failed on an injected command");
+            }
         }
     }
 }

@@ -522,6 +522,8 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
                             Int32 playerId = 0;
                             while (1 << playerId != btl.btl_id)
                                 ++playerId;
+                            if (Memoria.Online.Battle.BattleControl.RouteReady(btl)) // [Online] M2: another PC commands this unit (TurnReady sent)
+                                continue;
                             if (!UIManager.Battle.ReadyQueue.Contains(playerId))
                                 UIManager.Battle.AddPlayerToReady(playerId);
                         }
@@ -750,9 +752,10 @@ public class HonoluluBattleMain : PersistenSingleton<MonoBehaviour>
             {
                 if ((stateBattleSystem.cmd_status & 1) == 0)
                 {
-                    if ((btl.escape_key ^ stateBattleSystem.btl_escape_key) != 0)
+                    Byte escapeKey = Memoria.Online.Battle.BattleControl.EscapeKeyFor(btl); // [Online] M2: each unit runs by its controlling PC's run buttons
+                    if ((btl.escape_key ^ escapeKey) != 0)
                         btl_mot.SetDefaultIdle(btl);
-                    btl.escape_key = stateBattleSystem.btl_escape_key;
+                    btl.escape_key = escapeKey;
                 }
             }
             btlseq.FF9DrawShadowCharBattle(stateBattleSystem.map.shadowArray[btl], btl, 0, BoneNo);

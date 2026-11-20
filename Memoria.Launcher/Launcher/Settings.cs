@@ -557,6 +557,8 @@ namespace Memoria.Launcher
                 }
             }
         }
+        /// <summary>[Online] Step 3 / M2: the highest Battle.Speed the online battle code supports (0 Normal, 1 Fast).</summary>
+        public const Int16 MaxSupportedAtbMode = 1;
         private Int16 _atbmodechoice;
         public Int16 ATBModeChoice
         {
@@ -808,10 +810,8 @@ namespace Memoria.Launcher
                     case nameof(ATBModeChoice):
                         if (ATBModeChoice != 0)
                             iniFile.SetSetting("Battle", "Enabled", "1");
-                        if (ATBModeChoice == 3)
-                            iniFile.SetSetting("Battle", "Speed", "5");
-                        else
-                            iniFile.SetSetting("Battle", "Speed", $"{ATBModeChoice}");
+                        // [Online] M2: Normal (0) / Fast (1) only; Turn-based and Dynamic are blocked
+                        iniFile.SetSetting("Battle", "Speed", $"{(ATBModeChoice < 0 || ATBModeChoice > MaxSupportedAtbMode ? 0 : ATBModeChoice)}");
                         break;
                     case nameof(TripleTriad):
                         var0 = TripleTriad;
@@ -1059,8 +1059,27 @@ namespace Memoria.Launcher
                 }
                 if (!Int16.TryParse(value, out _atbmodechoice))
                     _atbmodechoice = 0;
-                else if (_atbmodechoice > 3)
-                    _atbmodechoice = 3;
+                // [Online] Step 3 / M2: online battles support the Normal and Fast ATB only, and the reworked SFX. An ini
+                // (or a preset just applied) holding a blocked value is set to the supported default and written back.
+                Boolean blockedFixed = false;
+                if (_atbmodechoice < 0 || _atbmodechoice > MaxSupportedAtbMode)
+                {
+                    _atbmodechoice = 0;
+                    iniFile.SetSetting("Battle", "Speed", "0");
+                    blockedFixed = true;
+                }
+                if (Int32.TryParse(iniFile.GetSetting("Hacks", "BattleSpeed"), out Int32 hackSpeed) && hackSpeed > MaxSupportedAtbMode)
+                {
+                    iniFile.SetSetting("Hacks", "BattleSpeed", "0");
+                    blockedFixed = true;
+                }
+                if (iniFile.GetSetting("Battle", "SFXRework") == "0")
+                {
+                    iniFile.SetSetting("Battle", "SFXRework", "1");
+                    blockedFixed = true;
+                }
+                if (blockedFixed)
+                    iniFile.Save();
 
                 value = iniFile.GetSetting("TetraMaster", "TripleTriad");
                 value1isInt = Int16.TryParse(value, out value1);

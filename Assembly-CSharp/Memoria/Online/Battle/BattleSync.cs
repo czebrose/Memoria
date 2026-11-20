@@ -140,6 +140,7 @@ namespace Memoria.Online.Battle
             try
             {
                 Recorder?.AfterFrame(battleResult);
+                BattleControl.OwnerSweep();
                 OwnerStream?.SampleAtb();
                 Replayer?.AfterFrame(battleResult);
                 EndWatchdog(battleResult);
@@ -342,10 +343,12 @@ namespace Memoria.Online.Battle
         {
             get
             {
+                String control = BattleControl.StatusLine;
+                String controlLine = control != null ? "\n  " + control : "";
                 if (OwnerStream != null)
-                    return $"owner: {OwnerStream.Status}";
+                    return $"owner: {OwnerStream.Status}{controlLine}";
                 if (Replayer != null && Replayer.Live)
-                    return $"watching: {Replayer.Stream.Status}; applied {Replayer.Applied}, corrections {Replayer.Corrections}, mismatches {Replayer.Mismatches}";
+                    return $"watching: {Replayer.Stream.Status}; applied {Replayer.Applied}, corrections {Replayer.Corrections}, mismatches {Replayer.Mismatches}, early fx {Replayer.EarlyEffects}, mod hook {CommandInjector.OverloadRuns}{controlLine}";
                 return null;
             }
         }
@@ -365,6 +368,7 @@ namespace Memoria.Online.Battle
         public static void OnCommandAdmitted(CMD_DATA cmd)
         {
             Recorder?.OnCommandAdmitted(cmd);
+            BattleControl.OnCommandAdmitted(cmd);
         }
 
         /// <summary>CheckCommandCondition (summons): true = passive, the owner's long / short choice was applied.</summary>

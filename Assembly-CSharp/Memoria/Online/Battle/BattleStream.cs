@@ -54,7 +54,7 @@ namespace Memoria.Online.Battle
         private readonly MemoryStream _pending = new MemoryStream();
         private readonly BinaryWriter _w;
         private Int32 _lastSentFrame = -1;
-        private Byte _escapeKey;
+        private UInt16 _runMask;
 
         public Int32 EventsSent, BytesSent, Messages, AtbSamples, AtbBytes, TapeLate;
         public Boolean EndSent;
@@ -90,12 +90,13 @@ namespace Memoria.Online.Battle
         {
             if (!_recorder.Started || EndSent)
                 return;
-            Byte escape = FF9StateSystem.Battle.FF9Battle.btl_escape_key;
-            if (escape != _escapeKey)
+            // M2: each player unit runs when its controlling PC holds the run buttons (BattleControl.EscapeKeyFor)
+            UInt16 runMask = BattleControl.OwnerRunMask();
+            if (runMask != _runMask)
             {
-                _escapeKey = escape;
-                Int64 at = BeginRecord(BattleWire.EscapeKey, _recorder.RelativeFrame);
-                _w.Write(escape);
+                _runMask = runMask;
+                Int64 at = BeginRecord(BattleWire.RunMask, _recorder.RelativeFrame);
+                _w.Write(runMask);
                 EndRecord(at);
             }
             Single now = Time.realtimeSinceStartup;
@@ -147,6 +148,27 @@ namespace Memoria.Online.Battle
             EndRecord(start);
             AtbSamples += due.Count;
             AtbBytes += (Int32)(_pending.Length - start);
+        }
+
+        /// <summary>M2: a remote-controlled unit's turn came (its ATB is full: the controlling PC opens its menu) or went.</summary>
+        public void WriteTurn(UInt16 unit, Boolean ready)
+        {
+            if (!_recorder.Started || EndSent)
+                return;
+            Int64 at = BeginRecord(BattleWire.TurnReady, _recorder.RelativeFrame);
+            _w.Write(unit);
+            _w.Write((Byte)(ready ? 1 : 0));
+            EndRecord(at);
+        }
+
+        /// <summary>M2: these player units left the battle (their PC fled).</summary>
+        public void WriteUnitsLeave(UInt16 mask)
+        {
+            if (!_recorder.Started || EndSent)
+                return;
+            Int64 at = BeginRecord(BattleWire.UnitsLeave, _recorder.RelativeFrame);
+            _w.Write(mask);
+            EndRecord(at);
         }
 
         /// <summary>What running commands drew (or chose) since they went out.</summary>
@@ -270,10 +292,21 @@ namespace Memoria.Online.Battle
         private readonly BattleSnapshot _mirror = new BattleSnapshot();
         private readonly Dictionary<UInt16, AtbTarget> _atb = new Dictionary<UInt16, AtbTarget>();
         private readonly Queue<AtbQueued> _atbQueue = new Queue<AtbQueued>();
-        private readonly Queue<KeyValuePair<Int32, Byte>> _escapeQueue = new Queue<KeyValuePair<Int32, Byte>>();
+        private struct Timed
+        {
+            public Int32 Frame;
+            public Byte Type;
+            public UInt16 Value;
+            public Byte Flag;
+        }
 
-        /// <summary>The owner's btl_escape_key at the frame played (the party's "running away" pose).</summary>
-        public Byte EscapeKey;
+        private readonly Queue<Timed> _timed = new Queue<Timed>();
+
+        /// <summary>The player units running at the frame played (each unit's controlling PC holds "run").</summary>
+        public UInt16 RunMask;
+
+        /// <summary>Any player unit running: btl_escape_key's value on a passive battle.</summary>
+        public Byte EscapeKey => (Byte)(RunMask != 0 ? 1 : 0);
         private readonly Dictionary<Int32, BattleEvent> _commands = new Dictionary<Int32, BattleEvent>();
 
         public Int32 EventsReceived, BytesReceived, AtbSamples, TapeLate;
@@ -305,8 +338,10 @@ namespace Memoria.Online.Battle
                         ReadAtb(r, frame);
                     else if (type == BattleWire.CmdMore)
                         ReadCommandMore(r);
-                    else if (type == BattleWire.EscapeKey)
-                        _escapeQueue.Enqueue(new KeyValuePair<Int32, Byte>(frame, r.ReadByte()));
+                    else if (type == BattleWire.RunMask || type == BattleWire.UnitsLeave)
+                        _timed.Enqueue(new Timed { Frame = frame, Type = type, Value = r.ReadUInt16() });
+                    else if (type == BattleWire.TurnReady)
+                        _timed.Enqueue(new Timed { Frame = frame, Type = type, Value = r.ReadUInt16(), Flag = r.ReadByte() });
                     else
                     {
                         BattleEvent ev = BattleWire.ReadEvent((BattleEventType)type, r, _mirror);
@@ -384,8 +419,16 @@ namespace Memoria.Online.Battle
         public void ApplyAtb(Int32 frame)
         {
             Single now = Time.realtimeSinceStartup;
-            while (_escapeQueue.Count > 0 && _escapeQueue.Peek().Key <= frame)
-                EscapeKey = _escapeQueue.Dequeue().Value;
+            while (_timed.Count > 0 && _timed.Peek().Frame <= frame)
+            {
+                Timed t = _timed.Dequeue();
+                if (t.Type == BattleWire.RunMask)
+                    RunMask = t.Value;
+                else if (t.Type == BattleWire.TurnReady)
+                    BattleControl.OnTurn(t.Value, t.Flag != 0);
+                else if (t.Type == BattleWire.UnitsLeave)
+                    BattleControl.ApplyUnitsLeave(t.Value);
+            }
             while (_atbQueue.Count > 0 && _atbQueue.Peek().Frame <= frame)
             {
                 AtbQueued q = _atbQueue.Dequeue();

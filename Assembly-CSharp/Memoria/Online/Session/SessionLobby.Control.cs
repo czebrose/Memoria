@@ -13,7 +13,9 @@ namespace Memoria.Online.Session
     /// the lobby's picks are frozen and characters change hands only through these actions, arbitrated by the host:
     ///   Take     a character in the party nobody plays (the host may Take too: it changes which one it plays)
     ///   Swap     offer another player an exchange of characters; they Accept or Decline (offers expire after 30 s)
-    ///   Release  a guest gives their character back to the host and watches (Follow: no body, no input)
+    ///   Release  a guest gives their character back to the host and watches (no body, no input)
+    ///   Follow   (Step 3 / M2) a character nobody plays follows a player: it joins that player's battles and that
+    ///            player's PC commands it there. Default: the host. A follower whose leader leaves follows the host again.
     /// The host always plays one character. Party members nobody plays are driven by the host's game.
     /// If the story removes a played character from the party: the first free character, else (a guest) watching.
     /// If a guest leaves the lobby: their character is free again (the host's game keeps driving it).
@@ -22,8 +24,10 @@ namespace Memoria.Online.Session
     ///   lobby data (host):  "assign"    "characterId:accountId|..." (guests; as in the lobby)
     ///                       "hostplays" the host's character
     ///                       "offers"    "fromAccount:toAccount|..." open swap offers
+    ///                       "follow"    "characterId:accountId|..." free characters following a guest (the rest follow the host)
     ///   member data:        "ctl"       "seq:verb:arg" a guest's latest request (take c / release / swap c /
-    ///                                   accept fromAccount / decline fromAccount); the host acts on each new seq once
+    ///                                   accept fromAccount / decline fromAccount / follow (character << 32 | leader account));
+    ///                                   the host acts on each new seq once
     /// </summary>
     internal sealed partial class SessionLobby
     {
@@ -40,7 +44,8 @@ namespace Memoria.Online.Session
         private readonly Dictionary<UInt64, String> _lastCtl = new Dictionary<UInt64, String>();
         private readonly HashSet<Int32> _seenInParty = new HashSet<Int32>();
         private Int32 _ctlSeq;
-        private String _publishedHostPlays, _publishedOffers;
+        private String _publishedHostPlays, _publishedOffers, _publishedFollow;
+        private readonly Dictionary<Int32, UInt64> _follow = new Dictionary<Int32, UInt64>(); // free character → its leader (guests only; absent = the host)
         private Double _nowMs;
 
         /// <summary>The character the host plays (the lobby's first one until a control change).</summary>
@@ -66,6 +71,37 @@ namespace Memoria.Online.Session
             if (character == HostPlays)
                 return _lobby.OwnerId;
             return Assignments.TryGetValue(character, out UInt64 member) ? member : 0;
+        }
+
+        /// <summary>M2: the player a free character follows (the host unless set otherwise).</summary>
+        public UInt64 LeaderOf(Int32 character)
+        {
+            return _follow.TryGetValue(character, out UInt64 leader) && _lobby.Members.Contains(leader) ? leader : _lobby.OwnerId;
+        }
+
+        /// <summary>M2: who commands this character in a battle: its player, or for a free character its leader.</summary>
+        public UInt64 ControllerOf(Int32 character)
+        {
+            UInt64 holder = HolderOf(character);
+            return holder != 0 ? holder : LeaderOf(character);
+        }
+
+        /// <summary>M2: makes the free character at this party position follow the next player (host → guests → host).</summary>
+        public void CycleFollow(Int32 position)
+        {
+            if (Phase != SessionPhase.Playing)
+                return;
+            List<Int32> party = CurrentParty();
+            if (position < 0 || position >= party.Count || HolderOf(party[position]) != 0)
+                return;
+            Int32 character = party[position];
+            List<UInt64> players = new List<UInt64> { _lobby.OwnerId };
+            foreach (UInt64 member in _lobby.Members)
+                if (member != _lobby.OwnerId)
+                    players.Add(member);
+            Int32 index = players.IndexOf(LeaderOf(character));
+            UInt64 next = players[(index + 1) % players.Count];
+            Request("follow", ((Int64)character << 32) | (Int64)(next & 0xFFFFFFFF));
         }
 
         private Int32 CharacterOf(UInt64 member)
@@ -192,6 +228,15 @@ namespace Memoria.Online.Session
             }
             _offers.RemoveAll(o => o.Expires < nowMs || !members.Contains(o.From) || !members.Contains(o.To));
 
+            // M2: a follower whose leader left, or who is played now, follows the host again
+            foreach (KeyValuePair<Int32, UInt64> kv in new List<KeyValuePair<Int32, UInt64>>(_follow))
+            {
+                if (members.Contains(kv.Value) && HolderOf(kv.Key) == 0)
+                    continue;
+                _follow.Remove(kv.Key);
+                Log.Message($"[Online] Control: {NameOf(kv.Key)} follows the host again ({(members.Contains(kv.Value) ? "someone plays it now" : $"{SteamNative.Tag(kv.Value)} left")})");
+            }
+
             // The story changed the party: a played character who left it is replaced by a free one
             List<Int32> party = CurrentParty();
             if (party.Count > 0 && PersistenSingleton<EventEngine>.Instance?.gMode == 1)
@@ -267,6 +312,23 @@ namespace Memoria.Online.Session
                     Log.Message($"[Online] Control: {who} offers {(holder == _lobby.LocalId ? "the host" : SteamNative.Tag(holder))} {NameOf(mine)} for {NameOf(c)}");
                     break;
                 }
+                case "follow":
+                {
+                    Int32 c = (Int32)(arg >> 32);
+                    UInt32 account = (UInt32)(arg & 0xFFFFFFFF);
+                    UInt64 leader = MemberByAccount(account);
+                    if (!party.Contains(c) || HolderOf(c) != 0 || leader == 0)
+                    {
+                        Log.Message($"[Online] Control: {who} can't make {NameOf(c)} follow account {account} (not a free party member, or no such player)");
+                        return;
+                    }
+                    if (leader == _lobby.OwnerId)
+                        _follow.Remove(c);
+                    else
+                        _follow[c] = leader;
+                    Log.Message($"[Online] Control: {NameOf(c)} now follows {(leader == _lobby.OwnerId ? "the host" : SteamNative.Tag(leader))} (from the next battle; set by {who})");
+                    break;
+                }
                 case "accept":
                 case "decline":
                 {
@@ -319,6 +381,15 @@ namespace Memoria.Online.Session
                 _publishedOffers = offerValue;
                 _lobby.SetData("offers", offerValue);
             }
+            StringBuilder follow = new StringBuilder();
+            foreach (KeyValuePair<Int32, UInt64> kv in _follow)
+                follow.Append($"{kv.Key}:{kv.Value & 0xFFFFFFFF}|");
+            String followValue = follow.ToString();
+            if (followValue != _publishedFollow)
+            {
+                _publishedFollow = followValue;
+                _lobby.SetData("follow", followValue);
+            }
         }
 
         // ---- Guest ------------------------------------------------------------------------------------------------
@@ -327,6 +398,17 @@ namespace Memoria.Online.Session
         {
             if (Int32.TryParse(_lobby.GetData("hostplays"), out Int32 hostPlays))
                 _hostPlays = hostPlays;
+            _follow.Clear();
+            foreach (String part in _lobby.GetData("follow").Split('|'))
+            {
+                String[] fields = part.Split(':');
+                if (fields.Length == 2 && Int32.TryParse(fields[0], out Int32 character) && UInt32.TryParse(fields[1], out UInt32 account))
+                {
+                    UInt64 leader = MemberByAccount(account);
+                    if (leader != 0)
+                        _follow[character] = leader;
+                }
+            }
             _offers.Clear();
             foreach (String part in _lobby.GetData("offers").Split('|'))
             {
@@ -351,6 +433,8 @@ namespace Memoria.Online.Session
         {
             _hostPlays = -1;
             _offers.Clear();
+            _follow.Clear();
+            _publishedFollow = null;
             _lastCtl.Clear();
             _seenInParty.Clear();
             _publishedHostPlays = _publishedOffers = null;
@@ -387,14 +471,17 @@ namespace Memoria.Online.Session
             {
                 Int32 c = party[i];
                 UInt64 holder = HolderOf(c);
-                String owner = holder == 0 ? "free (host's game)" : holder == _lobby.LocalId ? "you" : SteamNative.GetName(holder) + (holder == _lobby.OwnerId ? " (host)" : "");
+                UInt64 leader = holder == 0 ? LeaderOf(c) : 0;
+                String owner = holder == 0 ? $"free, follows {(leader == _lobby.LocalId ? "you" : SteamNative.GetName(leader) + (leader == _lobby.OwnerId ? " (host)" : ""))}" : holder == _lobby.LocalId ? "you" : SteamNative.GetName(holder) + (holder == _lobby.OwnerId ? " (host)" : "");
                 GUI.Label(new Rect(cx + 6f, cy, 300f, line), $"{i + 1}. {NameOf(c)}: {owner}");
                 String action = holder == _lobby.LocalId ? (IsHost ? null : "Release") : holder == 0 ? "Take" : (mine >= 0 ? "Swap" : null);
                 Boolean pending = holder != 0 && holder != _lobby.LocalId && _offers.Exists(o => o.From == _lobby.LocalId && o.To == holder);
                 if (pending)
                     GUI.Label(new Rect(cx + 320f, cy, 180f, line), "offer sent...");
-                else if (action != null && GUI.Button(new Rect(cx + 320f, cy, 170f, line - 2f), $"{action} (F{i + 1})"))
+                else if (action != null && GUI.Button(new Rect(cx + 320f, cy, holder == 0 ? 80f : 170f, line - 2f), holder == 0 ? $"Take F{i + 1}" : $"{action} (F{i + 1})"))
                     ControlSlot(i);
+                if (holder == 0 && GUI.Button(new Rect(cx + 405f, cy, 85f, line - 2f), $"Follow F{i + 9}"))
+                    CycleFollow(i);
                 cy += line;
             }
             if (party.Count == 0)
@@ -422,7 +509,7 @@ namespace Memoria.Online.Session
                     JoinHost();
                 cy += line;
             }
-            GUI.Label(new Rect(cx, cy + 2f, width, line), "Ctrl+Shift+F1-F4: Take / Swap / Release slot 1-4");
+            GUI.Label(new Rect(cx, cy + 2f, width, line), "Ctrl+Shift+F1-F4: Take / Swap / Release; F9-F12: Follow (next player)");
         }
     }
 }

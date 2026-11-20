@@ -35,9 +35,8 @@ namespace Memoria.Launcher
 
             comboboxchoices = [
                 "Settings.SpeedChoiceType0",
-                "Settings.SpeedChoiceType1",
-                "Settings.SpeedChoiceType2",
-                "Settings.SpeedChoiceType3"
+                "Settings.SpeedChoiceType1"
+                // [Online] Step 3 / M2: Turn-Based (SpeedChoiceType2) and Dynamic (SpeedChoiceType3) are blocked: shared battles need Normal or Fast ATB
             ];
             CreateCombobox("ATBModeChoice", ComboBoxOptions.Localized(comboboxchoices), 50, "Settings.SpeedChoice", "Settings.SpeedChoice_Tooltip");
 

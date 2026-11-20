@@ -568,7 +568,7 @@ namespace FF9
                 targetAnim = BattlePlayerCharacter.PlayerMotionIndex.MP_AVOID;
             else if (btl_stat.CheckStatus(btl, BattleStatusConst.IdleDefend))
                 targetAnim = BattlePlayerCharacter.PlayerMotionIndex.MP_DEFENCE;
-            else if (FF9StateSystem.Battle.FF9Battle.btl_escape_key != 0 && !btl_stat.CheckStatus(btl, BattleStatusConst.CannotEscape))
+            else if (Memoria.Online.Battle.BattleControl.EscapeKeyFor(btl) != 0 && !btl_stat.CheckStatus(btl, BattleStatusConst.CannotEscape)) // [Online] M2: per unit
                 targetAnim = BattlePlayerCharacter.PlayerMotionIndex.MP_ESCAPE;
             else if (btl.bi.cmd_idle == 1)
                 targetAnim = BattlePlayerCharacter.PlayerMotionIndex.MP_IDLE_CMD;
@@ -645,7 +645,7 @@ namespace FF9
             {
                 if (btl.bi.cover == 0 && btl.bi.dodge == 0)
                 {
-                    if ((ff9Battle.btl_escape_key != 0 || (ff9Battle.cmd_status & 1) != 0) && !btl_stat.CheckStatus(btl, BattleStatusConst.CannotEscape))
+                    if ((Memoria.Online.Battle.BattleControl.EscapeKeyFor(btl) != 0 || (ff9Battle.cmd_status & 1) != 0) && !btl_stat.CheckStatus(btl, BattleStatusConst.CannotEscape)) // [Online] M2: per unit
                         btl_mot.setMotion(btl, BattlePlayerCharacter.PlayerMotionIndex.MP_ESCAPE);
                     else if (btl_stat.CheckStatus(btl, BattleStatusConst.IdleDefend))
                         btl_mot.setMotion(btl, BattlePlayerCharacter.PlayerMotionIndex.MP_DEFENCE);

@@ -267,7 +267,7 @@ namespace Memoria
 
         public Boolean IsRunningAway()
         {
-            return IsPlayer && FF9StateSystem.Battle.FF9Battle.btl_escape_key != 0;
+            return IsPlayer && Memoria.Online.Battle.BattleControl.EscapeKeyFor(Data) != 0; // [Online] M2: per unit (its controlling PC's run buttons)
         }
 
         public void TryAlterStatuses(BattleStatus status, Boolean changeContext, BattleUnit inflicter = null)

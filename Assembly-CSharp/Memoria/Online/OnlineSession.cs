@@ -249,7 +249,7 @@ namespace Memoria.Online
             _blobs.Completed += _session.OnBlob;
             _party = new PartySync(_blobs, () => _lobby.IsHost, () => _lobby.OwnerId, () => _transport.Peers, CharacterOfPeer, () => _session.MyCharacter);
             _blobs.Completed += _party.OnBlob;
-            _battle = new BattleEntry(_transport, _lobby, _blobs, () => _session.Phase == SessionPhase.Playing, () => _session.MyCharacter, CharacterOfPeer, IsPlayed);
+            _battle = new BattleEntry(_transport, _lobby, _blobs, () => _session.Phase == SessionPhase.Playing, () => _session.MyCharacter, CharacterOfPeer, IsPlayed, c => _session.ControllerOf(c));
             _blobs.Completed += _battle.OnBlob;
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
@@ -293,6 +293,9 @@ namespace Memoria.Online
                     for (Int32 i = 0; i < 4; i++)
                         if (Input.GetKeyDown(KeyCode.F1 + i))
                             _session.ControlSlot(i);
+                    for (Int32 i = 0; i < 4; i++)
+                        if (Input.GetKeyDown(KeyCode.F9 + i))
+                            _session.CycleFollow(i); // M2: a free character follows the next player
                     if (Input.GetKeyDown(KeyCode.F5))
                         _session.AnswerOffer(true);
                     else if (Input.GetKeyDown(KeyCode.F6))
@@ -811,7 +814,7 @@ namespace Memoria.Online
             String notice = GuestGuard.Frozen ? GuestGuard.FrozenMessage : null;
             String toast = PartySync.CurrentToast;
             Single noticeY = Screen.height * 0.75f;
-            foreach (String line in new[] { notice, BattleEntry.Notice, toast })
+            foreach (String line in new[] { notice, BattleEntry.Notice, BattleControl.Notice, SessionSettings.Notice, toast })
             {
                 if (line == null)
                     continue;

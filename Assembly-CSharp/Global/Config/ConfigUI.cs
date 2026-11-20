@@ -1225,8 +1225,8 @@ public class ConfigUI : UIScene
                     current.Value = Configuration.VoiceActing.Volume / 100f;
                     break;
                 case Configurator.ATBMode:
-                    int mode = Configuration.Battle.ATBMode >= 3 ? 3 : Configuration.Battle.ATBMode;
-                    current.Value = mode / 3f;
+                    // [Online] M2: Normal / Fast only (Turn-based and the simultaneous modes are blocked)
+                    current.Value = Math.Min(Configuration.Battle.ATBMode, Configuration.Battle.MaxSupportedSpeed) / (Single)Math.Max(1, Configuration.Battle.MaxSupportedSpeed);
                     break;
                 case Configurator.AutoText:
                     current.Value = Configuration.VoiceActing.AutoDismissDialogAfterCompletion ? 0 : 1;
@@ -1275,6 +1275,21 @@ public class ConfigUI : UIScene
         ConfigField configField = ConfigFieldList.First(field => field.ConfigParent == configGameObject);
         Single previousValue = configField.Value;
         Boolean playSound = true;
+        // [Online] Step 3 / M2: battle options are the host's in a session; battle style Wait isn't offered at all
+        if (!isForceSet && previousValue != value && Memoria.Online.Session.SessionSettings.IsLocked(configField.Configurator))
+        {
+            FF9Sfx.FF9SFX_Play(102);
+            setConfigValue(configGameObject, previousValue, true);
+            return;
+        }
+        if (configField.Configurator == Configurator.ATB && value != 0f)
+        {
+            if (!isForceSet)
+                FF9Sfx.FF9SFX_Play(102);
+            value = 0f;
+            if (previousValue == value && !isForceSet)
+                return;
+        }
         if (previousValue != value || isForceSet)
         {
             if (isForceSet)
@@ -1287,7 +1302,7 @@ public class ConfigUI : UIScene
                 {
                     // Update the label with the ATB mode
                     var l = configField.ConfigParent.GetComponentInChildren<UILocalize>();
-                    l.key = ((ATBMode)(configField.Value * 3)).ToString();
+                    l.key = ((ATBMode)Math.Round(configField.Value * Math.Max(1, Configuration.Battle.MaxSupportedSpeed))).ToString(); // [Online] M2
                     l.OnLocalize();
                 }
                 else if (configField.Configurator >= Configurator.SoundVolume)
@@ -1388,8 +1403,8 @@ public class ConfigUI : UIScene
                         Configuration.VoiceActing.SaveVolume();
                         break;
                     case Configurator.ATBMode:
-                        Int32 mode = (Int32)(configField.Value * 3);
-                        Configuration.Battle.ATBMode = mode >= 3 ? 5 : mode;
+                        Int32 mode = (Int32)Math.Round(configField.Value * Math.Max(1, Configuration.Battle.MaxSupportedSpeed)); // [Online] M2: Normal / Fast only
+                        Configuration.Battle.ATBMode = Math.Min(mode, Configuration.Battle.MaxSupportedSpeed);
                         Configuration.Battle.SaveBattleSpeed();
                         break;
                     case Configurator.AutoText:
@@ -1504,7 +1519,7 @@ public class ConfigUI : UIScene
         Destroy(labels[2]);
 
         var slider = go.GetComponentInChildren<UISlider>();
-        slider.numberOfSteps = 4;
+        slider.numberOfSteps = Configuration.Battle.MaxSupportedSpeed + 1; // [Online] M2: Normal / Fast only (was 4: + Turn-based, Dynamic)
         slider.value = 0f;
     }
 
