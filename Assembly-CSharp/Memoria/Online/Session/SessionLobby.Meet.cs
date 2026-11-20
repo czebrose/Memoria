@@ -73,6 +73,7 @@ namespace Memoria.Online.Session
             }
             else
             {
+                ReleaseHeldFlags();
                 if (meet)
                     GuestMeet(nowMs);
                 GuestFreeze(nowMs);
@@ -120,9 +121,26 @@ namespace Memoria.Online.Session
         {
             String who = IsHost ? "host" : $"guest, {(WithHost ? "with the host" : "alone")}{(GuestGuard.ActedOnThisField ? "" : ", field opening: not sent")}";
             List<KeyValuePair<Int32, Byte>> changes = EventWatch.Update(nowMs, who, force);
-            if (changes == null || IsHost || !GuestGuard.ActedOnThisField)
+            if (changes == null || !GuestGuard.ActedOnThisField)
                 return;
             changes.RemoveAll(c => !EventWatch.IsForwarded(c.Key));
+            if (changes.Count == 0)
+                return;
+            if (IsHost)
+            {
+                // Live flags: the host's own changes go to the guests on its field at once (a chest it opened, an ice
+                // wall it broke), not only with their next meeting resync
+                Int32 field = LocalPlayableField(false);
+                if (field >= 0)
+                    RelayFlags(changes, field, 0, "the host");
+                return;
+            }
+            SendFlags(_lobby.OwnerId, changes);
+            FlagsSent += changes.Count;
+        }
+
+        private void SendFlags(UInt64 peer, List<KeyValuePair<Int32, Byte>> changes)
+        {
             for (Int32 start = 0; start < changes.Count; start += MaxFlagsPerMessage)
             {
                 Int32 count = Math.Min(MaxFlagsPerMessage, changes.Count - start);
@@ -137,10 +155,29 @@ namespace Memoria.Online.Session
                     message[4 + i * 3] = (Byte)(c.Key >> 8);
                     message[5 + i * 3] = c.Value;
                 }
-                _transport.Send(_lobby.OwnerId, TransportChannel.Control, message, message.Length, true);
-                FlagsSent += count;
+                _transport.Send(peer, TransportChannel.Control, message, message.Length, true);
             }
         }
+
+        /// <summary>Host: send changes made on a field to every guest standing on that field (except the one that made them).</summary>
+        private void RelayFlags(List<KeyValuePair<Int32, Byte>> changes, Int32 field, UInt64 except, String from)
+        {
+            List<String> sentTo = new List<String>();
+            foreach (UInt64 peer in _transport.Peers)
+            {
+                if (peer == except || peer == _lobby.LocalId)
+                    continue;
+                if (!GhostManager.TryGetLastField(peer, out UInt16 peerField) || peerField != field)
+                    continue;
+                SendFlags(peer, changes);
+                FlagsRelayed += changes.Count;
+                sentTo.Add(SteamNative.Tag(peer));
+            }
+            if (sentTo.Count > 0)
+                Log.Message($"[Online] Event bytes: {changes.Count} from {from} on field {field} sent live to {String.Join(", ", sentTo.ToArray())}");
+        }
+
+        public Int32 FlagsRelayed { get; private set; }
 
         private Boolean OnFlagsMessage(UInt64 peer, Byte[] data)
         {
@@ -149,16 +186,66 @@ namespace Memoria.Online.Session
             Int32 count = data[1] | (data[2] << 8);
             if (data.Length != 3 + count * 3)
                 return false;
-            if (!IsHost || Phase != SessionPhase.Playing)
+            if (Phase != SessionPhase.Playing)
                 return true;
             List<KeyValuePair<Int32, Byte>> changes = new List<KeyValuePair<Int32, Byte>>(count);
             for (Int32 i = 0; i < count; i++)
                 changes.Add(new KeyValuePair<Int32, Byte>(data[3 + i * 3] | (data[4 + i * 3] << 8), data[5 + i * 3]));
+            if (!IsHost)
+            {
+                if (peer != _lobby.OwnerId)
+                    return true;
+                if (GuestGuard.HoldLiveFlags)
+                {
+                    // In step with the host's scripts (a party scene): its own scripts set these; apply later what differs
+                    _heldFlags.AddRange(changes);
+                    return true;
+                }
+                ApplyHostFlags(changes);
+                return true;
+            }
             WatchEvents(_lastMeetNowMs, true); // the host's own changes so far are logged as the host's
             EventWatch.ApplyFromGuest(SteamNative.Tag(peer), changes);
             FlagsApplied += count;
+            changes.RemoveAll(c => !EventWatch.IsForwarded(c.Key));
+            if (changes.Count > 0 && GhostManager.TryGetLastField(peer, out UInt16 guestField) && guestField != GhostState.NotOnField)
+                RelayFlags(changes, guestField, peer, SteamNative.Tag(peer));
             return true;
         }
+
+        private readonly List<KeyValuePair<Int32, Byte>> _heldFlags = new List<KeyValuePair<Int32, Byte>>();
+
+        /// <summary>Guest: the host's live flags into this game (its own changes so far go out first); a redraw follows.</summary>
+        private void ApplyHostFlags(List<KeyValuePair<Int32, Byte>> changes)
+        {
+            WatchEvents(_lastMeetNowMs, true);
+            Int32 applied = EventWatch.ApplyFromHost(SteamNative.Tag(_lobby.OwnerId), changes);
+            FlagsApplied += applied;
+            Int32 field = LocalPlayableField(false);
+            if (applied > 0 && field >= 0)
+            {
+                // The field shows chests, ice and doors from the flags it loaded with: refresh it soon
+                _refreshField = field;
+                _refreshAfter = _lastMeetNowMs + RefreshQuietMs;
+            }
+        }
+
+        /// <summary>Guest: live flags held during a party scene go in once it's over (only what still differs).</summary>
+        private void ReleaseHeldFlags()
+        {
+            if (GuestGuard.HoldLiveFlags || _heldFlags.Count == 0)
+                return;
+            List<KeyValuePair<Int32, Byte>> held = new List<KeyValuePair<Int32, Byte>>(_heldFlags);
+            _heldFlags.Clear();
+            Log.Message($"[Online] Event bytes: {held.Count} live change(s) held during a party scene, applying what differs");
+            ApplyHostFlags(held);
+        }
+
+        // Guest: live flags arrived for this field; once nothing new has come for a moment and this player has control,
+        // a keep-spot meeting resync redraws the field (one blink)
+        private const Double RefreshQuietMs = 1500;
+        private Int32 _refreshField = -1;
+        private Double _refreshAfter;
 
         // ---- Host state: guests on the host's field wait during its scenes and battles -------------------------------
 
@@ -262,6 +349,15 @@ namespace Memoria.Online.Session
             Int32 mine = LocalPlayableField(true);
             if (mine < 0)
                 return; // menu, battle, world map, cutscene, loading: nothing changes until we're back
+            if (_refreshField >= 0 && _refreshField != mine)
+                _refreshField = -1; // left that field: the next one loads with the new flags anyway
+            if (_refreshField >= 0 && nowMs >= _refreshAfter && !GuestGuard.Frozen)
+            {
+                _refreshField = -1;
+                SendMeet(MeetKindMeet, (UInt16)mine);
+                Log.Message($"[Online] Meet: live flags changed field {mine}; asking for the host's world to redraw it (you keep your spot)");
+                return;
+            }
             if (!GhostManager.TryGetLastField(_lobby.OwnerId, out UInt16 hostField) || hostField == GhostState.NotOnField)
                 return; // the host is in a menu, a battle or on the world map: keep what we had
             if (hostField != mine)
@@ -417,6 +513,8 @@ namespace Memoria.Online.Session
         private void ResetMeet()
         {
             _metField = -1;
+            _refreshField = -1;
+            _heldFlags.Clear();
             _restoreSpot = null;
             _meetRequests.Clear();
             EventWatch.Reset();
