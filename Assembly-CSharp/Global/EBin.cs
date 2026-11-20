@@ -1539,6 +1539,7 @@ public class EBin
         switch (cls)
         {
             case VariableSource.Global:
+                Memoria.Online.Session.LiveRedraw.NoteRead(currentObject, t0 & 0xFFFF, varType); // [Online] live flags: which entries' Init read which event byte
                 return GetVariableValueInternal(FF9StateSystem.EventState.gEventGlobal, t0 & 0xFFFF, varType, 0);
             case VariableSource.Map:
                 return GetVariableValueInternal(_eventEngine.GetMapVar(), t0 & 0xFFFF, varType, 0);

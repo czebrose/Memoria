@@ -77,6 +77,7 @@ namespace Memoria.Online.Session
             }
             else
             {
+                LiveRedraw.Tick();
                 ReleaseHeldFlags();
                 if (meet)
                     GuestMeet(nowMs);
@@ -229,6 +230,11 @@ namespace Memoria.Online.Session
             if (applied > 0 && field >= 0)
             {
                 // The field shows chests, ice and doors from the flags it loaded with: refresh it soon
+                if (_refreshField != field)
+                    _refreshBytes.Clear();
+                foreach (KeyValuePair<Int32, Byte> c in changes)
+                    if (EventWatch.IsForwarded(c.Key))
+                        _refreshBytes.Add(c.Key);
                 _refreshField = field;
                 _refreshAfter = _lastMeetNowMs + RefreshQuietMs;
             }
@@ -246,10 +252,33 @@ namespace Memoria.Online.Session
         }
 
         // Guest: live flags arrived for this field; once nothing new has come for a moment and this player has control,
+        // the entries that read those bytes at their Init run it again (LiveRedraw), or, if that can't be done in place,
         // a keep-spot meeting resync redraws the field (one blink)
         private const Double RefreshQuietMs = 1500;
         private Int32 _refreshField = -1;
         private Double _refreshAfter;
+        private readonly HashSet<Int32> _refreshBytes = new HashSet<Int32>();
+
+        private void RefreshField(Int32 field)
+        {
+            List<Int32> bytes = new List<Int32>(_refreshBytes);
+            _refreshBytes.Clear();
+            bytes.Sort();
+            String list = String.Join(" ", bytes.ConvertAll(b => $"[{b}]").ToArray());
+            LiveRedraw.Result result = LiveRedraw.TryRedraw(bytes, out String detail);
+            switch (result)
+            {
+                case LiveRedraw.Result.NothingToDo:
+                    Log.Message($"[Online] Live redraw: field {field}, bytes {list}: nothing to redraw ({detail})");
+                    return;
+                case LiveRedraw.Result.Redrawn:
+                    LiveRedraw.LogReaders(bytes);
+                    Log.Message($"[Online] Live redraw: field {field}, bytes {list}: {detail} (no reload)");
+                    return;
+            }
+            SendMeet(MeetKindMeet, (UInt16)field);
+            Log.Message($"[Online] Meet: live flags changed field {field} ({list}; {detail}); asking for the host's world to redraw it (you keep your spot)");
+        }
 
         // ---- Host state: guests on the host's field wait during its scenes and battles -------------------------------
 
@@ -354,12 +383,14 @@ namespace Memoria.Online.Session
             if (mine < 0)
                 return; // menu, battle, world map, cutscene, loading: nothing changes until we're back
             if (_refreshField >= 0 && _refreshField != mine)
+            {
                 _refreshField = -1; // left that field: the next one loads with the new flags anyway
+                _refreshBytes.Clear();
+            }
             if (_refreshField >= 0 && nowMs >= _refreshAfter && !GuestGuard.Frozen)
             {
                 _refreshField = -1;
-                SendMeet(MeetKindMeet, (UInt16)mine);
-                Log.Message($"[Online] Meet: live flags changed field {mine}; asking for the host's world to redraw it (you keep your spot)");
+                RefreshField(mine);
                 return;
             }
             if (!GhostManager.TryGetLastField(_lobby.OwnerId, out UInt16 hostField) || hostField == GhostState.NotOnField)
@@ -537,6 +568,8 @@ namespace Memoria.Online.Session
         {
             _metField = -1;
             _refreshField = -1;
+            _refreshBytes.Clear();
+            LiveRedraw.Reset();
             _heldFlags.Clear();
             _restoreSpot = null;
             _meetRequests.Clear();
