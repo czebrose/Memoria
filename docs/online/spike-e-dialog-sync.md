@@ -110,9 +110,9 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Test build `B2D31594794A`: this branch (3f34f6f2) merged with `online-live-flags` (live chest / flag sync, its own
-doc `live-flags.md`) in a detached commit (23288849, on no branch), so one two-PC sitting tests both. (The first test
-build, `73165262932C`, had no trigger mirror.) PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+Test build `24BC10E56C95`: this branch (d531e43e) merged with `online-live-flags` (80428d86; live chest / flag
+sync, its own doc `live-flags.md`) in a detached commit (4a26f8b3, on no branch), so one two-PC sitting tests both.
+Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
@@ -129,7 +129,31 @@ from the host can reach a follower before its own script sets them; the logs sho
 
 ## 4. Results
 
-*Pending the two-PC run.*
+### Run 1 (2026-11-19 22:43-22:48, build `73165262932C`, no trigger mirror)
+
+Host #6647 (Clove), guest #6374 (Blank, then B.Waltz), cargo ship deck 507. Logs: `Output\logs\*-SpikeE-20261119-2249.*`.
+
+- **The gate works.** 10 scene starts on 507 and two field loads: each held 4-20 ms before Go (RTT 3-20 ms). On the
+  field load to 502 the guest arrived 1.7 s after the host; the gate waited for it.
+- **The festival didn't start on the guest.** Ctrl+Shift+2 only switched the pacing on; the scene starts by talking to
+  Mogwin, which ran on the host only (window w1, text 48). Fixed afterwards: the trigger mirror (section 2).
+- **The bridge pilot (502), by accident the first choice test.** Each player talked to the pilot on their own: the
+  guest's window opened 5.7 s after the host's (+5658 ms on the scene clock). The host's input was applied to it as
+  soon as it opened (choice 2, 100 ms later). But **the guest's next window diverged** (host text 360, guest text 349):
+  its script went to Lindblum (614) while the host's went to the Ice Cavern (300). The guest was then held on 614 for
+  the 20 s timeout and used Join host.
+- **Why it diverged: live flags.** The host's choice set the story counter (3150). The live-flags relay sent it to the
+  guest at 22:47:28, before the guest's own pilot window opened (22:47:31). The guest's script then ran its choice
+  with the new counter, and the same choice number led elsewhere. Fixed afterwards: a follower holds live flags until
+  the scene ends (`GuestGuard.HoldLiveFlags`), and window OPEN lines now log the choice mask and default.
+- **What this shows for the question:** applying the owner's choice to the follower's window works mechanically, but
+  it is only right if both PCs' scripts read the same state at that moment. Anything that changes a follower's state
+  from outside its own scripts during a scene (live flags, a resync) breaks it.
+- One log defect fixed: DIVERGED was logged on every frame while waiting (17 lines).
+
+### Run 2
+
+*Pending (build `24BC10E56C95`).*
 
 ## 5. Verdict
 
