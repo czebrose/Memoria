@@ -30,6 +30,19 @@ namespace Memoria.Online.Session
         /// </summary>
         public static Boolean IsForwarded(Int32 index) => index < 2 || index >= 64;
 
+        /// <summary>CRC32 of the shared event bytes (the <see cref="IsForwarded"/> ones); 0 if there's no game.</summary>
+        public static UInt32 SharedDigest()
+        {
+            Byte[] global = FF9StateSystem.EventState?.gEventGlobal;
+            if (global == null || global.Length < 64)
+                return 0;
+            Byte[] shared = new Byte[global.Length - 62];
+            shared[0] = global[0];
+            shared[1] = global[1];
+            Array.Copy(global, 64, shared, 2, global.Length - 64);
+            return GameSnapshot.Crc32(shared, 0, shared.Length);
+        }
+
         private static Byte[] _watched;
         private static Byte[] _copy;
         private static Double _next;

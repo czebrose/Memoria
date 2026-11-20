@@ -37,6 +37,13 @@ So with both players in one cave room:
   M5's existing reload: one blink, the guest stays where it stood, the chest is open and the ice is gone. Log:
   `Meet: live flags changed field F; asking for the host's world to redraw it`. If the guest leaves the field first,
   nothing is asked: the next field loads with the new flags.
+- **No reload when a guest arrives already in step.** When a guest walks onto the host's field, its meet request now
+  carries a CRC32 of its shared event bytes (bytes 0-1 and 64+, `EventWatch.SharedDigest`; `MsgMeet` is 8 bytes then).
+  If the host's own CRC matches, the host sends nothing and the guest keeps its field as loaded: no blink. Otherwise
+  the host's world is sent as before. Party, items and gil come through PartySync, not this reload. The live-flags
+  redraw request above carries no CRC (its flags already match; it asks for the reload to redraw). Logs: guest
+  `Meet: ... unless it matches yours (flags XXXXXXXX ...)`; host `arrived on field F with the host's flags already
+  (...); no reload` or `flags differ on field F (guest ..., host ...); sending the host's world`.
 
 ## Limits
 
@@ -61,4 +68,7 @@ So with both players in one cave room:
 3. **Guest** opens a chest the host can see: on the host, the flag is applied (`applied from #tag`); a second guest, if
    any, gets it live. The host's own screen redraws only at its next field load (known limit).
 4. Guest walks to another room right after the host opens a chest: no reload request; the guest's next room is fine.
-5. Send both `Memoria.log` files.
+5. **Arrival skip:** guest walks into the host's room the normal way (no chests opened elsewhere): host log says
+   `no reload`, and the guest's screen doesn't blink. Repeat on a few rooms; any `flags differ` line is worth a look
+   (which bytes differ shows in the `Event bytes` lines above it).
+6. Send both `Memoria.log` files.

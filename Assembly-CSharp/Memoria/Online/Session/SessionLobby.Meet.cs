@@ -13,9 +13,11 @@ namespace Memoria.Online.Session
     /// the same field, the guest asks the host for its whole game (the M1 blob) and loads it, keeping its own spot.
     /// "Join host" is the same resync without keeping the spot: the guest lands where the host is.
     ///
-    /// Guest → host (control channel): MsgMeet [type, kind, field lo, field hi].
+    /// Guest → host (control channel): MsgMeet [type, kind, field lo, field hi], or 8 bytes with a CRC32 of the guest's
+    /// shared event bytes (<see cref="EventWatch.SharedDigest"/>) when it arrives on the host's field.
     /// Host → guest: MsgResync, 12 bytes with mode <see cref="ModeKeepSpot"/> and the field (meet), or the usual
-    /// 10-byte MsgResync (join).
+    /// 10-byte MsgResync (join). If the arriving guest's CRC matches the host's own, nothing is sent: the guest's world
+    /// already is the host's, and the reload (a blink) is skipped.
     /// The host answers once it has control on a field (never in the middle of a cutscene), and drops a meet request
     /// if it has left that field meanwhile.
     /// </summary>
@@ -31,6 +33,8 @@ namespace Memoria.Online.Session
         {
             public Byte Kind;
             public UInt16 Field;
+            public Boolean HasDigest; // an arrival: skip the reload if the shared event bytes already match
+            public UInt32 Digest;
         }
 
         private sealed class SavedSpot
@@ -370,8 +374,9 @@ namespace Memoria.Online.Session
             if (_metField == mine)
                 return;
             _metField = mine;
-            SendMeet(MeetKindMeet, (UInt16)mine);
-            Log.Message($"[Online] Meet: you and the host are both on field {mine}; asking for the host's world (you keep your spot)");
+            UInt32 digest = EventWatch.SharedDigest();
+            SendMeet(MeetKindMeet, (UInt16)mine, digest);
+            Log.Message($"[Online] Meet: you and the host are both on field {mine}; asking for the host's world unless it matches yours (flags {digest:X8}; you keep your spot)");
         }
 
         /// <summary>Guest: go to the host (a resync that puts this player where the host is).</summary>
@@ -384,9 +389,15 @@ namespace Memoria.Online.Session
             Log.Message("[Online] Meet: Join host asked");
         }
 
-        private void SendMeet(Byte kind, UInt16 field)
+        private void SendMeet(Byte kind, UInt16 field, UInt32? digest = null)
         {
-            Byte[] message = { MsgMeet, kind, (Byte)field, (Byte)(field >> 8) };
+            Byte[] message = new Byte[digest.HasValue ? 8 : 4];
+            message[0] = MsgMeet;
+            message[1] = kind;
+            message[2] = (Byte)field;
+            message[3] = (Byte)(field >> 8);
+            if (digest.HasValue)
+                WriteU32(message, 4, digest.Value);
             _transport.Send(_lobby.OwnerId, TransportChannel.Control, message, message.Length, true);
         }
 
@@ -450,12 +461,14 @@ namespace Memoria.Online.Session
 
         private Boolean OnMeetMessage(UInt64 peer, Byte[] data)
         {
-            if (data.Length != 4 || data[0] != MsgMeet)
+            if ((data.Length != 4 && data.Length != 8) || data[0] != MsgMeet)
                 return false;
             if (!IsHost || Phase != SessionPhase.Playing)
                 return true;
             UInt16 field = (UInt16)(data[2] | (data[3] << 8));
-            _meetRequests[peer] = new MeetRequest { Kind = data[1], Field = field };
+            Boolean hasDigest = data.Length == 8;
+            UInt32 digest = hasDigest ? ReadU32(data, 4) : 0;
+            _meetRequests[peer] = new MeetRequest { Kind = data[1], Field = field, HasDigest = hasDigest, Digest = digest };
             Log.Message($"[Online] Meet: {SteamNative.Tag(peer)} asks for {(data[1] == MeetKindJoin ? "Join host" : $"the world on field {field}")}");
             return true;
         }
@@ -483,6 +496,16 @@ namespace Memoria.Online.Session
                 {
                     Log.Message($"[Online] Meet: {SteamNative.Tag(kv.Key)}'s request for field {request.Field} dropped (the host is {(hostField >= 0 ? $"on field {hostField}" : "on the world map")} now)");
                     continue;
+                }
+                if (request.Kind == MeetKindMeet && request.HasDigest)
+                {
+                    UInt32 own = EventWatch.SharedDigest();
+                    if (own == request.Digest && own != 0)
+                    {
+                        Log.Message($"[Online] Meet: {SteamNative.Tag(kv.Key)} arrived on field {request.Field} with the host's flags already ({own:X8}); no reload");
+                        continue;
+                    }
+                    Log.Message($"[Online] Meet: {SteamNative.Tag(kv.Key)}'s flags differ on field {request.Field} (guest {request.Digest:X8}, host {own:X8}); sending the host's world");
                 }
                 if (blob == null)
                 {
