@@ -561,7 +561,9 @@ namespace Memoria.Online.Battle
             if (battleResult != 1 || _ended || !_started)
                 return;
             _ended = true;
-            if (!_done)
+            if (!_done && Aborted)
+                BattleSync.Note($"Replay: this PC left the owner's battle early (result {FF9StateSystem.Common.FF9.btl_result}); {Log.Events.Count - _pos} event(s) not played");
+            else if (!_done)
             {
                 Pump(true);
                 if (_pos < Log.Events.Count && Log.Events[_pos].Type == BattleEventType.End)
