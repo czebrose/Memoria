@@ -246,6 +246,7 @@ namespace Memoria.Online.Battle
         {
             public Int16 Value;
             public Single Rate, At;
+            public Int16 Shown = -1; // what this PC showed last (a new sample a little behind it doesn't step the gauge back)
         }
 
         private struct AtbQueued
@@ -378,7 +379,8 @@ namespace Memoria.Online.Battle
             while (_atbQueue.Count > 0 && _atbQueue.Peek().Frame <= frame)
             {
                 AtbQueued q = _atbQueue.Dequeue();
-                _atb[q.Unit] = new AtbTarget { Value = q.Value, Rate = q.Rate, At = now };
+                Int16 shown = _atb.TryGetValue(q.Unit, out AtbTarget old) ? old.Shown : (Int16)(-1);
+                _atb[q.Unit] = new AtbTarget { Value = q.Value, Rate = q.Rate, At = now, Shown = shown };
             }
             foreach (KeyValuePair<UInt16, AtbTarget> kv in _atb)
             {
@@ -386,7 +388,14 @@ namespace Memoria.Online.Battle
                 if (btl == null)
                     continue;
                 AtbTarget t = kv.Value;
-                btl.cur.at = (Int16)Mathf.Clamp(t.Value + t.Rate * (now - t.At), 0f, btl.max.at);
+                Int16 at = (Int16)Mathf.Clamp(t.Value + t.Rate * (now - t.At), 0f, btl.max.at);
+                // The interpolation runs a little ahead or behind the owner's gauge; a correction backwards by less
+                // than 1/16 of the gauge waits for the gauge to catch up instead of making it stagger. A reset (after
+                // an action, a big drop) shows at once.
+                if (t.Shown > at && t.Shown - at < btl.max.at / 16 && t.Shown < btl.max.at)
+                    at = t.Shown;
+                t.Shown = at;
+                btl.cur.at = at;
             }
         }
 
