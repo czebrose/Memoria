@@ -22,7 +22,9 @@ namespace Memoria.Online.Session
     ///   own window with that seq (waiting for its script to open it if behind). Windows closed by a timer ([TIME]) or
     ///   by the script (CloseWindow) close locally on each PC; the owner's notice is only logged for timing.
     /// - **Field jumps and battles** a script starts are logged with the scene clock (owner: also sent), so the doc can
-    ///   say how far a follower's script runs ahead. Nothing is blocked.
+    ///   say how far a follower's script runs ahead. A follower's scripted battle doesn't start: the follower holds its
+    ///   scripts there and joins the owner's battle (BattleEntry's participant path) when its BattleStart comes, or
+    ///   fights its own after <see cref="BattleWaitMs"/>.
     /// - **Triggers are the owner's.** What the owner's player starts by talking, checking or walking into a region
     ///   (EventCollision -> EventEngine.Request level 1) is sent (object uid, tag) and started the same way on every
     ///   follower; a follower's own player triggers nothing (<see cref="PlayerRequest"/>). So a scene that begins with a
@@ -167,6 +169,7 @@ namespace Memoria.Online.Session
             Log.Message($"[Online] Scene {_sceneId}: END ({why}). {Summary()}");
             _owner = 0;
             _gated = false;
+            _battleHold = false;
             _pending.Clear();
             _triggers.Clear();
             GuestGuard.HoldLiveFlags = false;
@@ -282,6 +285,9 @@ namespace Memoria.Online.Session
             Int32 previous = _field;
             _field = FF9StateSystem.Common.FF9.fldMapNo;
             _fieldIndex++;
+            if (_battleHold)
+                Log.Message($"[Online] Scene {_sceneId}: left the field while waiting for the owner's battle (battle {_battleHoldId})");
+            _battleHold = false;
             ReportOpenWindows();
             ResetWindows();
             Log.Message($"[Online] Scene {_sceneId}: field load #{_fieldIndex}: {previous} -> {_field}");
@@ -342,19 +348,42 @@ namespace Memoria.Online.Session
             if (s == null || s._owner == 0)
                 return false;
             s.CheckField();
-            return s._gated;
+            return s._gated || s._battleHold;
         }
 
         private Double SceneMs => _fieldT0 >= 0 ? NowMs - _fieldT0 : -1;
 
         // ---- Field jumps and battles started by a script -------------------------------------------------------------
 
-        /// <summary>[Online] HonoluluFieldMain, the raw flow state of the field's event loop.</summary>
-        public static void OnFieldFlow(Int32 flow)
+        private const Double BattleWaitMs = 10000;
+        private Boolean _battleHold;
+        private Double _battleHoldSince;
+        private Int32 _battleHoldId;
+
+        /// <summary>A follower's script reached its battle: it may join the owner's battle now, scene or not (BattleEntry.CanJoinNow).</summary>
+        public static Boolean WaitingForOwnerBattle => Instance != null && Instance._owner != 0 && Instance._battleHold;
+
+        /// <summary>
+        /// [Online] HonoluluFieldMain, the field event loop's flow state (before BattleEntry sees it). Logs field jumps
+        /// and battles; a follower's own scripted battle becomes a wait for the owner's.
+        /// </summary>
+        public static Int32 OnFieldFlow(Int32 flow)
         {
             SceneSync s = Instance;
-            if (s == null || s._owner == 0 || s._gated)
-                return;
+            if (s == null || s._owner == 0)
+                return flow;
+            if (s._battleHold)
+            {
+                if (NowMs - s._battleHoldSince > BattleWaitMs)
+                {
+                    s._battleHold = false;
+                    Log.Message($"[Online] Scene {s._sceneId}: no battle from the owner within {BattleWaitMs / 1000:0} s: this PC fights its own battle {s._battleHoldId}");
+                    return EventEngine.FLOW_STATE_JUMP_BATTLE;
+                }
+                return flow; // held (HoldFieldEvents); BattleEntry joins the owner's battle when its Start is in
+            }
+            if (s._gated)
+                return flow;
             Byte kind;
             Int32 target = FF9StateSystem.Field.FF9Field.loc.map.nextMapNo; // MAPJUMP and ENCOUNT both set it (EventEngine.FF9ChangeMap)
             if (flow == EventEngine.FLOW_STATE_JUMP_FIELD)
@@ -371,9 +400,18 @@ namespace Memoria.Online.Session
             }
             else
             {
-                return;
+                return flow;
             }
             s.OnJump(kind, target);
+            if (kind == 2 && !s.IsOwner)
+            {
+                s._battleHold = true;
+                s._battleHoldSince = NowMs;
+                s._battleHoldId = target;
+                Log.Message($"[Online] Scene {s._sceneId}: this PC's script reached battle {target}: holding here to join the owner's battle (up to {BattleWaitMs / 1000:0} s)");
+                return 0;
+            }
+            return flow;
         }
 
         private void OnJump(Byte kind, Int32 target)

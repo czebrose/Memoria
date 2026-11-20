@@ -749,7 +749,7 @@ namespace Memoria.Online.Battle
                 why = "elsewhere";
             else if (ui.State != UIManager.UIState.FieldHUD)
                 why = "close the menu to join";
-            else if (engine.fieldmap?.playerController == null || !engine.GetUserControl())
+            else if (engine.fieldmap?.playerController == null || (!engine.GetUserControl() && !Memoria.Online.Session.SceneSync.WaitingForOwnerBattle)) // [Online] Spike E: a party scene follower whose script reached its battle joins the owner's
                 why = "waiting for the scene to end";
             else if (PersistenSingleton<SceneDirector>.Instance.IsFading || (PersistenSingleton<FF9StateSystem>.Instance.attr & 15u) != 0)
                 why = "waiting for the screen change";

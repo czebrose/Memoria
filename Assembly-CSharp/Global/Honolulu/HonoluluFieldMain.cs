@@ -222,7 +222,7 @@ public class HonoluluFieldMain : HonoBehavior
             if ((this.FF9.attr & 2u) == 0u)
             {
                 Int32 codeFlowState = Memoria.Online.Session.SceneSync.HoldFieldEvents() ? 0 : this.ee.ServiceEvents(); // [Online] Spike E: party scene ready gate
-                Memoria.Online.Session.SceneSync.OnFieldFlow(codeFlowState); // [Online] Spike E: log script field jumps / battles
+                codeFlowState = Memoria.Online.Session.SceneSync.OnFieldFlow(codeFlowState); // [Online] Spike E: log script field jumps / battles; a follower's battle waits for the owner's
                 codeFlowState = Memoria.Online.Battle.BattleEntry.OnFieldFlow(codeFlowState); // [Online] Spike D: note the owner's battle / start a participant's
                 HonoluluFieldMain.eventEngineRunningCount++;
                 SFXData.AdvanceEventSFXFrame();
