@@ -995,6 +995,8 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.UCOFF: // 0x2D, "DisableMove", "Disable the player's movement control"
             {
+                if (this._context.usercontrol != 0)
+                    Memoria.Online.Session.SceneSync.OnControlOff(this.gExec); // [Online] Spike E: a paused party scene resumes
                 this._context.usercontrol = (Byte)0;
                 EIcon.SetHereIcon(0);
                 ETb.gMesCount = this.gAnimCount = 0;

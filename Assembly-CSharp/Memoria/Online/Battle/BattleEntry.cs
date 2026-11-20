@@ -302,14 +302,15 @@ namespace Memoria.Online.Battle
         {
             Int32 mine = _myCharacter();
             List<Int32> party = BattleEntryParty.PartyCharacters();
-            if (mine < 0 || !party.Contains(mine))
-            {
-                Log.Message($"[Online] Battle entry: battle {NextBattleId()} with the whole party (this PC plays {(mine < 0 ? "no character" : $"character {mine}, not in the party")})");
-                return;
-            }
+            // [Online] Spike E: a story battle can leave this PC's character out (the festival's Prison Cage takes Clove);
+            // it is still shared with the players whose characters are in it: this PC runs it and commands the free
+            // characters it leads
+            Boolean mineIn = mine >= 0 && party.Contains(mine);
             Current c = new Current { Role = Role.Owner, Seq = ++_seq, Owner = _lobby.LocalId, TriggeredAt = _now };
             UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
-            HashSet<Int32> chars = new HashSet<Int32> { mine };
+            HashSet<Int32> chars = new HashSet<Int32>();
+            if (mineIn)
+                chars.Add(mine);
             Boolean shareable = LocalSettingsSupported;
             if (!shareable)
                 Log.Error($"[Online] Battle entry: ASSERTION: this PC's battle settings (Battle Speed {Configuration.Battle.Speed}, SFXRework {LocalSfx}) can't be shared (needs Speed 0/1, SFXRework 1), although sessions force supported ones; nobody joins this battle");
@@ -333,6 +334,14 @@ namespace Memoria.Online.Battle
                 c.Awaiting.Add(peer);
                 chars.Add(character);
             }
+            if (!mineIn && c.Participants.Count == 0)
+            {
+                _seq--;
+                Log.Message($"[Online] Battle entry: battle {NextBattleId()} with the whole party (this PC plays {(mine < 0 ? "no character" : $"character {mine}, not in the party")}; no other player's character is in it)");
+                return;
+            }
+            if (!mineIn)
+                Log.Message($"[Online] Battle entry: this PC's character ({(mine < 0 ? "none" : mine.ToString())}) sits this battle out; it runs it for the players whose characters are in it");
             // M2: a free character joins when its leader is in the battle (the leader's PC commands it)
             if (FreeCharactersJoinHost)
                 foreach (Int32 character in party)

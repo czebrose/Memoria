@@ -30,12 +30,22 @@ namespace Memoria.Online.Session
     ///   follower; a follower's own player triggers nothing (<see cref="PlayerRequest"/>). So a scene that begins with a
     ///   talk (the festival: Mogwin) starts on every PC from the owner's talk.
     ///
+    /// - **Free walking pauses the scene** (after run 3: the church part of the festival). When the owner's player has
+    ///   control for <see cref="PauseAfterMs"/>, the owner sends Pause: nothing is paced or mirrored, every player plays
+    ///   on their own, field loads aren't held. When a script takes the owner's control away again (DisableMove), the
+    ///   owner sends Resume with the trigger its player started just before (if any): every PC on the owner's field
+    ///   starts a new window numbering (a new "field load index"), and followers start that trigger.
+    ///
+    /// Field loads are matched by their index, not the field: a field reloaded twice in a row (after a battle) is two
+    /// gates (run 3: a Go for the first load released a follower's second).
+    ///
     /// Control messages (reliable): 40 Start, 41 Loaded (follower -> owner), 42 Go, 43 Window, 44 Jump, 45 End,
-    /// 46 Trigger.
+    /// 46 Trigger, 47 Pause, 48 Resume.
     /// </summary>
     public sealed class SceneSync
     {
-        public const Byte MsgStart = 40, MsgLoaded = 41, MsgGo = 42, MsgWindow = 43, MsgJump = 44, MsgEnd = 45, MsgTrigger = 46;
+        public const Byte MsgStart = 40, MsgLoaded = 41, MsgGo = 42, MsgWindow = 43, MsgJump = 44, MsgEnd = 45, MsgTrigger = 46,
+                          MsgPause = 47, MsgResume = 48;
         public const Byte KindInput = 1, KindTimer = 2, KindScript = 3, KindOther = 4, KindRemote = 5;
         private const Double GateTimeoutMs = 10000, FollowerGateTimeoutMs = 20000, StuckInputMs = 30000;
 
@@ -60,8 +70,21 @@ namespace Memoria.Online.Session
         private UInt16 _fieldIndex; // field loads since the scene started (both sides count the same if they follow)
         private Boolean _gated;
         private Double _gateSince, _fieldT0 = -1, _ownerStartAt = -1;
-        private readonly Dictionary<UInt64, Int32> _peerLoaded = new Dictionary<UInt64, Int32>(); // owner: follower -> field it loaded and waits on
-        private Int32 _goField = -1; // follower: the last Go not used yet
+        private readonly Dictionary<UInt64, Int32> _peerLoaded = new Dictionary<UInt64, Int32>(); // owner: follower -> (field << 16 | load index) it loaded and waits on
+        private Int32 _goField = -1, _goIndex = -1; // follower: the last Go not used yet
+
+        // Free walking (pause)
+        private const Double PauseAfterMs = 700, ResumeTriggerWithinMs = 1500;
+        private Boolean _paused;
+        private Double _ownerFreeSince = -1;
+        private Int32 _lastRequestUid = -1, _lastRequestTag;
+        private Double _lastRequestAt = Double.MinValue;
+        private readonly Dictionary<Int32, KeyValuePair<Int32, Double>> _recentRequests = new Dictionary<Int32, KeyValuePair<Int32, Double>>(); // owner, paused: uid -> (tag, when)
+        private Int32 _pauses;
+        public static Boolean Paused => Active && Instance._paused;
+
+        private static Int32 Pack(Int32 field, Int32 index) => (field << 16) | (index & 0xFFFF);
+        private static String Unpack(Int32 v) => $"{v >> 16} #{v & 0xFFFF}";
 
         // Windows
         private sealed class Win
@@ -142,7 +165,12 @@ namespace Memoria.Online.Session
             _owner = owner;
             _fieldIndex = 0;
             _peerLoaded.Clear();
-            _goField = -1;
+            _goField = _goIndex = -1;
+            _paused = false;
+            _ownerFreeSince = -1;
+            _lastRequestUid = -1;
+            _recentRequests.Clear();
+            _pauses = 0;
             _windows = _remoteApplied = _choicesApplied = _timerOrScript = _waitedBehind = _droppedRemote = _stuckReleased = 0;
             _triggersSent = _triggersRun = _triggersBlocked = _diverged = 0;
             _triggers.Clear();
@@ -169,6 +197,7 @@ namespace Memoria.Online.Session
             Log.Message($"[Online] Scene {_sceneId}: END ({why}). {Summary()}");
             _owner = 0;
             _gated = false;
+            _paused = false;
             _battleHold = false;
             _pending.Clear();
             _triggers.Clear();
@@ -177,7 +206,7 @@ namespace Memoria.Online.Session
 
         public String Summary()
         {
-            return $"triggers sent {_triggersSent} / run from owner {_triggersRun} / own ignored {_triggersBlocked}; windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, diverged {_diverged}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
+            return $"pauses (free walking) {_pauses}; triggers sent {_triggersSent} / run from owner {_triggersRun} / own ignored {_triggersBlocked}; windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, diverged {_diverged}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
                    $"timer/script closes {_timerOrScript}, stuck input released {_stuckReleased}; " +
                    $"owner-closed drift ms {Stats(_inputDrifts)}; local-close drift ms {Stats(_localDrifts)}";
         }
@@ -202,7 +231,7 @@ namespace Memoria.Online.Session
             if (!Active)
                 return null;
             SceneSync s = Instance;
-            return $"Party scene {s._sceneId} ({(s.IsOwner ? "owner" : "following " + SteamNative.Tag(s._owner))}): field {s._field} #{s._fieldIndex}{(s._gated ? " HELD" : "")}, " +
+            return $"Party scene {s._sceneId} ({(s.IsOwner ? "owner" : "following " + SteamNative.Tag(s._owner))}): field {s._field} #{s._fieldIndex}{(s._gated ? " HELD" : "")}{(s._paused ? " PAUSED (free walking)" : "")}, " +
                    $"windows {s._seq}, from owner {s._remoteApplied}, pending {s._pending.Count}";
         }
 
@@ -210,7 +239,7 @@ namespace Memoria.Online.Session
 
         public void Update(Boolean playing)
         {
-            GuestGuard.HoldLiveFlags = _owner != 0 && !IsOwner; // a follower's own scripts set the scene's flags
+            GuestGuard.HoldLiveFlags = _owner != 0 && !IsOwner && !_paused; // a follower's own scripts set the scene's flags (not while everyone walks freely)
             if (_owner == 0)
                 return;
             if (!playing)
@@ -238,7 +267,7 @@ namespace Memoria.Online.Session
                     {
                         Boolean all = true;
                         foreach (UInt64 p in _transport.Peers)
-                            if (!_peerLoaded.TryGetValue(p, out Int32 f) || f != _field)
+                            if (!_peerLoaded.TryGetValue(p, out Int32 f) || f != Pack(_field, _fieldIndex))
                                 all = false;
                         if (all || now - _gateSince > GateTimeoutMs)
                             SendGo(all ? "everyone loaded" : $"gate timeout ({GateTimeoutMs / 1000:0} s): {MissingPeers()} not here");
@@ -246,9 +275,10 @@ namespace Memoria.Online.Session
                 }
                 else
                 {
-                    if (_goField == _field)
+                    if (_goField == _field && _goIndex >= _fieldIndex)
                     {
-                        _goField = -1;
+                        AdoptIndex(_goIndex);
+                        _goField = _goIndex = -1;
                         Release("Go");
                     }
                     else if (now - _gateSince > FollowerGateTimeoutMs)
@@ -257,19 +287,130 @@ namespace Memoria.Online.Session
                     }
                 }
             }
-            if (!IsOwner)
+            if (IsOwner)
+                WatchOwnerControl(now);
+            else
             {
                 ApplyTriggers(now);
                 ApplyPending(now);
             }
         }
 
+        /// <summary>Follower: take the owner's load index (they differ only if this PC loaded a field the owner didn't).</summary>
+        private void AdoptIndex(Int32 index)
+        {
+            if (index == _fieldIndex)
+                return;
+            Log.Message($"[Online] Scene {_sceneId}: field load index #{_fieldIndex} -> the owner's #{index}");
+            _fieldIndex = (UInt16)index;
+        }
+
+        // ---- Free walking: pause / resume ------------------------------------------------------------------------
+
+        /// <summary>Owner: its player has control on the field (free to walk), not just a moment between two lines.</summary>
+        private static Boolean OwnerHasControl()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            return engine != null && ui != null && engine.gMode == 1 && engine.fieldmap?.playerController != null && engine.GetUserControl()
+                   && ui.State == UIManager.UIState.FieldHUD && !PersistenSingleton<SceneDirector>.Instance.IsFading;
+        }
+
+        private void WatchOwnerControl(Double now)
+        {
+            if (_gated || _paused || _battleHold)
+            {
+                _ownerFreeSince = -1;
+                return;
+            }
+            if (!OwnerHasControl())
+            {
+                _ownerFreeSince = -1;
+                return;
+            }
+            if (_ownerFreeSince < 0)
+                _ownerFreeSince = now;
+            if (now - _ownerFreeSince < PauseAfterMs)
+                return;
+            _paused = true;
+            _pauses++;
+            ReportOpenWindows();
+            ResetWindows();
+            Byte[] m = new Byte[7];
+            m[0] = MsgPause;
+            W16(m, 1, _sceneId);
+            W16(m, 3, _field);
+            W16(m, 5, _fieldIndex);
+            Broadcast(m);
+            Log.Message($"[Online] Scene {_sceneId}: PAUSE on field {_field} #{_fieldIndex}: the owner's player walks freely; everyone plays on their own until a script takes its control again");
+        }
+
+        /// <summary>[Online] EventEngine DisableMove: a script takes the player's control. Owner, paused: the scene resumes.</summary>
+        public static void OnControlOff(Obj exec)
+        {
+            SceneSync s = Instance;
+            if (s == null || s._owner == 0 || !s.IsOwner || !s._paused)
+                return;
+            s.Resume(exec);
+        }
+
+        private void Resume(Obj exec)
+        {
+            Double now = NowMs;
+            // The trigger that started this: the object whose script takes the control, if this player started it;
+            // else this player's latest trigger (a region whose script runs another object's)
+            if (exec != null && _recentRequests.TryGetValue(exec.uid, out KeyValuePair<Int32, Double> mine) && now - mine.Value <= ResumeTriggerWithinMs)
+            {
+                _lastRequestUid = exec.uid;
+                _lastRequestTag = mine.Key;
+                _lastRequestAt = mine.Value;
+            }
+            _recentRequests.Clear();
+            Boolean withTrigger = _lastRequestUid >= 0 && now - _lastRequestAt <= ResumeTriggerWithinMs;
+            _paused = false;
+            _ownerFreeSince = -1;
+            _fieldIndex++; // a new numbering for this part of the scene, on every PC that follows it
+            ResetWindows();
+            _fieldT0 = now;
+            Byte[] m = new Byte[12];
+            m[0] = MsgResume;
+            W16(m, 1, _sceneId);
+            W16(m, 3, _field);
+            W16(m, 5, _fieldIndex);
+            W16(m, 7, withTrigger ? _lastRequestUid : 0xFFFF);
+            m[9] = (Byte)(withTrigger ? _lastRequestTag : 0);
+            Broadcast(m);
+            if (withTrigger)
+                _triggersSent++;
+            Log.Message($"[Online] Scene {_sceneId}: RESUME on field {_field} #{_fieldIndex} (script uid {exec?.uid ?? -1} took the control): " +
+                        (withTrigger ? $"followers start uid {_lastRequestUid} tag {_lastRequestTag} ({TagName(_lastRequestTag)}, {now - _lastRequestAt:0} ms ago)" : "no trigger of this player's just before (a timer or the field's own script)"));
+            _lastRequestUid = -1;
+        }
+
+        private void OnResume(Byte[] d)
+        {
+            Int32 field = R16(d, 3), index = R16(d, 5), uid = R16(d, 7), tag = d[9];
+            _paused = false;
+            if (field != _field)
+            {
+                Log.Message($"[Online] Scene {_sceneId}: owner resumed on field {field}, this PC is on {_field}: this part plays on the owner's PC only (this PC stays free)");
+                _paused = true;
+                return;
+            }
+            AdoptIndex(index);
+            ResetWindows();
+            _fieldT0 = NowMs;
+            Log.Message($"[Online] Scene {_sceneId}: RESUME on field {field} #{index}{(uid != 0xFFFF ? $": starting the owner's trigger uid {uid} tag {tag} ({TagName(tag)})" : "")}");
+            if (uid != 0xFFFF)
+                _triggers.Add(new Trigger { FieldIndex = index, Uid = uid, Tag = tag, OwnerMs = 0, ArrivedMs = NowMs });
+        }
+
         private String MissingPeers()
         {
             List<String> tags = new List<String>();
             foreach (UInt64 p in _transport.Peers)
-                if (!_peerLoaded.TryGetValue(p, out Int32 f) || f != _field)
-                    tags.Add(SteamNative.Tag(p) + (_peerLoaded.ContainsKey(p) ? $" (on {_peerLoaded[p]})" : ""));
+                if (!_peerLoaded.TryGetValue(p, out Int32 f) || f != Pack(_field, _fieldIndex))
+                    tags.Add(SteamNative.Tag(p) + (_peerLoaded.ContainsKey(p) ? $" (on {Unpack(_peerLoaded[p])})" : ""));
             return String.Join(", ", tags.ToArray());
         }
 
@@ -290,16 +431,22 @@ namespace Memoria.Online.Session
             _battleHold = false;
             ReportOpenWindows();
             ResetWindows();
-            Log.Message($"[Online] Scene {_sceneId}: field load #{_fieldIndex}: {previous} -> {_field}");
+            Log.Message($"[Online] Scene {_sceneId}: field load #{_fieldIndex}: {previous} -> {_field}{(_paused ? " (paused: not held)" : "")}");
+            if (_paused)
+                return; // free walking: each PC goes where it likes; the next Resume lines them up again
             if (!IsOwner)
-            {
-                Byte[] m = new Byte[5];
-                m[0] = MsgLoaded;
-                W16(m, 1, _sceneId);
-                W16(m, 3, _field);
-                _transport.Send(_owner, TransportChannel.Control, m, m.Length, true);
-            }
+                SendLoaded();
             Gate("field load");
+        }
+
+        private void SendLoaded()
+        {
+            Byte[] m = new Byte[7];
+            m[0] = MsgLoaded;
+            W16(m, 1, _sceneId);
+            W16(m, 3, _field);
+            W16(m, 5, _fieldIndex);
+            _transport.Send(_owner, TransportChannel.Control, m, m.Length, true);
         }
 
         private void Gate(String why)
@@ -321,7 +468,7 @@ namespace Memoria.Online.Session
             Double halfRtt = 0;
             foreach (UInt64 p in _transport.Peers)
             {
-                if (_peerLoaded.TryGetValue(p, out Int32 f) && f == _field)
+                if (_peerLoaded.TryGetValue(p, out Int32 f) && f == Pack(_field, _fieldIndex))
                 {
                     _transport.Send(p, TransportChannel.Control, m, m.Length, true);
                     _peerLoaded.Remove(p);
@@ -329,7 +476,7 @@ namespace Memoria.Online.Session
                 }
             }
             _ownerStartAt = NowMs + halfRtt;
-            Log.Message($"[Online] Scene {_sceneId}: Go for field {_field} ({why}); owner starts in {halfRtt:0} ms");
+            Log.Message($"[Online] Scene {_sceneId}: Go for field {_field} #{_fieldIndex} ({why}); owner starts in {halfRtt:0} ms");
         }
 
         private void Release(String why)
@@ -382,8 +529,8 @@ namespace Memoria.Online.Session
                 }
                 return flow; // held (HoldFieldEvents); BattleEntry joins the owner's battle when its Start is in
             }
-            if (s._gated)
-                return flow;
+            if (s._gated || s._paused)
+                return flow; // paused: random encounters and battles follow the usual shared-battle rules
             Byte kind;
             Int32 target = FF9StateSystem.Field.FF9Field.loc.map.nextMapNo; // MAPJUMP and ENCOUNT both set it (EventEngine.FF9ChangeMap)
             if (flow == EventEngine.FLOW_STATE_JUMP_FIELD)
@@ -455,6 +602,20 @@ namespace Memoria.Online.Session
             SceneSync s = Instance;
             if (s == null || s._owner == 0 || s._mirroring || obj == null)
                 return engine.Request(obj, 1, tag, false);
+            if (s._paused)
+            {
+                // Free walking: everyone's own triggers run; the owner's latest one goes out with Resume if it starts the
+                // next part of the scene (a script taking the control)
+                Boolean own = engine.Request(obj, 1, tag, false);
+                if (own && s.IsOwner)
+                {
+                    s._lastRequestUid = obj.uid;
+                    s._lastRequestTag = tag;
+                    s._lastRequestAt = NowMs;
+                    s._recentRequests[obj.uid] = new KeyValuePair<Int32, Double>(tag, NowMs);
+                }
+                return own;
+            }
             if (!s.IsOwner)
             {
                 // Only report a trigger that would have started something (a region asks every frame)
@@ -568,6 +729,8 @@ namespace Memoria.Online.Session
             if (s == null || s._owner == 0 || dialog == null)
                 return;
             s.CheckField();
+            if (s._paused)
+                return; // free walking: windows aren't paced
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             Win w = new Win
             {
@@ -593,7 +756,7 @@ namespace Memoria.Online.Session
         public static Boolean BlockInput(Dialog dialog)
         {
             SceneSync s = Instance;
-            if (s == null || s._owner == 0 || s.IsOwner || s._applying || dialog == null || !dialog.IsETbDialog)
+            if (s == null || s._owner == 0 || s.IsOwner || s._applying || s._paused || dialog == null || !dialog.IsETbDialog)
                 return false;
             if (!s._byDialog.TryGetValue(dialog, out Win w))
                 return false; // opened before the scene: the player closes it
@@ -749,7 +912,7 @@ namespace Memoria.Online.Session
 
         public Boolean OnControlMessage(UInt64 peer, Byte[] d)
         {
-            if (d.Length < 3 || d[0] < MsgStart || d[0] > MsgTrigger)
+            if (d.Length < 3 || d[0] < MsgStart || d[0] > MsgResume)
                 return false;
             UInt16 scene = (UInt16)R16(d, 1);
             switch (d[0])
@@ -768,11 +931,7 @@ namespace Memoria.Online.Session
                     Int32 field = R16(d, 3);
                     Log.Message($"[Online] Scene {_sceneId}: following {SteamNative.Tag(peer)} (its field {field}, here {_field})");
                     // This field is running: hold it, and tell the owner where we are (Go if it's the same field)
-                    Byte[] m = new Byte[5];
-                    m[0] = MsgLoaded;
-                    W16(m, 1, _sceneId);
-                    W16(m, 3, _field);
-                    _transport.Send(_owner, TransportChannel.Control, m, m.Length, true);
+                    SendLoaded();
                     Gate("scene start");
                     return true;
                 }
@@ -786,12 +945,12 @@ namespace Memoria.Online.Session
             switch (d[0])
             {
                 case MsgLoaded:
-                    if (IsOwner && d.Length >= 5)
+                    if (IsOwner && d.Length >= 7)
                     {
-                        Int32 field = R16(d, 3);
-                        _peerLoaded[peer] = field;
-                        Log.Message($"[Online] Scene {_sceneId}: {SteamNative.Tag(peer)} loaded field {field} (here {_field}{(_gated ? ", held" : $", running for {SceneMs:0} ms")})");
-                        if (!_gated && field == _field)
+                        Int32 field = R16(d, 3), index = R16(d, 5);
+                        _peerLoaded[peer] = Pack(field, index);
+                        Log.Message($"[Online] Scene {_sceneId}: {SteamNative.Tag(peer)} loaded field {field} #{index} (here {_field} #{_fieldIndex}{(_gated ? ", held" : _paused ? ", paused" : $", running for {SceneMs:0} ms")})");
+                        if (!_gated && !_paused && field == _field && index == _fieldIndex)
                         {
                             // Late: this field already runs here. Go now; the follower starts behind (logged)
                             Byte[] m = new Byte[7];
@@ -808,19 +967,39 @@ namespace Memoria.Online.Session
                 case MsgGo:
                     if (!IsOwner && d.Length >= 7)
                     {
-                        Int32 field = R16(d, 3);
-                        Log.Message($"[Online] Scene {_sceneId}: Go for field {field} (here {_field}{(_gated ? ", held" : ", not held")})");
-                        _goField = field;
-                        if (_gated && field == _field)
+                        Int32 field = R16(d, 3), index = R16(d, 5);
+                        Log.Message($"[Online] Scene {_sceneId}: Go for field {field} #{index} (here {_field} #{_fieldIndex}{(_gated ? ", held" : ", not held")})");
+                        if (_gated && field == _field && index >= _fieldIndex)
                         {
-                            _goField = -1;
+                            AdoptIndex(index);
+                            _goField = _goIndex = -1;
                             Release("Go");
                         }
+                        else if (index >= _fieldIndex)
+                        {
+                            _goField = field; // for a load this PC hasn't done yet
+                            _goIndex = index;
+                        }
+                        else
+                            Log.Message($"[Online] Scene {_sceneId}: that Go is for an earlier load (#{index}): ignored");
                     }
                     return true;
                 case MsgWindow:
                     if (!IsOwner && d.Length >= 21)
                         OnOwnerWindow(d);
+                    return true;
+                case MsgPause:
+                    if (!IsOwner && d.Length >= 7)
+                    {
+                        _paused = true;
+                        ReportOpenWindows();
+                        ResetWindows();
+                        Log.Message($"[Online] Scene {_sceneId}: PAUSE (the owner walks freely on field {R16(d, 3)}): this player plays on its own");
+                    }
+                    return true;
+                case MsgResume:
+                    if (!IsOwner && d.Length >= 12)
+                        OnResume(d);
                     return true;
                 case MsgTrigger:
                     if (!IsOwner && d.Length >= 12)
