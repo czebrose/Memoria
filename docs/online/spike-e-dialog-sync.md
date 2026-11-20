@@ -191,8 +191,13 @@ it join although it's in a scene, only while it waits there. After 10 s without 
 Also seen:
 - The guest's script changed the party (slot) during the scene; the host rejected it (`only the host can change:
   slot`, a toast on the guest). A party scene needs the owner's party changes to count, not each PC's.
-- On 556 the guest's player entry became Clove (Cast mode), as in the first festival run: bodies are part of the full
-  feature (section 1.5 of the brief), not this spike.
+- **Blank never appeared on the host.** On 574, 576 and 575 (the game's cutscene fields) neither PC has a walking
+  player character, so neither sends a ghost (`NotOnField`): the other player's character is in the scene only if the
+  scene's script puts an entry for it there (the mod's side: an entry bound to the character, `dict[9900][20000 +
+  uid]`, or shown with `30000 + c`). On 556 the guest's own player entry turned from Blank into Clove (Cast mode, as in
+  the first festival run), so its ghost on the host respawned as a **second Clove** (shown, never hidden) instead of
+  Blank. Bodies in a party scene (cast and acting character taken from the owner, a follower's ghost hidden while its
+  player entry is a scene actor) are part of the full feature (brief, section 2.5), not this spike.
 
 ### Run 3
 
