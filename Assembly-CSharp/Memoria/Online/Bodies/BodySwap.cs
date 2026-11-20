@@ -154,6 +154,29 @@ namespace Memoria.Online.Bodies
 
         private static readonly Dictionary<Obj, Entry> Entries = new Dictionary<Obj, Entry>();
         private static readonly HashSet<Int32> HiddenGhostCharacters = new HashSet<Int32>();
+        private static readonly HashSet<UInt64> HiddenGhostPeers = new HashSet<UInt64>();
+        private static readonly Dictionary<UInt64, Int32> LoggedDrawnAs = new Dictionary<UInt64, Int32>();
+
+        /// <summary>
+        /// The character a peer's ghost stands for here: the one it's drawn as. A player whose own player entry acts as
+        /// someone else in a scene (the guest's Blank playing Clove in a Cast scene) sends that body; counting it as the
+        /// played character hid that character's entry and showed the drawn one twice. Unknown or borrowed models: the
+        /// played character.
+        /// </summary>
+        private static Int32 GhostCharacter(UInt64 peer, Int32 played)
+        {
+            Int32 drawn = played;
+            if (Ghosts.GhostManager.TryGetDrawnModel(peer, out UInt16 model))
+            {
+                CharacterBody body = CharacterBodies.ForModel(model);
+                if (body != null)
+                    drawn = body.CharacterId;
+            }
+            if (drawn != played && (!LoggedDrawnAs.TryGetValue(peer, out Int32 logged) || logged != drawn))
+                Log.Message($"[Online] Bodies: {SteamNative.Tag(peer)} plays {NameOf(played)} but is drawn as {NameOf(drawn)} here: counted as {NameOf(drawn)}");
+            LoggedDrawnAs[peer] = drawn;
+            return drawn;
+        }
         private static readonly HashSet<Int32> LoggedUnmapped = new HashSet<Int32>();
         private static FieldMap _fieldMap;
         private static Int32 _lastScriptMode;
@@ -411,12 +434,17 @@ namespace Memoria.Online.Bodies
                     shown.Add(character);
             }
             HiddenGhostCharacters.Clear();
+            HiddenGhostPeers.Clear();
             foreach (KeyValuePair<UInt64, Int32> kv in PeerCharacters)
             {
-                if (shown.Contains(kv.Value) || ReadScriptDictionary(KeyVisibilityBase + kv.Value) == 2)
-                    HiddenGhostCharacters.Add(kv.Value);
+                Int32 character = GhostCharacter(kv.Key, kv.Value); // [Online] Spike E: as drawn, not as played
+                if (shown.Contains(character) || ReadScriptDictionary(KeyVisibilityBase + character) == 2)
+                {
+                    HiddenGhostCharacters.Add(character);
+                    HiddenGhostPeers.Add(kv.Key);
+                }
                 else if (Ghosts.GhostManager.IsPeerOnLocalField(kv.Key))
-                    shown.Add(kv.Value);
+                    shown.Add(character);
             }
             // Extras of one character don't hide each other: a field may keep several (one per scene state) and
             // shows the right one itself
@@ -468,7 +496,7 @@ namespace Memoria.Online.Bodies
         /// <summary>Ghosts: hidden when their character is already shown by an entry, or the script hides it.</summary>
         public static Boolean HidesGhost(UInt64 peer)
         {
-            return PeerCharacters.TryGetValue(peer, out Int32 character) && HiddenGhostCharacters.Contains(character);
+            return HiddenGhostPeers.Contains(peer);
         }
 
         // ---- Modes ---------------------------------------------------------------------------------------------
@@ -531,6 +559,7 @@ namespace Memoria.Online.Bodies
                 return;
             Entries.Clear();
             HiddenGhostCharacters.Clear();
+            HiddenGhostPeers.Clear();
             LoggedUnmapped.Clear();
             _fieldMap = fieldMap;
             Mode = SceneMode.Player;

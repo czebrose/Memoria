@@ -108,6 +108,16 @@ namespace Memoria.Online.Ghosts
             ghost.Push(state, nowMs);
         }
 
+        /// <summary>The model this peer's ghost is drawn with (its player's field leader), if it has a ghost.</summary>
+        public static Boolean TryGetDrawnModel(UInt64 peer, out UInt16 model)
+        {
+            model = 0;
+            if (!Ghosts.TryGetValue(peer, out GhostActor ghost) || ghost.Model == null)
+                return false;
+            model = ghost.Model.Model;
+            return true;
+        }
+
         /// <summary>This peer's player is on the local field (its last state is for this field and recent).</summary>
         public static Boolean IsPeerOnLocalField(UInt64 peer)
         {

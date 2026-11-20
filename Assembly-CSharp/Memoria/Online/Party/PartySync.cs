@@ -403,6 +403,13 @@ namespace Memoria.Online.Party
                 }
                 changes.Add("found", GuestFinds.Take());
             }
+            if (changes != null && GuestGuard.HoldLiveFlags)
+            {
+                // [Online] Spike E: in a party scene this PC runs the owner's scene in step; what its copy of the scripts
+                // changes in the party (members, slots, finds) is the owner's to send, not a request of this guest's
+                Log.Message($"[Online] Party: changed by this PC's copy of a party scene, not sent (the scene owner's game decides): {Describe(changes)}");
+                return;
+            }
             if (changes == null)
                 return;
             Int32 seq = _nextSeq++;
