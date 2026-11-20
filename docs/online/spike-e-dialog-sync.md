@@ -110,9 +110,9 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Test build `24BC10E56C95`: this branch (d531e43e) merged with `online-live-flags` (80428d86; live chest / flag
-sync, its own doc `live-flags.md`) in a detached commit (4a26f8b3, on no branch), so one two-PC sitting tests both.
-Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+Test build `C90366332894`: this branch (3fd5f717) merged with `online-live-flags` (80428d86; live chest / flag
+sync, its own doc `live-flags.md`) in a detached commit (fc340fdc, on no branch), so one two-PC sitting tests both.
+Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run), `24BC10E56C95` (run 2). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
@@ -151,9 +151,52 @@ Host #6647 (Clove), guest #6374 (Blank, then B.Waltz), cargo ship deck 507. Logs
   from outside its own scripts during a scene (live flags, a resync) breaks it.
 - One log defect fixed: DIVERGED was logged on every frame while waiting (17 lines).
 
-### Run 2
+### Run 2 (2026-11-19 22:59-23:02, build `24BC10E56C95`)
 
-*Pending (build `24BC10E56C95`).*
+Host #6647 (Clove), guest #6374 (Blank). The festival from Mogwin (507) to battle 31 on Church Street (556). Logs:
+`Output\logs\*-SpikeE*-2302*` / `*-SpikeE2-20261119-2303*`.
+
+**The cutscenes stayed in step.** Guest's side (the owner's times come in its messages; scene clock = ms since the
+field's Go):
+
+| Field | Windows | Follower close after owner's | Notes |
+|---|---|---|---|
+| 507 (Mogwin) | 4, 3 with choices | +26 to +33 ms | two talks mirrored (started 0 ms after arrival, scene clock +32 ms); choices 0, 4, 4 applied |
+| 574 | 8 | +51 to +69 ms | 2 closed by script on both PCs (+51, +53), 1 by the field change |
+| 576 | 5 | +6 to +8 ms | |
+| 575 | 9 | +13 to +27 ms | 1 closed by script on both |
+| 556 | 1 | +24 ms | |
+
+- **27 windows, no divergence, no follower stuck on input.** RTT 6-14 ms; every owner input was applied 0 ms after it
+  arrived (the follower's window was always already open).
+- **Opens agree too:** follower windows opened -45 to +88 ms from the owner's: the scripts run in step between
+  windows, not only at closes.
+- **Field jumps:** 507→574→576→575→556 came 7-284 ms apart (the larger ones when a window closed by input preceded
+  the jump); each field's gate held 17-51 ms.
+- **Pass criteria:** 10+ windows within ~1 RTT + 1 frame (here up to 69 ms at RTT 7 + 33 ms frame: 2 frames at
+  worst): yes. Choice made on the owner applied on the follower: yes (3). No follower stuck: yes.
+
+**Where it fell apart: battle 31.** Both scripts reached the battle together, the guest's 4 ms first on the scene
+clock. The guest's BattleEntry started its own battle as owner and sent Start; it reached the host 1 ms before the
+host's own script got there, so the host's BattleEntry declined it ("this PC's own battle started while #6374's was
+coming") and ran its own. Two battles 31: the host with Clove, the guest with Clove and Blank. Exactly the design
+brief's double battle; the spike had only logged follower battles so far.
+
+Fixed afterwards (build `C90366332894`, not run yet): a follower's scripted battle doesn't start. The follower holds
+its scripts at the battle (the battle opcode has run, so after the battle the script carries on from there) and
+joins the owner's battle through BattleEntry's participant path when its Start comes; `BattleEntry.CanJoinNow` lets
+it join although it's in a scene, only while it waits there. After 10 s without the owner's battle it fights its own
+(no stuck PC). If the owner's Start comes first, the follower joins when its own script reaches the battle.
+
+Also seen:
+- The guest's script changed the party (slot) during the scene; the host rejected it (`only the host can change:
+  slot`, a toast on the guest). A party scene needs the owner's party changes to count, not each PC's.
+- On 556 the guest's player entry became Clove (Cast mode), as in the first festival run: bodies are part of the full
+  feature (section 1.5 of the brief), not this spike.
+
+### Run 3
+
+*Pending (build `C90366332894`): the festival again, through battle 31 and the scene after it.*
 
 ## 5. Verdict
 
