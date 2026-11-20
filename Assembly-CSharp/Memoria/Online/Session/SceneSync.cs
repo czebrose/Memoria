@@ -91,6 +91,7 @@ namespace Memoria.Online.Session
         [ThreadStatic] public static Boolean InInput;
 
         // Totals for the summary
+        private Int32 _diverged;
         private Int32 _windows, _remoteApplied, _choicesApplied, _timerOrScript, _waitedBehind, _droppedRemote, _stuckReleased;
         private readonly List<Double> _inputDrifts = new List<Double>();
         private readonly List<Double> _localDrifts = new List<Double>();
@@ -141,7 +142,7 @@ namespace Memoria.Online.Session
             _peerLoaded.Clear();
             _goField = -1;
             _windows = _remoteApplied = _choicesApplied = _timerOrScript = _waitedBehind = _droppedRemote = _stuckReleased = 0;
-            _triggersSent = _triggersRun = _triggersBlocked = 0;
+            _triggersSent = _triggersRun = _triggersBlocked = _diverged = 0;
             _triggers.Clear();
             _inputDrifts.Clear();
             _localDrifts.Clear();
@@ -168,11 +169,12 @@ namespace Memoria.Online.Session
             _gated = false;
             _pending.Clear();
             _triggers.Clear();
+            GuestGuard.HoldLiveFlags = false;
         }
 
         public String Summary()
         {
-            return $"triggers sent {_triggersSent} / run from owner {_triggersRun} / own ignored {_triggersBlocked}; windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
+            return $"triggers sent {_triggersSent} / run from owner {_triggersRun} / own ignored {_triggersBlocked}; windows {_windows}, applied from owner {_remoteApplied} (choices {_choicesApplied}, diverged {_diverged}, waited for own script {_waitedBehind}, dropped {_droppedRemote}), " +
                    $"timer/script closes {_timerOrScript}, stuck input released {_stuckReleased}; " +
                    $"owner-closed drift ms {Stats(_inputDrifts)}; local-close drift ms {Stats(_localDrifts)}";
         }
@@ -205,6 +207,7 @@ namespace Memoria.Online.Session
 
         public void Update(Boolean playing)
         {
+            GuestGuard.HoldLiveFlags = _owner != 0 && !IsOwner; // a follower's own scripts set the scene's flags
             if (_owner == 0)
                 return;
             if (!playing)
@@ -544,7 +547,7 @@ namespace Memoria.Online.Session
             if (!s.IsOwner)
                 TakeOwnerTimes(dialog);
             String who = engine?.gCur != null ? $"sid {engine.gCur.sid} uid {engine.gCur.uid} ip {engine.gCur.ip}" : "?";
-            Log.Message($"[Online] Scene {s._sceneId}: OPEN  w{w.Seq} win {winId} text {textId} flags {flags} pages {w.Pages}{(w.Choices ? $" choices {dialog.ChoiceNumber}" : "")} " +
+            Log.Message($"[Online] Scene {s._sceneId}: OPEN  w{w.Seq} win {winId} text {textId} flags {flags} pages {w.Pages}{(w.Choices ? $" choices {dialog.ChoiceNumber} mask {dialog.ChooseMask} default {dialog.SelectChoice}" : "")} " +
                         $"endMode {dialog.EndMode} at scene {w.OpenMs:0} ms ({who}){(s._gated ? " [while HELD]" : "")}");
         }
 
@@ -640,8 +643,6 @@ namespace Memoria.Online.Session
                     _pending.RemoveAt(i--);
                     continue;
                 }
-                if (w.TextId != p.TextId)
-                    Log.Message($"[Online] Scene {_sceneId}: w{p.Seq} DIVERGED: owner text {p.TextId}, here text {w.TextId} (applied anyway)");
                 if (w.Hides > p.Page)
                 {
                     _pending.RemoveAt(i--);
@@ -655,6 +656,11 @@ namespace Memoria.Online.Session
                 Double late = now - p.ArrivedMs;
                 if (late > 50)
                     _waitedBehind++;
+                if (w.TextId != p.TextId)
+                {
+                    _diverged++;
+                    Log.Message($"[Online] Scene {_sceneId}: w{p.Seq} DIVERGED: owner text {p.TextId}, here text {w.TextId} (applied anyway)");
+                }
                 _applying = true;
                 try
                 {

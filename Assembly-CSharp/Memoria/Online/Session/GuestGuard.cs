@@ -33,6 +33,12 @@ namespace Memoria.Online.Session
         /// </summary>
         public static Boolean ActedOnThisField;
 
+        /// <summary>
+        /// This PC runs the field's scripts in step with the host's (a party scene follower): live flags from the host
+        /// wait until it's over, since its own scripts set the same values at their own moment.
+        /// </summary>
+        public static Boolean HoldLiveFlags;
+
         public static void BeginGuestSession()
         {
             if (!IsGuestSession)
