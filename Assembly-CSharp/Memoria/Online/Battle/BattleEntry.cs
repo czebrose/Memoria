@@ -440,7 +440,9 @@ namespace Memoria.Online.Battle
                 Field = (UInt16)ff9.fldMapNo,
                 Speed = LocalSpeed,
                 Sfx = LocalSfx,
-                Music = (Int16)FF9Snd.GetCurrentMusicId(),
+                // A scripted battle's song is playing already (the field script started it); a random encounter's comes
+                // with the swirl, which runs on every PC: only Go carries it
+                Music = FF9StateSystem.Battle.isRandomEncounter ? (Int16)(-1) : (Int16)FF9Snd.GetCurrentMusicId(),
                 Prerolled = true
             };
             foreach (PLAYER p in members)
@@ -521,8 +523,8 @@ namespace Memoria.Online.Battle
                 List<String> diffs = new List<String>();
                 if (FF9StateSystem.Battle.battleMapIndex != d.BattleId) diffs.Add($"battle {FF9StateSystem.Battle.battleMapIndex}");
                 if (btl.btl_scene.PatNum != d.Pattern) diffs.Add($"pattern {btl.btl_scene.PatNum}");
-                if ((Byte)btl.btl_scene.Info.StartType != d.StartType) diffs.Add($"start type {(Byte)btl.btl_scene.Info.StartType}");
-                Log.Message($"[Online] Battle entry: #{c.Seq} battle loaded, {(diffs.Count == 0 ? "scene, pattern and start type same as the owner's" : $"DIFFERS from the owner's: {String.Join(", ", diffs.ToArray())}")}");
+                // (the start type is drawn later, at enemy load: the replay's start compares it)
+                Log.Message($"[Online] Battle entry: #{c.Seq} battle loaded, {(diffs.Count == 0 ? "scene and pattern same as the owner's" : $"DIFFERS from the owner's: {String.Join(", ", diffs.ToArray())}")}");
             }
         }
 

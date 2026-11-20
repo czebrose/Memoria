@@ -32,7 +32,12 @@ namespace Memoria.Online.Battle
             public Boolean Sent;
             public Int16 SentValue, Prev;
             public Single SentRate, SentTime;
+            // the gauge over the last few frames: the rate sent is its recent speed (a gauge that paused during an
+            // animation and runs again would otherwise be sent with its average over the pause: far too slow)
+            public readonly Queue<KeyValuePair<Single, Int16>> Recent = new Queue<KeyValuePair<Single, Int16>>();
         }
+
+        private const Single RateWindow = 0.2f;
 
         private sealed class SentCommand
         {
@@ -101,6 +106,11 @@ namespace Memoria.Online.Battle
                     _atb[btl.btl_id] = t = new AtbTrack { Prev = btl.cur.at };
                 Int16 at = btl.cur.at, max = btl.max.at;
                 Boolean reset = at < t.Prev;
+                if (reset)
+                    t.Recent.Clear();
+                t.Recent.Enqueue(new KeyValuePair<Single, Int16>(now, at));
+                while (t.Recent.Count > 2 && now - t.Recent.Peek().Key > RateWindow)
+                    t.Recent.Dequeue();
                 Single predicted = Mathf.Clamp(t.SentValue + t.SentRate * (now - t.SentTime), 0f, max);
                 Boolean off = Mathf.Abs(at - predicted) > max / 64f + 1f;
                 if (!t.Sent || reset || (off && now - t.SentTime >= AtbMinInterval))
@@ -108,10 +118,10 @@ namespace Memoria.Online.Battle
                     Single rate;
                     if (at >= max)
                         rate = 0f;
-                    else if (reset || !t.Sent || now - t.SentTime < 0.05f)
+                    else if (reset || !t.Sent || now - t.Recent.Peek().Key < 0.05f)
                         rate = t.SentRate; // a refill usually runs at the speed of the last one
                     else
-                        rate = (at - t.SentValue) / (now - t.SentTime);
+                        rate = (at - t.Recent.Peek().Value) / (now - t.Recent.Peek().Key);
                     t.Sent = true;
                     t.SentValue = at;
                     t.SentRate = Mathf.Max(0f, rate);
