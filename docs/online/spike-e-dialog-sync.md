@@ -91,6 +91,11 @@ hooks in `Dialog.cs`, `ETb.NewMesWin`, `HonoluluFieldMain` and `SessionLobby.Mee
   on each PC: the owner's notice is only logged.
 - **Not stuck:** a follower gets its input back on a window if the owner has gone past it without closing it by input,
   or after 30 s.
+- **Triggers are the owner's.** What the owner's player starts by talking, checking or walking into a region (all
+  through `EventCollision` → `EventEngine.Request` at level 1) is sent (object uid, tag) and started the same way on
+  every follower, after setting the follower player's listener for a talk. A follower's own player triggers nothing
+  during the scene. Added after the first try: Ctrl+Shift+2 only switched the pacing on, so the festival (started by
+  talking to Mogwin) ran on the host alone.
 - **Field jumps and battles** a script starts (`Field`, `Battle`, world map) are logged on both PCs with the scene
   clock and the window count, and the owner's are sent, so a follower's log shows how far its script was ahead or
   behind. Nothing is blocked: two battles can still start (the battle owner rules decide, as before).
@@ -101,23 +106,24 @@ hooks in `Dialog.cs`, `ETb.NewMesWin`, `HonoluluFieldMain` and `SessionLobby.Mee
   stats. The status box (Ctrl+Shift+O) has a "Party scene" line; a follower sees "the owner's player advances the
   text".
 
-Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 End.
+Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 End, 46 Trigger.
 
 ## 3. Two-PC test
 
-Test build `73165262932C`: this branch merged with `online-live-flags` (live chest / flag sync, its own doc
-`live-flags.md`) in a detached commit (4c0d7385, on no branch), so one two-PC sitting tests both. The spike alone
-built as `11E582A4A49E`. PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+Test build `B2D31594794A`: this branch (3f34f6f2) merged with `online-live-flags` (live chest / flag sync, its own
+doc `live-flags.md`) in a detached commit (23288849, on no branch), so one two-PC sitting tests both. (The first test
+build, `73165262932C`, had no trigger mirror.) PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
 2. **Host** presses Ctrl+Shift+2 (status box: "Party scene ... owner"; guest: "following").
-3. Play the festival scene as in the earlier run (507 → 574 → 576 → 575 → 556, up to and including battle 31). Only
-   the host presses confirm / picks choices; the guest presses confirm now and then to check it's ignored.
+3. **Only the host** talks to Mogwin to start the festival; the guest just stands there (its talks are ignored now)
+   and the scene should start on both. Play it (507 → 574 → 576 → 575 → 556, up to and including battle 31). Only the
+   host presses confirm / picks choices; the guest presses confirm now and then to check it's ignored.
 4. After the battle (or when the scene is over), the host presses Ctrl+Shift+2 again to end it.
 5. A choice window, if the festival had none: any NPC or Moogle whose first box asks a question. Both PCs on its
-   field; the **guest** starts a scene this time (Ctrl+Shift+2 on the guest). Each player talks to it (each PC's own
-   talk opens its window); the guest picks an option that doesn't open a menu (e.g. "Cancel"); the host's box should
+   field; the **guest** starts a scene this time (Ctrl+Shift+2 on the guest). The guest talks to it (the host's PC
+   follows); the guest picks an option that doesn't open a menu (e.g. "Cancel"); the host's box should
    take the same option. The guest ends the scene with Ctrl+Shift+2.
 6. Send both PCs' `Memoria.log` and `x64\FF9_Data\output_log.txt`.
 
