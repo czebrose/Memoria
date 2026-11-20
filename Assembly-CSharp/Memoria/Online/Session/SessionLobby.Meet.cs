@@ -71,6 +71,7 @@ namespace Memoria.Online.Session
             }
             else
             {
+                ReleaseHeldFlags();
                 GuestMeet(nowMs);
                 GuestFreeze(nowMs);
             }
@@ -191,17 +192,13 @@ namespace Memoria.Online.Session
             {
                 if (peer != _lobby.OwnerId)
                     return true;
-                // Live flags from the host: this guest's own changes so far go out first, then the host's are applied
-                WatchEvents(_lastMeetNowMs, true);
-                Int32 applied = EventWatch.ApplyFromHost(SteamNative.Tag(peer), changes);
-                FlagsApplied += applied;
-                Int32 field = LocalPlayableField(false);
-                if (applied > 0 && field >= 0)
+                if (GuestGuard.HoldLiveFlags)
                 {
-                    // The field shows chests, ice and doors from the flags it loaded with: refresh it soon
-                    _refreshField = field;
-                    _refreshAfter = _lastMeetNowMs + RefreshQuietMs;
+                    // In step with the host's scripts (a party scene): its own scripts set these; apply later what differs
+                    _heldFlags.AddRange(changes);
+                    return true;
                 }
+                ApplyHostFlags(changes);
                 return true;
             }
             WatchEvents(_lastMeetNowMs, true); // the host's own changes so far are logged as the host's
@@ -211,6 +208,34 @@ namespace Memoria.Online.Session
             if (changes.Count > 0 && GhostManager.TryGetLastField(peer, out UInt16 guestField) && guestField != GhostState.NotOnField)
                 RelayFlags(changes, guestField, peer, SteamNative.Tag(peer));
             return true;
+        }
+
+        private readonly List<KeyValuePair<Int32, Byte>> _heldFlags = new List<KeyValuePair<Int32, Byte>>();
+
+        /// <summary>Guest: the host's live flags into this game (its own changes so far go out first); a redraw follows.</summary>
+        private void ApplyHostFlags(List<KeyValuePair<Int32, Byte>> changes)
+        {
+            WatchEvents(_lastMeetNowMs, true);
+            Int32 applied = EventWatch.ApplyFromHost(SteamNative.Tag(_lobby.OwnerId), changes);
+            FlagsApplied += applied;
+            Int32 field = LocalPlayableField(false);
+            if (applied > 0 && field >= 0)
+            {
+                // The field shows chests, ice and doors from the flags it loaded with: refresh it soon
+                _refreshField = field;
+                _refreshAfter = _lastMeetNowMs + RefreshQuietMs;
+            }
+        }
+
+        /// <summary>Guest: live flags held during a party scene go in once it's over (only what still differs).</summary>
+        private void ReleaseHeldFlags()
+        {
+            if (GuestGuard.HoldLiveFlags || _heldFlags.Count == 0)
+                return;
+            List<KeyValuePair<Int32, Byte>> held = new List<KeyValuePair<Int32, Byte>>(_heldFlags);
+            _heldFlags.Clear();
+            Log.Message($"[Online] Event bytes: {held.Count} live change(s) held during a party scene, applying what differs");
+            ApplyHostFlags(held);
         }
 
         // Guest: live flags arrived for this field; once nothing new has come for a moment and this player has control,
@@ -486,6 +511,7 @@ namespace Memoria.Online.Session
         {
             _metField = -1;
             _refreshField = -1;
+            _heldFlags.Clear();
             _restoreSpot = null;
             _meetRequests.Clear();
             EventWatch.Reset();
