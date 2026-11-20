@@ -110,10 +110,10 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Test build `3668A0466608`: this branch (fa427638) merged with `online-live-flags` (80428d86; live chest / flag
-sync, its own doc `live-flags.md`) in a detached commit (bc657658, on no branch), so one two-PC sitting tests both.
+Test build `6ED920B4FD90`: this branch (77736328) merged with `online-live-flags` (80428d86; live chest / flag
+sync, its own doc `live-flags.md`) in a detached commit (6b0e6b5b, on no branch), so one two-PC sitting tests both.
 Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run), `24BC10E56C95` (run 2),
-`C90366332894` (battle join, not run). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+`C90366332894` (battle join, not run), `3668A0466608` (run 3). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
@@ -249,6 +249,30 @@ by a redraw (keep-spot meeting resync); the 8 changes held during the festival w
 on the host in the church (talk icon of an object whose talk function is shorter than the check reads), and the
 `HonoluluBattleMain.UpdateAttachModel` NRE in `SmoothFrameUpdater_Battle` on both PCs (once each, in a battle). The mod's
 `CoopFootsteps` NRE at session start on the guest (known, handoff exists).
+
+**Battle menu stuck after Sleep (not a scene problem; reported by Cordell).** Ice Cavern battle 22, the guest commanding
+B.Waltz: the enemy put him to Sleep three times (frames 85, 1010, 1324 of the battle log), each time woken. The guest's
+log has three "P1's turn: menu opens here" and not one command request; the host cancelled two of those turns when
+Sleep hit again, and the guest fled. Battle 27 right after (no Sleep) worked. Likely in how the passive battle's HUD
+handles a status applied from the owner's stream (its "can't act" list or its current player); to be investigated
+separately with a one-PC record/replay of battle 22.
+
+Fixed after run 3 (build `6ED920B4FD90`):
+1. **Loaded / Go carry the field load index**, so two loads of one field are two gates; a follower whose count
+   differs takes the owner's at the next Go.
+2. **Free walking pauses the scene.** Once the owner's player has had control for 0.7 s, the owner sends Pause:
+   nothing is paced or mirrored, field loads aren't held, triggers and windows are each player's own, live flags and
+   party changes go as usual. When a script takes the owner's control again (DisableMove), the owner sends Resume with
+   the trigger its player started just before (the object whose script took control, else its latest), and every PC
+   on its field starts a new window numbering and that trigger. A follower on another field stays free (logged).
+3. **Story battles without the owner's character are shared** (`BattleEntry.BeginOwned`): if another player's
+   character is in the battle party, the owner runs it for them and commands the free characters it leads.
+
+### Run 4
+
+*Pending (build `6ED920B4FD90`): the festival again, with the church part (walk, pick up the item, talk to start the
+next part) and the Prison Cage battle. Look for `PAUSE` / `RESUME` lines, no `DIVERGED`, no gate timeouts, and one
+shared battle 302.*
 
 ## 5. Verdict
 
