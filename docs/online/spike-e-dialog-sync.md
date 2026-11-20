@@ -209,11 +209,46 @@ Also fixed after run 2 (build `3668A0466608`):
 - **A follower doesn't send its scene's party changes** (members, slots, finds) to the host: `Party: changed by this
   PC's copy of a party scene, not sent`. The owner's game decides; no "didn't accept" toast.
 
-### Run 3
+### Run 3 (2026-11-19 23:24-23:54, build `3668A0466608`)
 
-*Pending (build `3668A0466608`): the festival again, through battle 31 and the scene after it. Check on the host that
-Blank leaps in on Church Street and there's no second Clove; on the guest, that it joins the host's battle 31
-(`holding here to join the owner's battle`, then `joining #tag's battle 31`) and gets no "didn't accept" toast.*
+Host #6647 (Clove), guest #6374 (Blank). The whole festival (507 → 574 → 576 → 575 → 556 → battle 31 → 557 → battle
+32 → the church → Prison Cage → 556 → battle 302 → 507), then the Ice Cavern with four short party scenes (fields
+303, 306, 308). Logs: `Output\logs\*-SpikeE3-20261119-2354.*`. Step 6 (a guest-led choice) wasn't run.
+
+**From Mogwin to the end of battle 32: everything in step.**
+- 24 windows, follower closes **+3 to +72 ms** after the owner's (RTT 5-14 ms); one choice (4) applied; no divergence.
+- **Battle 31 and battle 32 were each one shared battle.** The guest's script reached each battle within 1-70 ms of
+  the host's, held, and joined the host's battle 14-35 ms after its Start; in battle 32 the guest commanded Blank
+  from its own menu (4 commands). Both ended in victory on both PCs.
+- No "didn't accept" toast: the guest's scene party changes were logged, not sent (`other: slot`, `item 60 +1`).
+
+**In the church (557) after battle 32, it fell apart, for two reasons:**
+1. **Go matched by field, not by field load (bug).** After battle 32 the field reloaded twice in a row (557 → 557).
+   The guest's Loaded for the second load arrived while the host still ran the first, so the host answered with a
+   "late Go" for field 557, which the guest used for its second load. The host's second gate then never got a Loaded
+   and waited its 10 s timeout: **the guest ran 10 s ahead.** Its first window stayed open 11 s waiting for the host.
+2. **Free walking inside the scene.** The church part gives the player control (walk to Blank, pick up an item, talk).
+   The scene was still on, so: the host's walking fired **94 region triggers** on the guest (every region the host's
+   player crossed ran on the guest, where the guest's player wasn't); the guest's own walking did nothing (611 ignored
+   triggers). The host got an item from a talk (window 5, text 61) that never opened on the guest. From then on the
+   window numbers were one apart (w5 DIVERGED: host text 61, guest text 715), the guest reached battle 302 7 s before
+   the host and stopped waiting at 10 s.
+3. **Battle 302 wasn't shared** (not a scene problem): the Prison Cage takes Clove, so the host's own character wasn't
+   in the battle party, and BattleEntry shares a battle only from a PC whose character is in it ("battle 302 with the
+   whole party (this PC plays character 2, not in the party)"). Each PC fought its own 302 (the guest's took 3.5 min).
+   The rematch on 556 (Blank, Duskly, Vayle) was shared again, with the guest as participant.
+
+The two PCs met up again at 556 (field loads matched again), and the rest of the festival stayed in step.
+
+**Ice Cavern.** Party scenes at 303, 306 and 308 (the host pressed Ctrl+Shift+2 on each). Field 306: 9 windows, guest
++10 to +17 ms. The others had no windows but mirrored 217 and 38 region triggers (the host walking). Random battles 22
+and 27 were shared as usual. Live flags: ice and chest bytes ([908], [432]) applied live on the guest, each followed
+by a redraw (keep-spot meeting resync); the 8 changes held during the festival were applied when it ended.
+
+**Errors (both pre-existing, not from the spike):** an `IndexOutOfRangeException` in `EventEngine.IsActuallyTalkable`
+on the host in the church (talk icon of an object whose talk function is shorter than the check reads), and the
+`HonoluluBattleMain.UpdateAttachModel` NRE in `SmoothFrameUpdater_Battle` on both PCs (once each, in a battle). The mod's
+`CoopFootsteps` NRE at session start on the guest (known, handoff exists).
 
 ## 5. Verdict
 
