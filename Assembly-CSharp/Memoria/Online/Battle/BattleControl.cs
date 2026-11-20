@@ -289,7 +289,7 @@ namespace Memoria.Online.Battle
             UInt16 unit = d[o++];
             Int32 count = d[o++];
             List<Call> calls = new List<Call>();
-            for (Int32 i = 0; i < count && o + 13 <= d.Length; i++)
+            for (Int32 i = 0; i < count && o + 12 <= d.Length; i++) // 12 bytes per call
             {
                 Call c = new Call { Slot = d[o++] };
                 c.Cmd = (BattleCommandId)(d[o] | (d[o + 1] << 8)); o += 2;
@@ -315,10 +315,10 @@ namespace Memoria.Online.Battle
                 reason = RejectNotReady;
                 why = "its turn is over (status, KO or the battle phase)";
             }
-            else if (calls.Count == 0 || calls.Count > 2)
+            else if (calls.Count == 0 || calls.Count > 2 || calls.Count != count)
             {
                 reason = RejectBadCommand;
-                why = $"{calls.Count} command(s)";
+                why = $"{calls.Count} command(s) read of {count}, {d.Length} bytes";
             }
             else
             {
