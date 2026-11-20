@@ -110,9 +110,10 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Test build `C90366332894`: this branch (3fd5f717) merged with `online-live-flags` (80428d86; live chest / flag
-sync, its own doc `live-flags.md`) in a detached commit (fc340fdc, on no branch), so one two-PC sitting tests both.
-Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run), `24BC10E56C95` (run 2). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
+Test build `3668A0466608`: this branch (fa427638) merged with `online-live-flags` (80428d86; live chest / flag
+sync, its own doc `live-flags.md`) in a detached commit (bc657658, on no branch), so one two-PC sitting tests both.
+Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run), `24BC10E56C95` (run 2),
+`C90366332894` (battle join, not run). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
 
 1. Both PCs: Continue the mod's save on the cargo ship (field 507), host + guest in a session, both on 507.
@@ -199,9 +200,20 @@ Also seen:
   a ghost whose player entry acts as someone else mustn't count as its own character, and a party scene's mode and
   acting character come from the owner. On 574/576/575 nobody walks (no ghosts), and both PCs showed the same.
 
+Also fixed after run 2 (build `3668A0466608`):
+- **A ghost counts as the character it's drawn as** (`BodySwap.GhostCharacter`: the model it's drawn with, through
+  `CharacterBodies`), and ghosts are hidden per player. On Church Street the guest's ghost (drawn as Clove) is then
+  hidden by the host's Clove, and the scene's Blank (entry 11) shows. Log: `Bodies: #tag plays Blank but is drawn as
+  Clove here`. The mod's Cast line (handoff) makes this scene right without it; this covers scenes the mod hasn't
+  marked.
+- **A follower doesn't send its scene's party changes** (members, slots, finds) to the host: `Party: changed by this
+  PC's copy of a party scene, not sent`. The owner's game decides; no "didn't accept" toast.
+
 ### Run 3
 
-*Pending (build `C90366332894`): the festival again, through battle 31 and the scene after it.*
+*Pending (build `3668A0466608`): the festival again, through battle 31 and the scene after it. Check on the host that
+Blank leaps in on Church Street and there's no second Clove; on the guest, that it joins the host's battle 31
+(`holding here to join the owner's battle`, then `joining #tag's battle 31`) and gets no "didn't accept" toast.*
 
 ## 5. Verdict
 
