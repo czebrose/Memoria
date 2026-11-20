@@ -110,8 +110,10 @@ Control messages (reliable): 40 Start, 41 Loaded, 42 Go, 43 Window, 44 Jump, 45 
 
 ## 3. Two-PC test
 
-Test build `6ED920B4FD90`: this branch (77736328) merged with `online-live-flags` (80428d86; live chest / flag
-sync, its own doc `live-flags.md`) in a detached commit (6b0e6b5b, on no branch), so one two-PC sitting tests both.
+Test build `759B6E7C38E0`: this branch (77736328) merged with `online-live-flags` (80428d86; live chest / flag
+sync, its own doc `live-flags.md`) and `online-sleep-menu` (d04c9577; a guest's battle menu stuck after Sleep, its own
+doc `sleep-menu-fix.md`) in detached commits (latest a43bf3a3, on no branch), so one two-PC sitting tests all three.
+Build `6ED920B4FD90` was the same without the sleep fix.
 Earlier builds: `73165262932C` (run 1, no trigger mirror), `B2D31594794A` (not run), `24BC10E56C95` (run 2),
 `C90366332894` (battle join, not run), `3668A0466608` (run 3). PC2: `Output\OnlineSpikeE-PC2.zip` with `INSTALL-FOR-AGENT.md`. In a party scene, live flags
 from the host can reach a follower before its own script sets them; the logs show these as `applied live` lines.
@@ -255,7 +257,9 @@ B.Waltz: the enemy put him to Sleep three times (frames 85, 1010, 1324 of the ba
 log has three "P1's turn: menu opens here" and not one command request; the host cancelled two of those turns when
 Sleep hit again, and the guest fled. Battle 27 right after (no Sleep) worked. Likely in how the passive battle's HUD
 handles a status applied from the owner's stream (its "can't act" list or its current player); to be investigated
-separately with a one-PC record/replay of battle 22.
+separately with a one-PC record/replay of battle 22. Found and fixed on `online-sleep-menu`: the owner's TurnReady
+comes in the frame Sleep is cured, while the guest's HUD still counts the unit asleep, and `AddPlayerToReady` drops
+it silently; the guest now offers the turn again every frame (`sleep-menu-fix.md`).
 
 Fixed after run 3 (build `6ED920B4FD90`):
 1. **Loaded / Go carry the field load index**, so two loads of one field are two gates; a follower whose count
@@ -270,7 +274,7 @@ Fixed after run 3 (build `6ED920B4FD90`):
 
 ### Run 4
 
-*Pending (build `6ED920B4FD90`): the festival again, with the church part (walk, pick up the item, talk to start the
+*Pending (build `759B6E7C38E0`): the festival again, with the church part (walk, pick up the item, talk to start the
 next part) and the Prison Cage battle. Look for `PAUSE` / `RESUME` lines, no `DIVERGED`, no gate timeouts, and one
 shared battle 302.*
 
