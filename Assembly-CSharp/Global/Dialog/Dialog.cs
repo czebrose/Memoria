@@ -596,6 +596,7 @@ public class Dialog : MonoBehaviour
 
     public void Hide()
     {
+        Memoria.Online.Session.SceneSync.OnHide(this, !(this.subPage.Count > this.currentPage)); // [Online] Spike E: party scene window pacing
         this.dialogHideTime = RealTime.time;
         base.StopAllCoroutines();
         this.phraseLabel.ReleaseAllIcons();
@@ -730,6 +731,21 @@ public class Dialog : MonoBehaviour
 
     public void OnKeyConfirm(GameObject go)
     {
+        if (Memoria.Online.Session.SceneSync.BlockInput(this)) // [Online] Spike E: a party scene follower's windows are paced by the owner
+            return;
+        Memoria.Online.Session.SceneSync.InInput = true; // [Online] Spike E: a Hide from here is the player's
+        try
+        {
+            this.OnKeyConfirmInner(go);
+        }
+        finally
+        {
+            Memoria.Online.Session.SceneSync.InInput = false;
+        }
+    }
+
+    private void OnKeyConfirmInner(GameObject go) // [Online] Spike E: the original OnKeyConfirm
+    {
         if (FF9StateSystem.Common.FF9.fldMapNo == 2951 || FF9StateSystem.Common.FF9.fldMapNo == 2952)
         {
             // Chocobo's Lagoon & Air Garden
@@ -786,6 +802,8 @@ public class Dialog : MonoBehaviour
 
     public void OnKeyCancel(GameObject go)
     {
+        if (Memoria.Online.Session.SceneSync.BlockInput(this)) // [Online] Spike E
+            return;
         if (this.HasChoices && this.cancelChoice >= 0)
         {
             if (this.currentState == Dialog.State.CompleteAnimation)
@@ -804,6 +822,8 @@ public class Dialog : MonoBehaviour
 
     public void OnItemSelect(GameObject go)
     {
+        if (Memoria.Online.Session.SceneSync.BlockInput(this)) // [Online] Spike E
+            return;
         if (this.currentState == Dialog.State.CompleteAnimation)
         {
             this.SelectChoice = this.choiceList.IndexOf(go);
@@ -1508,6 +1528,19 @@ public class Dialog : MonoBehaviour
                 ButtonGroupState.ActiveGroup = Dialog.DialogGroupButton;
                 this.isMuteSelectSound = false;
             }
+        }
+    }
+
+    /// <summary>[Online] Spike E: pages of this window (text split by [PAGE]).</summary>
+    public Int32 SubPageCount => this.subPage.Count;
+
+    /// <summary>[Online] Spike E: show the rest of the text at once, as a confirm during typing does.</summary>
+    public void FinishTextForSync()
+    {
+        if (this.currentState == Dialog.State.TextAnimation)
+        {
+            this.CurrentParser.AdvanceProgressToMax();
+            this.AfterSentenseShown();
         }
     }
 

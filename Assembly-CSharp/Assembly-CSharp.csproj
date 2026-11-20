@@ -396,6 +396,7 @@
     <Compile Include="Memoria\Online\Session\SessionSettings.Configuration.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Meet.cs" />
     <Compile Include="Memoria\Online\Session\EventWatch.cs" />
+    <Compile Include="Memoria\Online\Session\SceneSync.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />

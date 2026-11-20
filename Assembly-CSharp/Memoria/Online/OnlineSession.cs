@@ -85,6 +85,7 @@ namespace Memoria.Online
         private SessionLobby _session; // Step 2: title-screen lobby, character pick, start
         private PartySync _party; // Step 2 / M4: host-authoritative party state
         private BattleEntry _battle; // Spike D: shared battle entry and exit
+        private SceneSync _scene; // Spike E: party scene dialog pacing (debug)
         private Byte[] _snapshot;
         private String _snapshotSource;
         private JSONClass _verifyTree;
@@ -142,6 +143,7 @@ namespace Memoria.Online
                         HandleMessage(msg, now);
                     _session.Update(now);
                     _battle.Update(now);
+                    _scene.Update(_session.Phase == SessionPhase.Playing);
                 }
                 UpdateBodyRoles();
                 BodySwap.Update();
@@ -251,6 +253,7 @@ namespace Memoria.Online
             _blobs.Completed += _party.OnBlob;
             _battle = new BattleEntry(_transport, _lobby, _blobs, () => _session.Phase == SessionPhase.Playing, () => _session.MyCharacter, CharacterOfPeer, IsPlayed, c => _session.ControllerOf(c));
             _blobs.Completed += _battle.OnBlob;
+            _scene = new SceneSync(_transport, _lobby, peer => _peers.TryGetValue(peer, out PeerStats ps) ? (ps.LastRtt >= 0 ? ps.LastRtt : ps.AvgRtt) : -1);
             _init = InitState.Ready;
             Log.Message($"[Online] Ready. Ctrl+Shift+H host, I invite, J join, L leave, O status{(_debug ? "; debug: G shadow ghost, P pause feed, K net sim, M model, N interpolation, D delay" : "")}");
 
@@ -414,6 +417,10 @@ namespace Memoria.Online
             {
                 BattleEntry.StartAtTrigger = !BattleEntry.StartAtTrigger; // Step 3: measure trigger-to-Go both ways
                 Log.Message($"[Online] Battle entry: BattleStart goes {(BattleEntry.StartAtTrigger ? "at the trigger (pattern and start type rolled there)" : "after the owner's battle init (spike D)")}");
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha2) && _scene != null && _session != null && _session.Phase == SessionPhase.Playing)
+            {
+                _scene.ToggleDebug(); // Spike E: start / end a party scene owned by this PC
             }
             else if (Input.GetKeyDown(KeyCode.Alpha1)) // not V: the game opens its menu on V
             {
@@ -650,6 +657,8 @@ namespace Memoria.Online
                         break;
                     if (_battle != null && _battle.OnControlMessage(msg.Peer, d))
                         break;
+                    if (_scene != null && _scene.OnControlMessage(msg.Peer, d))
+                        break;
                     if (d.Length == 13 && d[0] == MsgPing)
                     {
                         d[0] = MsgPong;
@@ -814,7 +823,8 @@ namespace Memoria.Online
             String notice = GuestGuard.Frozen ? GuestGuard.FrozenMessage : null;
             String toast = PartySync.CurrentToast;
             Single noticeY = Screen.height * 0.75f;
-            foreach (String line in new[] { notice, BattleEntry.Notice, BattleControl.Notice, SessionSettings.Notice, toast })
+            String sceneNotice = SceneSync.Following ? "Party scene: the owner's player advances the text" : null; // Spike E
+            foreach (String line in new[] { notice, sceneNotice, BattleEntry.Notice, BattleControl.Notice, SessionSettings.Notice, toast })
             {
                 if (line == null)
                     continue;
@@ -859,6 +869,7 @@ namespace Memoria.Online
                 text.Append($"\n{_party?.Describe()}  Y resync guests (host)");
                 if (_battle != null)
                     text.Append($"\n{_battle.Describe()}");
+                text.Append($"\n{SceneSync.StatusLine() ?? "Party scene: none (2: start one, owned by this PC)"}");
                 text.Append($"\n{BodySwap.Describe()}\n  C pretend to play another party member (reloads the field), F7 Player/Cast, F8 acting character");
                 text.Append($"\nSnapshot: {(_snapshot != null ? $"{_snapshot.Length / 1024.0:0.0} KB, {_snapshotSource}" : "none")}{(_blobs.IsSending ? " (sending...)" : "")}  S capture, T latest slot (title), R load, B send");
             }

@@ -143,6 +143,7 @@ public static class ETb
 
         if (dialog == null)
             return;
+        Memoria.Online.Session.SceneSync.OnWindowOpen(dialog, mes, winID, flags); // [Online] Spike E: party scene window pacing
         if ((flags & ETb.WindowNotFollowActor) > 0)
             dialog.FocusToActor = false;
         if (ETb.isMessageDebug)

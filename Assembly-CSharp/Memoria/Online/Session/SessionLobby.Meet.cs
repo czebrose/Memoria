@@ -64,14 +64,17 @@ namespace Memoria.Online.Session
             }
             TrackActed(nowMs);
             WatchEvents(nowMs, false);
+            Boolean meet = !SceneSync.Active; // Spike E: no meeting resync (a whole-game reload) in the middle of a party scene; it happens after
             if (IsHost)
             {
-                HostMeet();
+                if (meet)
+                    HostMeet();
                 HostPublishState(nowMs);
             }
             else
             {
-                GuestMeet(nowMs);
+                if (meet)
+                    GuestMeet(nowMs);
                 GuestFreeze(nowMs);
             }
         }
