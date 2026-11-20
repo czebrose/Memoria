@@ -83,6 +83,10 @@ namespace Memoria.Online.Battle
         private static readonly HashSet<UInt16> _mine = new HashSet<UInt16>();
         private static readonly Dictionary<UInt16, List<Call>> _captured = new Dictionary<UInt16, List<Call>>();
         private static readonly Dictionary<UInt16, Pending> _pending = new Dictionary<UInt16, Pending>();
+        // Turns the owner gave this PC that its menu hasn't taken yet: BattleHUD.AddPlayerToReady refuses a unit it
+        // still counts as unable to act (its "unconscious" list is updated once per HUD frame), and the owner's
+        // TurnReady often comes in the very frame a status like Sleep goes. Retried every frame (Flush).
+        private static readonly Dictionary<UInt16, Double> _wantTurn = new Dictionary<UInt16, Double>();
         private static UInt16 _reqSeq;
         private static Boolean _runHeld, _runHeldSent;
         private static Single _runTimer;
@@ -113,6 +117,7 @@ namespace Memoria.Online.Battle
             _mine.Clear();
             _captured.Clear();
             _pending.Clear();
+            _wantTurn.Clear();
             _runHeld = _runHeldSent = false;
             _runTimer = 0f;
             _fleeFor = 0;
@@ -552,15 +557,18 @@ namespace Memoria.Online.Battle
             if (ready)
             {
                 hud.InputFinishList.Remove(index);
-                if (!hud.ReadyQueue.Contains(index))
-                    hud.AddPlayerToReady(index);
                 BTL_DATA btl = BattleSync.FindBtl(unit);
                 if (btl != null)
                     btl.sel_mode = 0;
-                BattleSync.Note($"Control: {BattleSync.UnitName(unit)}'s turn: menu opens here");
+                _wantTurn[unit] = Now;
+                if (TryOpenTurn(unit, index))
+                    BattleSync.Note($"Control: {BattleSync.UnitName(unit)}'s turn: menu opens here");
+                else
+                    BattleSync.Note($"Control: {BattleSync.UnitName(unit)}'s turn came, but the menu here still counts it unable to act (a status the owner just removed?): it opens as soon as it can");
             }
             else
             {
+                _wantTurn.Remove(unit);
                 _pending.Remove(unit);
                 _captured.Remove(unit);
                 if (hud.CurrentPlayerIndex == index)
@@ -568,6 +576,41 @@ namespace Memoria.Online.Battle
                 hud.RemovePlayerFromAction(unit, true);
                 BattleSync.Note($"Control: {BattleSync.UnitName(unit)}'s turn was taken away (status, KO...)");
             }
+        }
+
+        /// <summary>Puts a unit whose turn came into the menu's ready queue; false if the menu refuses it for now.</summary>
+        private static Boolean TryOpenTurn(UInt16 unit, Int32 index)
+        {
+            BattleHUD hud = UIManager.Battle;
+            if (hud.ReadyQueue.Contains(index))
+                return true;
+            hud.AddPlayerToReady(index);
+            return hud.ReadyQueue.Contains(index);
+        }
+
+        /// <summary>Per frame: turns the menu refused (see <see cref="_wantTurn"/>) are offered again.</summary>
+        private static void RetryTurns()
+        {
+            if (_wantTurn.Count == 0)
+                return;
+            List<UInt16> opened = null;
+            foreach (KeyValuePair<UInt16, Double> kv in _wantTurn)
+            {
+                Int32 index = PlayerIndex(kv.Key);
+                if (index < 0 || UIManager.Battle.InputFinishList.Contains(index))
+                    continue;
+                if (UIManager.Battle.ReadyQueue.Contains(index))
+                    continue;
+                if (!TryOpenTurn(kv.Key, index))
+                    continue;
+                if (opened == null)
+                    opened = new List<UInt16>();
+                opened.Add(kv.Key);
+            }
+            if (opened == null)
+                return;
+            foreach (UInt16 unit in opened)
+                BattleSync.Note($"Control: {BattleSync.UnitName(unit)}'s turn: menu opens here now ({Now - _wantTurn[unit]:0} ms after the turn came)");
         }
 
         /// <summary>[Online] btl_cmd.SetCommand, passive: this PC's menu chose a command for one of its units. True = it
@@ -584,6 +627,7 @@ namespace Memoria.Online.Battle
                 BattleSync.Note($"Control: a local command {commandId} for {BattleSync.UnitName(btl.btl_id)}, not this PC's unit: dropped");
                 return true;
             }
+            _wantTurn.Remove(btl.btl_id); // the menu took this turn
             Int32 slot = btl.cmd.IndexOf(cmd);
             if (!_captured.TryGetValue(btl.btl_id, out List<Call> calls))
                 _captured[btl.btl_id] = calls = new List<Call>();
@@ -596,6 +640,7 @@ namespace Memoria.Online.Battle
         {
             if (_role != Role.Passive)
                 return;
+            RetryTurns();
             if (_captured.Count > 0)
             {
                 foreach (KeyValuePair<UInt16, List<Call>> kv in _captured)
