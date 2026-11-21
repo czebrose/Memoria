@@ -76,7 +76,14 @@ namespace Memoria.Online.Battle
         {
             if (_stream == null || !_started || Aborted || _ended || _done)
                 return 0;
-            if (_stream.OwnerFrame - _runFrame > BattleStreamIn.Margin + 30)
+            Int32 behind = _stream.OwnerFrame - _runFrame;
+            if (behind > BattleStreamIn.Margin + 150)
+            {
+                // Late join (docs/online/battle-late-join.md): the whole battle so far is replayed, at 4x until close
+                CaughtUpFrames += 3;
+                return 3;
+            }
+            if (behind > BattleStreamIn.Margin + 30)
             {
                 CaughtUpFrames++;
                 return 1;
