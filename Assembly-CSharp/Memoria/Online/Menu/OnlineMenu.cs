@@ -112,6 +112,7 @@ namespace Memoria.Online.Menus
             _rowTemplate.name = "Online Row Template";
             _rowTemplate.transform.parent = menu.transform;
             Object.DestroyImmediate(_rowTemplate.GetComponentsInChildren<UILocalize>(true).FirstOrDefault());
+            DetachOutsideAnchors(_rowTemplate);
 
             _frameTemplate = menu.GenericInfoPanel.transform.Find("Frame Background").gameObject;
             _infoTemplate = menu.LocationInfoPanel.GetChild(0);
@@ -127,6 +128,7 @@ namespace Memoria.Online.Menus
                 labelGo.name = "Online Owner";
                 labelGo.transform.parent = huds[i].Content.transform;
                 labelGo.transform.localScale = Vector3.one;
+                labelGo.transform.localPosition = Vector3.zero;
                 UILabel label = labelGo.GetComponent<UILabel>();
                 label.leftAnchor.target = null;
                 label.rightAnchor.target = null;
@@ -640,6 +642,7 @@ namespace Memoria.Online.Menus
 
             GameObject frameGo = Object.Instantiate(_frameTemplate);
             frameGo.name = "Frame Background";
+            DetachOutsideAnchors(frameGo); // the frame is anchored to the Time & Gil panel it was copied from
             frameGo.transform.parent = root.transform;
             frameGo.transform.localScale = Vector3.one;
             frameGo.transform.localPosition = Vector3.zero;
@@ -652,6 +655,7 @@ namespace Memoria.Online.Menus
             infoGo.name = "Info";
             infoGo.transform.parent = root.transform;
             infoGo.transform.localScale = Vector3.one;
+            infoGo.transform.localPosition = Vector3.zero;
             window.Info = infoGo.GetComponent<UILabel>();
             window.Info.leftAnchor.target = null;
             window.Info.rightAnchor.target = null;
@@ -706,6 +710,7 @@ namespace Memoria.Online.Menus
                 go.name = $"Row {i} {row.Text}";
                 go.transform.parent = window.Root.transform;
                 go.transform.localScale = Vector3.one;
+                go.transform.localPosition = Vector3.zero; // re-parenting keeps the world position (an odd z)
                 ButtonGroupState button = go.GetComponent<ButtonGroupState>();
                 button.GroupName = window.Group;
                 button.Help = new ButtonGroupState.HelpDetail { Enable = !String.IsNullOrEmpty(row.Help), TextKey = String.Empty, Text = row.Help ?? String.Empty, Tail = true };
@@ -842,6 +847,30 @@ namespace Memoria.Online.Menus
             if (localize != null)
                 Object.DestroyImmediate(localize);
             label.rawText = text;
+        }
+
+        /// <summary>
+        /// A copied widget keeps its anchors, and an anchor to something outside the copy still points at the
+        /// original (Unity only remaps references inside the copy): the main menu's window frames are anchored to
+        /// their panel, so a copied frame would snap back onto the Time &amp; Gil window every frame while its text
+        /// stays where we put it. Drops those anchors; anchors within the copy (border to frame, ...) stay.
+        /// </summary>
+        internal static void DetachOutsideAnchors(GameObject copy)
+        {
+            foreach (UIRect rect in copy.GetComponentsInChildren<UIRect>(true))
+            {
+                Boolean changed = false;
+                foreach (UIRect.AnchorPoint anchor in new[] { rect.leftAnchor, rect.rightAnchor, rect.topAnchor, rect.bottomAnchor })
+                {
+                    if (anchor.target != null && !anchor.target.IsChildOf(copy.transform))
+                    {
+                        anchor.target = null;
+                        changed = true;
+                    }
+                }
+                if (changed)
+                    rect.ResetAnchors();
+            }
         }
 
         private static Int32 MemberCharacter(Int32 member)

@@ -84,6 +84,7 @@ namespace Memoria.Online.Menus
             _root.AddComponent<UIPanel>().depth = depth + 1;
 
             GameObject frameGo = Object.Instantiate(frameTemplate.gameObject);
+            OnlineMenu.DetachOutsideAnchors(frameGo); // anchored to the Time & Gil panel it was copied from
             frameGo.transform.parent = _root.transform;
             frameGo.transform.localScale = Vector3.one;
             frameGo.transform.localPosition = Vector3.zero;
@@ -96,6 +97,7 @@ namespace Memoria.Online.Menus
             GameObject labelGo = Object.Instantiate(menu.LocationInfoPanel.GetChild(0));
             labelGo.transform.parent = _root.transform;
             labelGo.transform.localScale = Vector3.one;
+            labelGo.transform.localPosition = Vector3.zero;
             _label = labelGo.GetComponent<UILabel>();
             _label.leftAnchor.target = null;
             _label.rightAnchor.target = null;
