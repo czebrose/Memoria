@@ -123,6 +123,7 @@ namespace Memoria.Online
                     TryInitialize();
                 Double now = NowMs;
                 HandleHotkeys(now);
+                Menus.OnlineNotice.Update(); // party-control news on the field (swap offers)
 
                 if (_init == InitState.Ready)
                 {
@@ -185,7 +186,7 @@ namespace Memoria.Online
             if (_session.MyCharacter != _lastMyCharacter)
             {
                 if (_lastMyCharacter != Int32.MinValue)
-                    PartySync.Toast(_session.MyCharacter >= 0 ? $"You now play {CharacterBodies.ForCharacter(_session.MyCharacter)?.Name ?? $"character {_session.MyCharacter}"}" : "You're watching (no character)");
+                    Menus.OnlineNotice.Flash(_session.MyCharacter >= 0 ? $"You now play {CharacterBodies.ForCharacter(_session.MyCharacter)?.Name ?? $"character {_session.MyCharacter}"}." : "You're watching (no character).");
                 Log.Message($"[Online] Control: this PC plays {(_session.MyCharacter >= 0 ? $"character {_session.MyCharacter}" : "nobody (watching)")}");
                 _lastMyCharacter = _session.MyCharacter;
             }
@@ -233,6 +234,8 @@ namespace Memoria.Online
         private void TryInitialize()
         {
             _debug = Configuration.Debug.OnlineDebug;
+            if (_debug && GetComponent<Menus.MenuTour>() == null && Menus.MenuTour.Requested)
+                gameObject.AddComponent<Menus.MenuTour>(); // the Online menu's test driver
             if (!SteamSdkWrapper.IsInitialized)
                 return;
             if (!SteamNative.TryLoad())
@@ -272,6 +275,16 @@ namespace Memoria.Online
             Log.Message($"[Online] +connect_lobby on the command line: {(connectLobby ? "yes, joining" : "no")}");
         }
 
+        /// <summary>MenuTour (debug): hosts a lobby, as Ctrl+Shift+H does. False until Steam is ready.</summary>
+        internal Boolean TourCreateLobby()
+        {
+            if (_init != InitState.Ready)
+                return false;
+            if (_lobby.State == SteamLobby.LobbyState.None)
+                _lobby.Create();
+            return true;
+        }
+
         private void HandleHotkeys(Double now)
         {
             Boolean ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
@@ -285,7 +298,8 @@ namespace Memoria.Online
             }
             if (_session != null)
             {
-                // M4, playing: F1-F4 Take / Swap / Release party slot 1-4, F5 accept a swap offer, F6 decline
+                // Playing: party control is in the main menu's Online entry (Menu/OnlineMenu.cs). Debug shortcuts:
+                // F1-F4 Take / Swap / Release party slot 1-4, F9-F12 Follow (next player), F5 accept a swap offer, F6 decline
                 if (_session.Phase == SessionPhase.Playing)
                 {
                     if (Input.GetKeyDown(KeyCode.J) && !_lobby.IsHost)
@@ -293,16 +307,19 @@ namespace Memoria.Online
                         _session.JoinHost(); // M5 (in game, J isn't "join a lobby")
                         return;
                     }
-                    for (Int32 i = 0; i < 4; i++)
-                        if (Input.GetKeyDown(KeyCode.F1 + i))
-                            _session.ControlSlot(i);
-                    for (Int32 i = 0; i < 4; i++)
-                        if (Input.GetKeyDown(KeyCode.F9 + i))
-                            _session.CycleFollow(i); // M2: a free character follows the next player
-                    if (Input.GetKeyDown(KeyCode.F5))
-                        _session.AnswerOffer(true);
-                    else if (Input.GetKeyDown(KeyCode.F6))
-                        _session.AnswerOffer(false);
+                    if (_debug)
+                    {
+                        for (Int32 i = 0; i < 4; i++)
+                            if (Input.GetKeyDown(KeyCode.F1 + i))
+                                _session.ControlSlot(i);
+                        for (Int32 i = 0; i < 4; i++)
+                            if (Input.GetKeyDown(KeyCode.F9 + i))
+                                _session.CycleFollow(i); // M2: a free character follows the next player
+                        if (Input.GetKeyDown(KeyCode.F5))
+                            _session.AnswerOffer(true);
+                        else if (Input.GetKeyDown(KeyCode.F6))
+                            _session.AnswerOffer(false);
+                    }
                 }
                 // Step 2 lobby (title screen): F1 release, F2-F4 pick party slot 2-4, F5 next game (host), F6 start (host)
                 else if (Input.GetKeyDown(KeyCode.F1))
@@ -833,7 +850,7 @@ namespace Memoria.Online
                 GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, noticeY, messageSize.x + 16, messageSize.y + 8), message, _style);
                 noticeY += messageSize.y + 14;
             }
-            if (!_showStatus)
+            if (!_showStatus || Menus.OnlineMenu.Active) // the Online menu covers the party panels: the status box steps aside
                 return;
             StringBuilder text = new StringBuilder();
             if (_init == InitState.NoSteam)
@@ -877,7 +894,6 @@ namespace Memoria.Online
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
             _session?.OnGUI();
-            _session?.OnControlGUI();
         }
 
         private Boolean IsConnected(UInt64 peer)

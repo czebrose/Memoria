@@ -19,6 +19,7 @@ namespace Memoria.Online.Session
     /// The host always plays one character. Party members nobody plays are driven by the host's game.
     /// If the story removes a played character from the party: the first free character, else (a guest) watching.
     /// If a guest leaves the lobby: their character is free again (the host's game keeps driving it).
+    /// Players use these through the field main menu's Online entry (Menu/OnlineMenu.cs, via SessionLobby.Menu.cs).
     ///
     /// Data (Steam lobby, polled like the lobby's):
     ///   lobby data (host):  "assign"    "characterId:accountId|..." (guests; as in the lobby)
@@ -438,78 +439,6 @@ namespace Memoria.Online.Session
             _lastCtl.Clear();
             _seenInParty.Clear();
             _publishedHostPlays = _publishedOffers = null;
-        }
-
-        // ---- Panel (in game) -------------------------------------------------------------------------------------
-
-        private GUIStyle _controlStyle;
-
-        /// <summary>
-        /// Debug-styled "Party control" panel, top right, while playing (shown with the status box, Ctrl+Shift+O).
-        /// Buttons work with the mouse; Ctrl+Shift+F1-F4 act on party slot 1-4, F5 accepts an offer, F6 declines.
-        /// </summary>
-        public void OnControlGUI()
-        {
-            if (Phase != SessionPhase.Playing)
-                return;
-            if (_controlStyle == null)
-            {
-                _controlStyle = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 15, wordWrap = false, padding = new RectOffset(10, 10, 8, 8) };
-                _controlStyle.normal.textColor = Color.white;
-            }
-            List<Int32> party = CurrentParty();
-            Offer offer = OfferTo(_lobby.LocalId);
-            Single width = 520f, line = 24f;
-            Single x = Screen.width - width - 16f, y = 16f;
-            Int32 rows = 2 + Math.Max(1, party.Count) + (offer != null ? 2 : 0) + 1 + (IsHost ? 0 : 1);
-            GUI.Box(new Rect(x, y, width, rows * line + 20f), "", _controlStyle);
-            Single cx = x + 12f, cy = y + 8f;
-            Int32 mine = CharacterOf(_lobby.LocalId);
-            GUI.Label(new Rect(cx, cy, width, line), $"Party control — you play {(mine >= 0 ? NameOf(mine) : "nobody (watching)")}");
-            cy += line + 2f;
-            for (Int32 i = 0; i < party.Count; i++)
-            {
-                Int32 c = party[i];
-                UInt64 holder = HolderOf(c);
-                UInt64 leader = holder == 0 ? LeaderOf(c) : 0;
-                String owner = holder == 0 ? $"free, follows {(leader == _lobby.LocalId ? "you" : SteamNative.GetName(leader) + (leader == _lobby.OwnerId ? " (host)" : ""))}" : holder == _lobby.LocalId ? "you" : SteamNative.GetName(holder) + (holder == _lobby.OwnerId ? " (host)" : "");
-                GUI.Label(new Rect(cx + 6f, cy, 300f, line), $"{i + 1}. {NameOf(c)}: {owner}");
-                String action = holder == _lobby.LocalId ? (IsHost ? null : "Release") : holder == 0 ? "Take" : (mine >= 0 ? "Swap" : null);
-                Boolean pending = holder != 0 && holder != _lobby.LocalId && _offers.Exists(o => o.From == _lobby.LocalId && o.To == holder);
-                if (pending)
-                    GUI.Label(new Rect(cx + 320f, cy, 180f, line), "offer sent...");
-                else if (action != null && GUI.Button(new Rect(cx + 320f, cy, holder == 0 ? 80f : 170f, line - 2f), holder == 0 ? $"Take F{i + 1}" : $"{action} (F{i + 1})"))
-                    ControlSlot(i);
-                if (holder == 0 && GUI.Button(new Rect(cx + 405f, cy, 85f, line - 2f), $"Follow F{i + 9}"))
-                    CycleFollow(i);
-                cy += line;
-            }
-            if (party.Count == 0)
-            {
-                GUI.Label(new Rect(cx + 6f, cy, width, line), "(no party)");
-                cy += line;
-            }
-            if (offer != null)
-            {
-                cy += 2f;
-                Int32 theirs = CharacterOf(offer.From);
-                GUI.Label(new Rect(cx, cy, width, line), $"{SteamNative.GetName(offer.From)} offers {NameOf(theirs)} for your {NameOf(mine)}");
-                cy += line;
-                if (GUI.Button(new Rect(cx, cy, 160f, line - 2f), "Accept (F5)"))
-                    AnswerOffer(true);
-                if (GUI.Button(new Rect(cx + 170f, cy, 160f, line - 2f), "Decline (F6)"))
-                    AnswerOffer(false);
-                cy += line;
-            }
-            if (!IsHost)
-            {
-                cy += 2f;
-                GUI.Label(new Rect(cx, cy, 300f, line), WithHost ? "On the host's field" : "Exploring on your own");
-                if (GUI.Button(new Rect(cx + 320f, cy, 170f, line - 2f), "Join host (J)"))
-                    JoinHost();
-                cy += line;
-            }
-            GUI.Label(new Rect(cx, cy + 2f, width, line), "Ctrl+Shift+F1-F4: Take / Swap / Release; F9-F12: Follow (next player)");
         }
     }
 }

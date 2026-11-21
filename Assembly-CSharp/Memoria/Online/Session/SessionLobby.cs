@@ -116,6 +116,7 @@ namespace Memoria.Online.Session
             _transport = transport;
             _blobs = blobs;
             _isConnected = isConnected;
+            Current = this; // the Online menu (SessionLobby.Menu.cs)
         }
 
         public Boolean IsHost => _lobby.IsHost;

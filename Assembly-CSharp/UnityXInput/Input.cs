@@ -334,17 +334,36 @@ namespace UnityXInput
 
         public static Boolean GetKeyUp(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKeyUp(keyName);
+            return UnityEngine.Input.GetKeyUp(keyName) || IsInjected(keyName, 3, 3);
         }
 
         public static Boolean GetKeyDown(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKeyDown(keyName);
+            return UnityEngine.Input.GetKeyDown(keyName) || IsInjected(keyName, 0, 0);
         }
 
         public static Boolean GetKey(KeyCode keyName)
         {
-            return UnityEngine.Input.GetKey(keyName);
+            return UnityEngine.Input.GetKey(keyName) || IsInjected(keyName, 0, 2);
+        }
+
+        // [Online] Debug test driver (Memoria.Online.Menus.MenuTour, OnlineDebug only): one key pressed by code, as if
+        // from the keyboard: down on the next frame, held 3 frames, up on the 4th. Nothing is injected otherwise.
+        private static KeyCode _injectedKey = KeyCode.None;
+        private static Int32 _injectedFrame = -1;
+
+        public static void InjectKeyPress(KeyCode key)
+        {
+            _injectedKey = key;
+            _injectedFrame = UnityEngine.Time.frameCount + 1;
+        }
+
+        private static Boolean IsInjected(KeyCode key, Int32 from, Int32 to)
+        {
+            if (_injectedKey == KeyCode.None || key != _injectedKey)
+                return false;
+            Int32 frame = UnityEngine.Time.frameCount - _injectedFrame;
+            return frame >= from && frame <= to;
         }
 
         public static Boolean GetMouseButtonUp(Int32 index)
