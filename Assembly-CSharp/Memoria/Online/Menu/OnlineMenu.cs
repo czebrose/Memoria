@@ -568,7 +568,7 @@ namespace Memoria.Online.Menus
                 else
                 {
                     UInt64 leader = control.LeaderOf(character);
-                    _owners[i].rawText = $"Free, follows {(leader == control.Me ? "you" : control.PlayerName(leader))}";
+                    _owners[i].rawText = $"Follows {(leader == control.Me ? "you" : control.PlayerName(leader))}";
                     _owners[i].color = FF9TextTool.Cyan;
                     help = $"Nobody plays {name}: they follow {PlayerLabel(control, leader)} into battle.";
                 }
@@ -666,6 +666,7 @@ namespace Memoria.Online.Menus
             window.Info.overflowMethod = UILabel.Overflow.ShrinkContent;
             window.Info.fontSize = 30;
             NGUITools.SetLayer(root, _menu.gameObject.layer);
+            ApplyWindowColor(root);
             return window;
         }
 
@@ -692,7 +693,9 @@ namespace Memoria.Online.Menus
             window.Rows.Clear();
 
             Int32 width = window.Width;
-            Int32 infoHeight = String.IsNullOrEmpty(info) ? 0 : 96;
+            // About 24 characters per line at this size; one, two or three lines
+            Int32 infoLines = String.IsNullOrEmpty(info) ? 0 : Math.Min(3, (info.Length + 23) / 24);
+            Int32 infoHeight = infoLines == 0 ? 0 : 14 + 42 * infoLines;
             Int32 height = CaptionSpace + infoHeight + rows.Count * RowHeight + BottomSpace;
             SizeFrame(window.Frame, width, height, caption);
             Single top = height / 2f - CaptionSpace;
@@ -855,6 +858,14 @@ namespace Memoria.Online.Menus
         /// their panel, so a copied frame would snap back onto the Time &amp; Gil window every frame while its text
         /// stays where we put it. Drops those anchors; anchors within the copy (border to frame, ...) stay.
         /// </summary>
+        /// <summary>The player's window colour (Config), as UIScene.DisplayWindowBackground gives a scene's windows.</summary>
+        internal static void ApplyWindowColor(GameObject go)
+        {
+            foreach (UISprite sprite in go.GetComponentsInChildren<UISprite>(true))
+                if (sprite.gameObject.tag == "Window Color" && sprite.atlas != FF9UIDataTool.GeneralAtlas && sprite.atlas != FF9UIDataTool.IconAtlas)
+                    sprite.atlas = FF9UIDataTool.WindowAtlas;
+        }
+
         internal static void DetachOutsideAnchors(GameObject copy)
         {
             foreach (UIRect rect in copy.GetComponentsInChildren<UIRect>(true))

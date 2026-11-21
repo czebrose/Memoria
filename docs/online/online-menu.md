@@ -32,7 +32,7 @@ stones:
 |---|---|
 | **You** (yellow) | you play this character |
 | a player's name, "(host)" for the host | that player plays it |
-| **Free, follows ...** (blue) | nobody plays it: the host's game drives it, and it joins the named player's battles, commanded from that player's PC |
+| **Follows ...** (blue) | nobody plays it: the host's game drives it, and it joins the named player's battles, commanded from that player's PC |
 
 The help window (Select) on a character says the same in a sentence and mentions an open swap offer.
 
@@ -96,7 +96,7 @@ Host on PC 1, a guest on PC 2, a party of at least three; both in the same field
 2. **Navigation:** keyboard and controller: up / down wrap through the submenu and every Online window, confirm and
    cancel sound like the rest of the menu, Select shows help on every row and character. Mouse clicks work too.
 3. **Party view:** host and guest each see **You** on their own character, the other's name (host marked) on the
-   other's, and **Free, follows ...** on the rest. Leaving the Online entry brings the magic stones back.
+   other's, and **Follows ...** (blue) on the rest. Leaving the Online entry brings the magic stones back.
 4. **Take (guest):** guest takes a free character. Both PCs' labels update; the guest's field body changes; the
    notice says "You now play ...". The guest's old character shows as free.
 5. **Take (host):** the host takes a free character; the host's old one becomes free.
