@@ -25,7 +25,8 @@ hash of its stock launcher, and its default `Memoria.ini`.
 
 ```
 MemoriaOnline-<branch>-<build>\
-  Install.bat, Uninstall.bat, Install.ps1   installer (sources: tools\multiplayer\installer\)
+  Install.bat, Uninstall.bat, Install.ps1   Windows installer (sources: tools\multiplayer\installer\)
+  Install.sh, Uninstall.sh, install_linux.py   Linux installer (LF, executable bit set in the zip)
   README.txt                                for the person installing (what, how, how to undo)
   manifest.txt                              build, branch, commit, hashes
   files.sha256                              SHA-256 of every file under game\
@@ -68,6 +69,32 @@ Licence: Memoria is MIT, so the stock patcher can be redistributed as long as th
 `Uninstall.bat` (`Install.ps1 -Uninstall`) restores the newest backup for that game folder that hasn't been restored
 yet: it copies the saved files back, deletes the files in `created.txt` and marks the backup `restored.txt`, so running it
 again goes one install further back. `-BackupPath <folder>` picks a backup by hand. Backups are never deleted.
+
+## Linux (Install.sh)
+
+Added for v0.1.1 (2026-11-21), for Steam with Proton on Fedora and its spins (Bazzite, Nobara, Silverblue...).
+`Install.sh` opens a terminal if started from a file manager (konsole, ptyxis, gnome-terminal, kgx, xfce4-terminal,
+xterm), then runs `install_linux.py` with python3 (3.6+, no other packages). It does the same steps as `Install.ps1`,
+with these differences:
+- **Finding the game:** `--game-path`, else `steamapps/common/FINAL FANTASY IX` under `~/.local/share/Steam`,
+  `~/.steam/steam`, `~/.steam/root` and Flatpak Steam (`~/.var/app/com.valvesoftware.Steam/...`), and every library in
+  their `libraryfolders.vdf`.
+- **No Wine needed for base Memoria:** the patcher is a Windows program, so the script reads its payload itself (same
+  format as `package.ps1` reads) and writes the files as the patcher does: it deletes `CommonAsset\` first, renames an
+  existing `.exe`/`.dll` to `.bak` once, writes `{PLATFORM}` files into `x64` only, and keeps the file times. An existing
+  `Memoria.ini` / `Settings.ini` is left alone (the Windows flow restores them byte for byte anyway). No Steam overlay
+  fix handling (a Windows registry setting): the launcher always goes to `FF9_Launcher.exe`.
+- **Case:** Linux paths are case-sensitive, so each path is matched to existing files and folders without regard to case.
+- **Running check:** `/proc/*/cmdline` for `FF9.exe`, `FF9_Launcher.exe`, `Memoria.Launcher.exe`, `Memoria.Patcher.exe`.
+- **No admin step:** if the game folder isn't writable it stops.
+- Backups go to the XDG documents folder (`~/Documents/FF9-OnlineCoop-Backups/<date-time>/`), same layout.
+- Options: `--game-path`, `--uninstall`, `--backup-path`, `--online-debug`, `--force-patcher`, `--no-pause`.
+  `Uninstall.sh` = `Install.sh --uninstall`.
+
+Tested on Windows only, with Python 3.13 on a fake game folder laid out as under Linux Steam: found automatically; fresh
+install wrote the 1416 base files, and the 1410 that aren't ours or ini files are byte-identical to the Windows patcher's
+install; reinstall saw the same base and kept `Memoria.ini`; two uninstalls brought the folder back to its start. **Not
+yet run on a Linux PC or with Proton.**
 
 The PC2 install note (`INSTALL-FOR-AGENT.md`) is no longer needed for installing. Test notes (what to check in
 `Memoria.log`, hotkeys) can go with a test build as a separate test sheet.

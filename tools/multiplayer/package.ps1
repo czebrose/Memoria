@@ -140,6 +140,10 @@ foreach ($bat in 'Install.bat', 'Uninstall.bat') {   # cmd wants CRLF
     $text = [IO.File]::ReadAllText((Join-Path $installer $bat)) -replace "`r?`n", "`r`n"
     [IO.File]::WriteAllText((Join-Path $stage $bat), $text)
 }
+foreach ($sh in 'Install.sh', 'Uninstall.sh', 'install_linux.py') {   # Linux: LF only, no BOM
+    $text = [IO.File]::ReadAllText((Join-Path $installer $sh)) -replace "`r`n", "`n"
+    [IO.File]::WriteAllText((Join-Path $stage $sh), $text, (New-Object Text.UTF8Encoding($false)))
+}
 $readme = [IO.File]::ReadAllText((Join-Path $installer 'README.txt'))
 $readme = $readme.Replace('{{BUILD}}', $build).Replace('{{BRANCH}}', $branch).Replace('{{COMMIT}}', $commit).Replace('{{BUILT}}', $builtUtc).Replace('{{ACS}}', $acsSha).Replace('{{BASEVERSION}}', $BaseVersion)
 [IO.File]::WriteAllText((Join-Path $stage 'README.txt'), ($readme -replace "`r?`n", "`r`n"))
@@ -149,6 +153,18 @@ Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $stage
 $zip = Join-Path $out "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+Add-Type -AssemblyName System.IO.Compression
+# Entry by entry, so the Linux scripts keep their executable bit (Unix mode in the high 16 bits of the external
+# attributes, which unzip and Linux file managers apply)
+$archive = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    $parent = Split-Path $stage
+    foreach ($file in Get-ChildItem -LiteralPath $stage -Recurse -File) {
+        $entryName = $file.FullName.Substring($parent.Length + 1) -replace '\\', '/'
+        $entry = [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entryName, [IO.Compression.CompressionLevel]::Optimal)
+        $mode = if ($file.Extension -in '.sh', '.py') { 0x81ED } else { 0x81A4 }   # 0100755 / 0100644
+        $entry.ExternalAttributes = $mode -shl 16
+    }
+} finally { $archive.Dispose() }
 Get-Item $zip | Select-Object FullName, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
 Write-Host "Build $build ($branch $commit); Assembly-CSharp.dll $acsSha"
