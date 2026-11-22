@@ -123,6 +123,7 @@ namespace Memoria.Online.Battle
             public Boolean HistoryOverflow;
             public readonly Dictionary<UInt64, Double> LateJoiners = new Dictionary<UInt64, Double>(); // owner: accepted, not Ready yet (since)
             public readonly List<UInt64> UnitJoinsDue = new List<UInt64>(); // owner: late joiners in, whose character isn't added yet
+            public UInt16 Place;                     // owner: its field at the trigger, or WorldMapField (the battle's "field")
             public Double NextOpen;
             public Boolean Late;                     // participant: joined a battle that was already running
             public Boolean CaughtUpLogged;
@@ -208,6 +209,67 @@ namespace Memoria.Online.Battle
 
         /// <summary>[Online] HonoluluFieldMain, after ServiceEvents: notes the owner's battle, or starts a participant's.</summary>
         public static Int32 OnFieldFlow(Int32 codeFlowState) => Guard(() => Instance?.FieldFlow(codeFlowState) ?? codeFlowState, codeFlowState);
+
+        /// <summary>[Online] WMScriptDirector, after the world map's frame: notes the owner's world map battle, or starts
+        /// a participant's (docs/online/world-map.md, "Shared battles").</summary>
+        public static Int32 OnWorldFlow(Int32 codeFlowState) => Guard(() => Instance?.WorldFlow(codeFlowState) ?? codeFlowState, codeFlowState);
+
+        // ---- World map battles ---------------------------------------------------------------------------------
+
+        /// <summary>The "field" of a battle started on the world map (Pending, Start, BattleOpen).</summary>
+        public const UInt16 WorldMapField = 0xFFFE;
+        /// <summary>A world map battle pulls in the players on the world map this near the player who started it
+        /// (Unity units, flat distance; about two ship lengths). Debug-tunable.</summary>
+        public static Single WorldBattleRange = 16f;
+        /// <summary>World map battles are shared. Debug toggle (Ctrl+Shift+9).</summary>
+        public static Boolean WorldBattles = true;
+
+        private static Boolean OnWorldMap
+        {
+            get
+            {
+                EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+                return engine != null && engine.gMode == 3 && PersistenSingleton<FF9StateSystem>.Instance.mode == 3;
+            }
+        }
+
+        /// <summary>Where this PC is, as a battle's "field": its field, or <see cref="WorldMapField"/>.</summary>
+        private static UInt16 LocalPlace => OnWorldMap ? WorldMapField : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+
+        /// <summary>Owner on the world map: whether a player is near enough to be pulled into this PC's battle, and how far.</summary>
+        private static Boolean NearOnWorldMap(UInt64 peer, out Single distance)
+        {
+            distance = -1f;
+            WMActor me = ff9.w_moveActorPtr;
+            if (me == null || me.World == null || !World.WorldGhosts.TryGetState(peer, OnlineSession.NowMs, out World.WorldGhostState s))
+                return false;
+            if (s.Mode != World.WorldMode.Foot && s.Mode != World.WorldMode.Chocobo)
+                return false; // flying, riding as a passenger, hidden: no battles there
+            UnityEngine.Vector3 d = s.Position - me.RealPosition;
+            d.y = 0f;
+            distance = d.magnitude;
+            return distance <= WorldBattleRange;
+        }
+
+        private Int32 WorldFlow(Int32 codeFlowState)
+        {
+            if (!Online)
+                return codeFlowState;
+            if (codeFlowState == EventEngine.FLOW_STATE_JUMP_BATTLE)
+            {
+                if (_incoming != null)
+                {
+                    Log.Message($"[Online] Battle entry: this PC's own world map battle started while {SteamNative.Tag(_incoming.Owner)}'s was coming; declining theirs");
+                    SendTo(_incoming.Owner, BattleEntryMessages.Short(BattleEntryMessages.Decline, _incoming.Seq, 2));
+                    _incoming = null;
+                }
+                BeginOwned();
+                return codeFlowState;
+            }
+            if (codeFlowState <= EventEngine.FLOW_STATE_WAIT && _incoming?.Start != null && CanJoinNow(out String _))
+                return JoinBattle();
+            return codeFlowState;
+        }
 
         /// <summary>[Online] HonoluluBattleMain.Start, before InitBattleScene.</summary>
         public static void BeforeBattleInit() => Guard(() => { Instance?.BattleInitStart(); return 0; }, 0);
@@ -370,8 +432,9 @@ namespace Memoria.Online.Battle
             // it is still shared with the players whose characters are in it: this PC runs it and commands the free
             // characters it leads
             Boolean mineIn = mine >= 0 && party.Contains(mine);
-            Current c = new Current { Role = Role.Owner, Seq = ++_seq, Owner = _lobby.LocalId, TriggeredAt = _now };
-            UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            UInt16 field = LocalPlace;
+            Current c = new Current { Role = Role.Owner, Seq = ++_seq, Owner = _lobby.LocalId, TriggeredAt = _now, Place = field };
+            Boolean world = field == WorldMapField;
             HashSet<Int32> chars = new HashSet<Int32>();
             if (mineIn)
                 chars.Add(mine);
@@ -382,7 +445,21 @@ namespace Memoria.Online.Battle
             {
                 if (!shareable)
                     break;
-                if (!_presence.TryGetValue(peer, out PeerPresence p) || _now - p.At > PresenceStaleMs || p.Field != field || p.State == Busy.Battle || p.State == Busy.WorldMap)
+                if (!_presence.TryGetValue(peer, out PeerPresence p) || _now - p.At > PresenceStaleMs)
+                    continue;
+                if (world)
+                {
+                    // World map: the players on the world map near this one (on foot or on a chocobo)
+                    if (!WorldBattles || p.State != Busy.WorldMap)
+                        continue;
+                    if (!NearOnWorldMap(peer, out Single distance))
+                    {
+                        if (distance >= 0f)
+                            Log.Message($"[Online] Battle entry: {SteamNative.Tag(peer)} is on the world map {distance:0.0} away (over {WorldBattleRange:0.0}): not in this battle");
+                        continue;
+                    }
+                }
+                else if (p.Field != field || p.State == Busy.Battle || p.State == Busy.WorldMap)
                     continue;
                 Int32 character = _characterOf(peer);
                 if (character < 0 || !party.Contains(character))
@@ -446,10 +523,10 @@ namespace Memoria.Online.Battle
                 else
                     Log.Warning($"[Online] Battle entry: #{c.Seq} can't roll the battle at the trigger ({why}); Start goes after this PC's battle init");
             }
-            Log.Message($"[Online] Battle entry: battle {battleId} #{c.Seq} on field {field} ({(FF9StateSystem.Battle.isRandomEncounter ? "random encounter" : "scripted")}); this PC owns it; participants: {(who.Count > 0 ? String.Join(", ", who.ToArray()) : "none")}; battle party {String.Join(" ", c.Characters.ConvertAll(x => x.ToString()).ToArray())}");
+            Log.Message($"[Online] Battle entry: battle {battleId} #{c.Seq} {(world ? "on the world map" : $"on field {field}")} ({(FF9StateSystem.Battle.isRandomEncounter ? "random encounter" : world ? "world map encounter" : "scripted")}); this PC owns it; participants: {(who.Count > 0 ? String.Join(", ", who.ToArray()) : "none")}; battle party {String.Join(" ", c.Characters.ConvertAll(x => x.ToString()).ToArray())}");
         }
 
-        private static Int32 NextBattleId() => FF9StateSystem.Field.FF9Field.loc.map.nextMapNo;
+        private static Int32 NextBattleId() => OnWorldMap ? FF9StateSystem.World.FF9World.map.nextMapNo : FF9StateSystem.Field.FF9Field.loc.map.nextMapNo;
 
         private static Boolean BattlePhaseRunning()
         {
@@ -522,12 +599,13 @@ namespace Memoria.Online.Battle
                 Flags = (Byte)((FF9StateSystem.Battle.isRandomEncounter ? BattleStartData.FlagRandomEncounter : 0)
                                | (ff9.steiner_state != 0 ? BattleStartData.FlagSteiner : 0)
                                | (FF9StateSystem.Battle.isEncount ? BattleStartData.FlagEncount : 0)),
-                Field = (UInt16)ff9.fldMapNo,
+                Field = c.Place,
                 Speed = LocalSpeed,
                 Sfx = LocalSfx,
                 // A scripted battle's song is playing already (the field script started it); a random encounter's comes
-                // with the swirl, which runs on every PC: only Go carries it
-                Music = FF9StateSystem.Battle.isRandomEncounter ? (Int16)(-1) : (Int16)FF9Snd.GetCurrentMusicId(),
+                // with the swirl, which runs on every PC: only Go carries it. On the world map, what plays is the world
+                // map's theme: Go carries the battle's.
+                Music = FF9StateSystem.Battle.isRandomEncounter || c.Place == WorldMapField ? (Int16)(-1) : (Int16)FF9Snd.GetCurrentMusicId(),
                 Prerolled = true
             };
             foreach (PLAYER p in members)
@@ -591,7 +669,7 @@ namespace Memoria.Online.Battle
                 d.Flags = (Byte)((FF9StateSystem.Battle.isRandomEncounter ? BattleStartData.FlagRandomEncounter : 0)
                                  | (FF9StateSystem.Common.FF9.steiner_state != 0 ? BattleStartData.FlagSteiner : 0)
                                  | (FF9StateSystem.Battle.isEncount ? BattleStartData.FlagEncount : 0));
-                d.Field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+                d.Field = c.Place != 0 ? c.Place : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
                 foreach (PLAYER p in FF9StateSystem.Common.FF9.party.member)
                     if (p != null)
                         d.Members.Add(new BattleStartData.Member { Character = (Byte)p.info.slot_no, Hp = p.cur.hp, Mp = p.cur.mp, Status = (UInt64)p.status, Trance = p.trance });
@@ -860,7 +938,7 @@ namespace Memoria.Online.Battle
             }
             if (why == "elsewhere")
             {
-                Decline(inc, 1, $"not on field {inc.Start.Field} any more");
+                Decline(inc, 1, inc.Start.Field == WorldMapField ? "not on the world map any more (or flying)" : $"not on field {inc.Start.Field} any more");
                 return;
             }
             Notice = $"A battle is starting: {why} ({Math.Max(0, (JoinTimeoutMs - (now - inc.StartAt)) / 1000):0} s)";
@@ -882,6 +960,22 @@ namespace Memoria.Online.Battle
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
             UIManager ui = PersistenSingleton<UIManager>.Instance;
             why = null;
+            if (_incoming.Start.Field == WorldMapField)
+            {
+                // A world map battle: join from the world map, walking or on a chocobo, with the world HUD up. Where this
+                // player stands is saved by the world script's own loop (VAR_GenInt24_64/67/69, World_PlayerAngle), so
+                // the world map puts it back there after the battle.
+                WMActor actor = ff9.w_moveActorPtr;
+                if (!OnWorldMap || engine == null)
+                    why = "elsewhere";
+                else if (actor == null || (ff9.w_movePlanePtr != null && actor == ff9.w_movePlanePtr) || World.WorldCoop.Passenger != 0)
+                    why = "elsewhere"; // flying, or riding as a passenger: no battles up there
+                else if (ui.State != UIManager.UIState.WorldHUD)
+                    why = "close the menu to join";
+                else if (PersistenSingleton<SceneDirector>.Instance.IsFading || (PersistenSingleton<FF9StateSystem>.Instance.attr & 15u) != 0)
+                    why = "waiting for the screen change";
+                return why == null;
+            }
             if (engine == null || engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1)
                 why = "elsewhere";
             else if (FF9StateSystem.Common.FF9.fldMapNo != _incoming.Start.Field)
@@ -905,13 +999,17 @@ namespace Memoria.Online.Battle
                 Log.Message($"[Online] Battle join: #{inc.Seq} joined: entering {SteamNative.Tag(inc.Owner)}'s running battle {d.BattleId} (watching; this PC's character isn't in it)");
             foreach (BattleStartData.Member m in d.Members)
                 _current.Characters.Add(m.Character);
-            // As the field's own encounter / ENCOUNT opcode would set them; the pattern is forced through btlSubMapNo
-            FF9StateSystem.Field.FF9Field.loc.map.nextMapNo = (Int16)d.BattleId;
+            // As the field's (or world map's) own encounter / ENCOUNT opcode would set them; the pattern is forced
+            // through btlSubMapNo. From the world map, the director then starts it as its own encounter.
+            if (d.Field == WorldMapField)
+                FF9StateSystem.World.FF9World.map.nextMapNo = (Int16)d.BattleId;
+            else
+                FF9StateSystem.Field.FF9Field.loc.map.nextMapNo = (Int16)d.BattleId;
             FF9StateSystem.Common.FF9.btlSubMapNo = (SByte)d.Pattern;
             FF9StateSystem.Common.FF9.steiner_state = (Byte)((d.Flags & BattleStartData.FlagSteiner) != 0 ? 1 : 0);
             FF9StateSystem.Battle.isRandomEncounter = (d.Flags & BattleStartData.FlagRandomEncounter) != 0;
             FF9StateSystem.Battle.isEncount = (d.Flags & BattleStartData.FlagEncount) != 0;
-            Log.Message($"[Online] Battle entry: #{inc.Seq} joining {SteamNative.Tag(inc.Owner)}'s battle {d.BattleId} from field {d.Field}, {_now - inc.StartAt:0} ms after its Start");
+            Log.Message($"[Online] Battle entry: #{inc.Seq} joining {SteamNative.Tag(inc.Owner)}'s battle {d.BattleId} {(d.Field == WorldMapField ? "from the world map (back to this spot after it)" : $"from field {d.Field}")}, {_now - inc.StartAt:0} ms after its Start");
             return EventEngine.FLOW_STATE_JUMP_BATTLE;
         }
 
@@ -1059,7 +1157,14 @@ namespace Memoria.Online.Battle
             if (c == null || c.Role != Role.Participant || result != 0)
                 return;
             _asked.Add($"{c.Owner}/{c.Seq}"); // late join: don't walk back into the battle just fled
-            _fleeReturn = _prevField >= 0 ? new KeyValuePair<Int32, Int32>(_prevField, _prevEntrance) : new KeyValuePair<Int32, Int32>(_curField, _curEntrance);
+            if (c.Data != null && c.Data.Field == WorldMapField)
+            {
+                // A world map battle: the world map puts this player back where it stood (no field to walk back to)
+                Log.Message($"[Online] Battle entry: #{c.Seq} this PC fled; back to the world map where it stood");
+                RequestExit(c, FF9StateGlobal.BTL_RESULT_ESCAPE, "this PC fled", "You fled.");
+                return;
+            }
+            _fleeReturn =_prevField >= 0 ? new KeyValuePair<Int32, Int32>(_prevField, _prevEntrance) : new KeyValuePair<Int32, Int32>(_curField, _curEntrance);
             Log.Message($"[Online] Battle entry: #{c.Seq} this PC fled; back to field {_fleeReturn.Value.Key} (entrance {_fleeReturn.Value.Value}, {(_prevField >= 0 ? "the field it came from" : "the way into this field: the previous one is unknown")})");
             RequestExit(c, FF9StateGlobal.BTL_RESULT_ESCAPE, "this PC fled", "You fled.");
         }
@@ -1155,7 +1260,7 @@ namespace Memoria.Online.Battle
 
         private void BroadcastOpen(Current c, Byte state)
         {
-            UInt16 field = c.Data != null && c.Data.Field != 0 ? c.Data.Field : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            UInt16 field = c.Data != null && c.Data.Field != 0 ? c.Data.Field : c.Place != 0 ? c.Place : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             UInt16 battleId = c.Data?.BattleId ?? (UInt16)FF9StateSystem.Battle.battleMapIndex;
             Int32 seconds = c.GoAt < 0 ? 0 : (Int32)((_now - c.GoAt) / 1000);
             if (state != _lastOpenState)

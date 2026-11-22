@@ -10,8 +10,10 @@ can leave them out:
 | Shared ship | `WorldCoop` | While another player flies the airship, this PC's own ship follows theirs, smoothly. |
 | Passenger camera | `WorldCoop` | While this player rides as a passenger, the world camera follows the ship with the pilot's airship camera. |
 
+| Shared battles | `BattleEntry` (world map path) | A battle that starts on one player's world map pulls in the other players on the world map near them. Afterwards everyone is back where they stood. |
+
 Boarding and landing, picking up passengers, hiding a passenger's player, which ship is newest, and the ship's save
-data all stay the mod's. Random battles on the world map stay each player's own: `BattleEntry` doesn't share them.
+data all stay the mod's.
 
 **Status:** built and passing both mod checks, but never run in game.
 
@@ -70,6 +72,49 @@ when they get off. While the pilot's state is Airship, `BeforeCamera` sets up th
 Switching to the ship's camera and back uses `ff9.w_cameraChange(type_cam, 64)`, the blend the game uses when you
 board or leave a vehicle. The passenger's own actor, control and encounters stay the mod's.
 
+## Shared battles
+
+A battle that starts on the world map (a random encounter, or a world script's `Battle()`) goes through the same
+shared battle entry as a field battle: Pending, Start, Ready, Go, the stream, End, results. Only the way in and the way
+back differ. A battle's "field" is `BattleEntry.WorldMapField` (`0xFFFE`) in Pending, Start and BattleOpen.
+
+**Who's in it.** `WMScriptDirector` passes the world map's frame result through `BattleEntry.OnWorldFlow`. When it's
+the battle jump, `BeginOwned` runs with the world map as the place. Its participants are the other players whose:
+- presence says world map (`Busy.WorldMap`);
+- world ghost state (`WorldGhosts`) says on foot or on a chocobo (pilots, passengers and hidden players have no
+  battles);
+- flat distance from this player is at most `BattleEntry.WorldBattleRange` (16 Unity units, about two ship lengths).
+
+As on fields, they also need their character in the party and the same battle settings. A player farther away is
+logged with the distance and keeps walking. Ctrl+Shift+9 (OnlineDebug) turns shared world map battles off on that PC.
+
+**Getting in.** A participant on the world map joins when:
+- the Start has come;
+- it has the world HUD, no fade, and isn't flying or riding as a passenger (`CanJoinNow`).
+
+`JoinBattle` then sets the world map's next battle (`FF9World.map.nextMapNo`), pattern and flags, and `OnWorldFlow`
+returns the battle jump. The world map director starts it as its own encounter (`ff9worldInternalBattleEncountStart`).
+A participant whose own world map battle starts first declines the other one, as on fields. One that leaves the world
+map, or takes off, before it can join is out of that battle.
+
+**Getting back.** Nothing extra: the world script's own loop saves where the player stands
+(`VAR_GenInt24_64` / `VAR_GenInt16_67` / `VAR_GenInt24_69`, `World_PlayerAngle`). After the battle the game goes back
+to the world map (the battle was entered from it), and the world script puts each player back at its own saved spot.
+A participant that flees a world map battle isn't sent to a field (the field battles' flee return): it's back on the
+world map where it stood.
+
+**Music.** At the trigger, the world map's theme is playing, so the Start carries no music. Go carries the battle's,
+as for random encounters on fields.
+
+**Not covered:**
+- late join into a world map battle (`UpdateLateJoin` only asks from a field);
+- a world map battle's participants aren't held in place while it starts (fields hold them). They can walk a step or
+  two, which changes nothing, since their spot is saved when they leave.
+
+Log: `Battle entry: battle B #N on the world map (world map encounter); this PC owns it; participants: ...`, or
+`#tag is on the world map D away (over 16.0): not in this battle`; participant: `joining #tag's battle B from the world
+map (back to this spot after it)`.
+
 ## For the mod
 
 `WorldCoop.DrawsGhosts`, `MovesSharedShip` and `HasPassengerCamera` are `true` in a build that has these parts. The
@@ -84,3 +129,6 @@ move the ship (the mod's raw, at 10 Hz, after the build's smooth one). The hand-
 3. One boards the Cargo Ship and flies it: the other's ship flies along smoothly, and no ghost is drawn for the pilot.
 4. With the mod's passenger update (`SetPassenger`): the passenger's camera follows the ship with the airship's camera,
    and blends back to the on-foot camera after landing.
+5. Both on foot close together; walk until one gets a random battle. Both are in it, and after it each is back where
+   they stood. Then far apart (over 16): only the one whose battle it is fights, and the other's log says how far.
+6. In 5, the participant flees: it's back on the world map where it stood, not on a field.

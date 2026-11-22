@@ -147,7 +147,9 @@ public class WMScriptDirector : HonoBehavior
             else
             {
                 validateBattle = true;
-                switch (ff9.w_frameMainRoutine())
+                // [Online] world map battles are shared with the players near (BattleEntry.OnWorldFlow): an encounter here
+                // pulls them in; another player's encounter starts this PC's battle
+                switch (Memoria.Online.Battle.BattleEntry.OnWorldFlow(ff9.w_frameMainRoutine()))
                 {
                     case EventEngine.FLOW_STATE_JUMP_BATTLE:
                         this.FF9WorldMap.nextMode = 2;

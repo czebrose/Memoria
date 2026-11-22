@@ -443,6 +443,11 @@ namespace Memoria.Online
                 BattleEntry.LateJoin = !BattleEntry.LateJoin; // late join (docs/online/battle-late-join.md)
                 Log.Message($"[Online] Battle join: walking into another player's running battle {(BattleEntry.LateJoin ? "joins it" : "doesn't (late join off)")}");
             }
+            else if (Input.GetKeyDown(KeyCode.Alpha9))
+            {
+                BattleEntry.WorldBattles = !BattleEntry.WorldBattles; // world map battles (docs/online/world-map.md)
+                Log.Message($"[Online] Battle entry: world map battles {(BattleEntry.WorldBattles ? $"pull in the players within {BattleEntry.WorldBattleRange:0} of the one who starts them" : "are each player's own")}");
+            }
             else if (Input.GetKeyDown(KeyCode.Alpha7))
             {
                 BattleEntry.StartAtTrigger = !BattleEntry.StartAtTrigger; // Step 3: measure trigger-to-Go both ways
