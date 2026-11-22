@@ -108,7 +108,6 @@ namespace Memoria.Online.Session
 
         private Double _nextPoll;
         private String _where;
-        private GUIStyle _style;
 
         public SessionLobby(SteamLobby lobby, SteamTransport transport, BlobTransfer blobs, Func<UInt64, Boolean> isConnected)
         {
@@ -116,6 +115,7 @@ namespace Memoria.Online.Session
             _transport = transport;
             _blobs = blobs;
             _isConnected = isConnected;
+            Current = this; // the Online menu (SessionLobby.Menu.cs)
         }
 
         public Boolean IsHost => _lobby.IsHost;
@@ -643,99 +643,5 @@ namespace Memoria.Online.Session
         }
 
         private static UInt32 ReadU32(Byte[] b, Int32 o) => b[o] | ((UInt32)b[o + 1] << 8) | ((UInt32)b[o + 2] << 16) | ((UInt32)b[o + 3] << 24);
-
-        // ---- Lobby panel (title screen) ---------------------------------------------------------------------------
-
-        /// <summary>Debug-styled panel shown at the title screen while gathering. Buttons work with the mouse; the
-        /// same actions are on Ctrl+Shift+F1-F6.</summary>
-        public void OnGUI()
-        {
-            if (Phase == SessionPhase.Idle || Phase == SessionPhase.Playing || !AtTitle)
-                return;
-            if (_style == null)
-            {
-                _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 16, wordWrap = false, padding = new RectOffset(10, 10, 8, 8) };
-                _style.normal.textColor = Color.white;
-            }
-            Single width = 560f, line = 26f;
-            Single x = Screen.width - width - 16f, y = 16f;
-            Int32 rows = 6 + Math.Max(1, Party.Count) + _lobby.Members.Count;
-            GUI.Box(new Rect(x, y, width, rows * line + 24f), "", _style);
-            Single cx = x + 12f, cy = y + 10f;
-
-            GUI.Label(new Rect(cx, cy, width, line), $"Online session — host: {SteamNative.GetName(_lobby.OwnerId)}{(IsHost ? " (you)" : "")}");
-            cy += line + 4f;
-            if (_startedBeforeJoin)
-            {
-                GUI.Label(new Rect(cx, cy, width, line), "This session has already started; joining mid-game isn't supported yet.");
-                return;
-            }
-            if (IsHost)
-            {
-                if (GUI.Button(new Rect(cx, cy, 120f, line - 2f), "Change (F5)"))
-                    NextChoice();
-                GUI.Label(new Rect(cx + 130f, cy, width - 150f, line), $"Game: {(String.IsNullOrEmpty(GameLabel) ? "..." : GameLabel)}");
-            }
-            else
-            {
-                GUI.Label(new Rect(cx, cy, width, line), $"Game: {(String.IsNullOrEmpty(GameLabel) ? "(the host is choosing)" : GameLabel)}");
-            }
-            cy += line + 4f;
-
-            GUI.Label(new Rect(cx, cy, width, line), "Party (the first is the host's; characters nobody picks are the host's):");
-            cy += line;
-            foreach (PartyEntry entry in Party)
-            {
-                String owner;
-                if (entry.Index == 0)
-                    owner = $"{SteamNative.GetName(_lobby.OwnerId)} (host)";
-                else if (Assignments.TryGetValue(entry.CharacterId, out UInt64 member))
-                    owner = SteamNative.GetName(member) + (member == _lobby.LocalId ? " (you)" : "");
-                else
-                    owner = "free → host";
-                GUI.Label(new Rect(cx + 10f, cy, 330f, line), $"{entry.Index + 1}. {entry.Name}: {owner}");
-                if (IsGuest && entry.Index > 0 && Phase == SessionPhase.Gathering)
-                {
-                    Boolean mine = Assignments.TryGetValue(entry.CharacterId, out UInt64 holder) && holder == _lobby.LocalId;
-                    Boolean taken = Assignments.ContainsKey(entry.CharacterId) && !mine;
-                    if (!taken && !mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), $"Pick (F{entry.Index + 1})"))
-                        Pick(entry.Index);
-                    if (mine && GUI.Button(new Rect(cx + 350f, cy, 170f, line - 2f), "Release (F1)"))
-                        Pick(-1);
-                }
-                cy += line;
-            }
-            if (Party.Count == 0)
-            {
-                GUI.Label(new Rect(cx + 10f, cy, width, line), "(waiting for the host's game)");
-                cy += line;
-            }
-
-            cy += 4f;
-            GUI.Label(new Rect(cx, cy, width, line), "Players:");
-            cy += line;
-            foreach (UInt64 member in _lobby.Members)
-            {
-                String where = member == _lobby.LocalId ? (AtTitle ? "title" : "game") : _lobby.GetMemberData(member, "where");
-                Boolean connected = member == _lobby.LocalId || _isConnected(member);
-                GUI.Label(new Rect(cx + 10f, cy, width, line), $"{SteamNative.GetName(member)}{(member == _lobby.OwnerId ? " (host)" : "")}: {(String.IsNullOrEmpty(where) ? "?" : where)}{(connected ? "" : ", connecting...")}");
-                cy += line;
-            }
-
-            cy += 4f;
-            if (IsHost)
-            {
-                String blocker = StartBlocker();
-                GUI.enabled = blocker == null;
-                if (GUI.Button(new Rect(cx, cy, 160f, line - 2f), "Start (F6)"))
-                    Start();
-                GUI.enabled = true;
-                GUI.Label(new Rect(cx + 170f, cy, width - 190f, line), blocker ?? Status);
-            }
-            else
-            {
-                GUI.Label(new Rect(cx, cy, width, line), String.IsNullOrEmpty(Status) ? (Phase == SessionPhase.Starting ? "Receiving the host's game..." : "Waiting for the host to start") : Status);
-            }
-        }
     }
 }

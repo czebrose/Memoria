@@ -8,7 +8,7 @@ using Memoria.Data;
 using Memoria.Scenes;
 using UnityEngine;
 
-public class MainMenuUI : UIScene
+public partial class MainMenuUI : UIScene // [Online] partial: Memoria/Online/Menu/MainMenuUI.Online.cs
 {
     public static MenuUIControlPanel UIControlPanel { get; set; }
 
@@ -70,12 +70,14 @@ public class MainMenuUI : UIScene
         this.ConfigSubMenu.GetComponentInChildren<UILabel>().color = IsSubMenuEnabled(SubMenu.Config) ? FF9TextTool.White : FF9TextTool.Gray;
         if (this.PartySubMenu != null)
             this.PartySubMenu.GetComponentInChildren<UILabel>().color = IsSubMenuEnabled(SubMenu.Party) ? FF9TextTool.White : FF9TextTool.Gray;
+        this.OnlineShow(); // [Online] the Online entry while a session plays
         if (!UIManager.IsUIStateMenu(PersistenSingleton<UIManager>.Instance.PreviousState))
             ImpactfulActionCount = 0;
     }
 
     public override void Hide(UIScene.SceneVoidDelegate afterFinished = null)
     {
+        this.OnlineHide(); // [Online]
         UIScene.SceneVoidDelegate afterHideAction = delegate
         {
             MainMenuUI.UIControlPanel?.ExitMenu();
@@ -135,7 +137,8 @@ public class MainMenuUI : UIScene
     {
         if (base.OnKeyConfirm(go))
         {
-            Single shiftFactor = this.PartySubMenu == null ? 1f : 7f / 8f;
+            if (this.OnlineConfirm(go)) // [Online] the Online entry and its windows
+                return true;
             if (ButtonGroupState.ActiveGroup == MainMenuUI.SubMenuGroupButton)
             {
                 if (IsSubMenuEnabled(this.GetSubMenuFromGameObject(go)))
@@ -146,7 +149,7 @@ public class MainMenuUI : UIScene
                     {
                         case MainMenuUI.SubMenu.Item:
                             this.NeedTweenAndHideSubMenu = false;
-                            this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f);
+                            this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.ItemSubMenu); // [Online] from the entries' places (was 9; an extra entry moves them)
                             this.ItemSubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                             this.Hide(delegate
                             {
@@ -176,7 +179,7 @@ public class MainMenuUI : UIScene
                             break;
                         case MainMenuUI.SubMenu.Card:
                             this.NeedTweenAndHideSubMenu = false;
-                            this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * 490f);
+                            this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.CardSubMenu); // [Online] (was 9 + 490, x7/8 with Party)
                             this.CardSubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                             this.Hide(delegate
                             {
@@ -186,7 +189,7 @@ public class MainMenuUI : UIScene
                             break;
                         case MainMenuUI.SubMenu.Config:
                             this.NeedTweenAndHideSubMenu = false;
-                            this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * (this.PartySubMenu == null ? 588f : 686f));
+                            this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.ConfigSubMenu); // [Online] (was 9 + 588 or 686 x7/8)
                             this.ConfigSubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                             this.Hide(delegate
                             {
@@ -196,7 +199,7 @@ public class MainMenuUI : UIScene
                             break;
                         case MainMenuUI.SubMenu.Party:
                             this.NeedTweenAndHideSubMenu = false;
-                            this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * 588f);
+                            this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.PartySubMenu); // [Online] (was 9 + 588 x7/8)
                             this.PartySubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                             this.Hide(delegate
                             {
@@ -227,7 +230,7 @@ public class MainMenuUI : UIScene
                             case MainMenuUI.SubMenu.Ability:
                                 this.characterMemorize = go;
                                 this.NeedTweenAndHideSubMenu = false;
-                                this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * 98f);
+                                this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.AbilitySubMenu); // [Online] (was 9 + 98)
                                 this.AbilitySubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                                 this.Hide(delegate
                                 {
@@ -238,7 +241,7 @@ public class MainMenuUI : UIScene
                             case MainMenuUI.SubMenu.Equip:
                                 this.characterMemorize = go;
                                 this.NeedTweenAndHideSubMenu = false;
-                                this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * 196f);
+                                this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.EquipSubMenu); // [Online] (was 9 + 196)
                                 this.EquipSubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                                 this.Hide(delegate
                                 {
@@ -249,7 +252,7 @@ public class MainMenuUI : UIScene
                             case MainMenuUI.SubMenu.Status:
                                 this.characterMemorize = go;
                                 this.NeedTweenAndHideSubMenu = false;
-                                this.submenuTransition.ShiftContentClip = new Vector2(0f, 9f + shiftFactor * 294f);
+                                this.submenuTransition.ShiftContentClip = this.SubMenuShift(this.StatusSubMenu); // [Online] (was 9 + 294)
                                 this.StatusSubMenu.GetComponent<UIButton>().SetState(UIButtonColor.State.Normal, false);
                                 this.Hide(delegate
                                 {
@@ -302,6 +305,8 @@ public class MainMenuUI : UIScene
     {
         if (base.OnKeyCancel(go))
         {
+            if (this.OnlineCancel(go)) // [Online]
+                return true;
             if (ButtonGroupState.ActiveGroup == MainMenuUI.SubMenuGroupButton)
             {
                 FF9Sfx.FF9SFX_Play(101);
@@ -665,6 +670,7 @@ public class MainMenuUI : UIScene
     {
         FF9StateSystem.Settings.UpdateTickTime();
         this.DisplayTime(false);
+        this.OnlineUpdate(); // [Online]
     }
 
     private void OnGUI()
@@ -759,6 +765,7 @@ public class MainMenuUI : UIScene
 
         this.LocationInfoPanel.GetChild(1).GetChild(2).GetComponent<UILabel>().rightAnchor.absolute = -40;
         this.GenericInfoPanel.GetChild(2).GetChild(2).GetComponent<UILabel>().rightAnchor.absolute = -40;
+        this.OnlineAwake(); // [Online] the Online entry (Memoria/Online/Menu/OnlineMenu.cs)
     }
 
     public GameObject SubMenuPanel;

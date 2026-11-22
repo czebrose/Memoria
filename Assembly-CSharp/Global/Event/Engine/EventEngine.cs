@@ -592,7 +592,9 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
 
         this._opLStart = 4;
 
-        if (this.gMode == 1 && this.sEventContext1.inited == 1 && this.sEventContext1.lastmap == this._ff9.fldMapNo || this.gMode == 3 && this.sEventContext1.inited == 3 && this.sEventContext1.lastmap == this._ff9.wldMapNo || this._ff9Sys.prevMode == 9 && this.sEventContext1.inited != 0)
+        Boolean restoredContext = this.gMode == 1 && this.sEventContext1.inited == 1 && this.sEventContext1.lastmap == this._ff9.fldMapNo || this.gMode == 3 && this.sEventContext1.inited == 3 && this.sEventContext1.lastmap == this._ff9.wldMapNo || this._ff9Sys.prevMode == 9 && this.sEventContext1.inited != 0;
+        Memoria.Online.Session.LiveRedraw.OnStartEvents(this.gMode, restoredContext); // [Online] live flags: a new field's entries
+        if (restoredContext)
         {
             this.sEventContext0.copy(this.sEventContext1);
             this.Request(this.FindObjByUID(0), 0, 10, false);

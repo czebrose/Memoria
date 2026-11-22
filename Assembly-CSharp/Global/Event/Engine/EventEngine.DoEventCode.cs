@@ -113,6 +113,12 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.NEW: // 0x07, "InitCode", "Init a normal code (independant functions).arg1: code entry to init.arg2: Unique ID (defaulted to entry's ID if 0)."
             {
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags: an entry's Init run again creates nothing
+                {
+                    this.geti();
+                    this.gArgUsed = 1;
+                    return 0;
+                }
                 NewThread(this.gArgFlag, this.geti()); // arg1: code entry to init / arg2: Unique ID (defaulted to entry's ID if 0)
                 this.autoStartEntriesProceed = true;
                 this.gArgUsed = 1;
@@ -120,6 +126,12 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.NEW2: // 0x08, "InitRegion", "Init a region code (associated with a region).arg1: code entry to init.arg2: Unique ID (defaulted to entry's ID if 0)."
             {
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags
+                {
+                    this.geti();
+                    this.gArgUsed = 1;
+                    return 0;
+                }
                 Quad quad = new Quad(this.gArgFlag, this.geti()); // arg1: code entry to init / arg2: Unique ID (defaulted to entry's ID if 0)
                 this.autoStartEntriesProceed = true;
                 this.gArgUsed = 1;
@@ -129,6 +141,11 @@ public partial class EventEngine
             {
                 Int32 sid = this.gArgFlag; // arg1: code entry to init
                 Int32 uid = this.geti(); // arg2: Unique ID (defaulted to entry's ID if 0)
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags
+                {
+                    this.gArgUsed = 1;
+                    return 0;
+                }
                 if (sid >= 251 && sid <= 254)
                 {
                     sid = this._context.partyUID[sid - 251];
@@ -977,11 +994,18 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.MAPJUMP: // 0x2B, "Field", "Change the field scene",
             {
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags: a redraw never leaves the field
+                {
+                    this.getv2();
+                    return 0;
+                }
                 this.SetNextMap(this.getv2()); //arg1: field scene destination
                 return EventEngine.FLOW_STATE_JUMP_FIELD;
             }
             case EBin.event_code_binary.CC: // 0x2C, "DefinePlayerCharacter", "Apply the player's control over the entry's object"
             {
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags
+                    return 0;
                 Actor activeActorByUid = this.getActiveActorByUID(this._context.controlUID);
                 if (activeActorByUid != null && this.gMode == 1 && !(mapNo == 1607 && this.gExec.uid == activeActorByUid.uid))
                 {
@@ -1036,6 +1060,12 @@ public partial class EventEngine
             }
             case EBin.event_code_binary.MODEL: // 0x2F, "SetModel", "Set the model of the object and its head's height (used to set the dialog box's height)"
             {
+                if (Memoria.Online.Session.LiveRedraw.SkipOpcode(this.gExec)) // [Online] live flags: the object keeps its model
+                {
+                    this.getv2();
+                    this.getv1();
+                    return 0;
+                }
                 po.model = (UInt16)this.getv2(); // arg1: model
                 this.gExec.flags |= 1;
                 po.eye = (Int16)(-4 * this.getv1()); // arg2: head's height

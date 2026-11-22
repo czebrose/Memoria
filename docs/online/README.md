@@ -4,6 +4,9 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md), the rules every change follows.
 
 **Installing:** [installer.md](installer.md): the one-zip installer (`tools/multiplayer/package.ps1`, `Install.bat`).
 
+**Playing:** [online-menu.md](online-menu.md): the title screen's Online button (host, join, the lobby) and the main
+menu's Online entry (take, swap, release, follow), with a two-PC test list.
+
 **Step 3: shared battles**
 - [step3-m1-results.md](step3-m1-results.md): M1, foundation and spectator battles (results, tests, known issues).
 - [step3-m2-results.md](step3-m2-results.md): M2, playable shared battles (remote menus, followers, per-player flee, session settings, blocked battle values).

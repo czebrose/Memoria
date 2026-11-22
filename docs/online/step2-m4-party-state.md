@@ -150,7 +150,8 @@ change hands only through these actions, all arbitrated by the host (first come,
 - **Data:** lobby data `assign` (guests' characters, as in the lobby), `hostplays`, `offers`
   (`fromAccount:toAccount|...`); member data `ctl` = `seq:verb:arg`, a guest's latest request; the host acts on each
   new value once.
-- **UI:** a "Party control" panel at the top right while playing (shown with the status box, Ctrl+Shift+O): the party,
+- **UI** (replaced on 2026-11-21 by the main menu's Online entry, [online-menu.md](online-menu.md); the F-keys below
+  are debug-only now): a "Party control" panel at the top right while playing (shown with the status box, Ctrl+Shift+O): the party,
   who plays whom, a Take / Swap / Release button per slot, and an incoming offer with Accept / Decline. Keys:
   Ctrl+Shift+F1-F4 act on party slot 1-4, F5 accepts, F6 declines (the lobby's F-keys only work at the title).
   A toast says "You now play X" / "You're watching" on each change.

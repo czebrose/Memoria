@@ -97,6 +97,9 @@ spikes; most of them are the difference between working code and a game that cra
     leader's. The owner never opens its own menu for a remote unit (TurnReady instead), and enters a remote choice
     only through `btl_cmd.SetCommand`, as its own menu does. A passive battle never queues a command itself: its
     menu's `SetCommand` calls become a CommandRequest (`BattleControl.CaptureCommand`).
+    The map can change mid-battle (a take / swap / release / follow): only the owner moves a unit, at its next turn
+    (`BattleControl.OwnerSync`), and tells every participant (`MsgControlUpdate`); see
+    [online-menu.md](online-menu.md#in-battle-select).
     → [step3-m2-results.md, section 1](step3-m2-results.md#1-what-changed)
 
 15. **Per-player state in battle is per unit, not per battle.**

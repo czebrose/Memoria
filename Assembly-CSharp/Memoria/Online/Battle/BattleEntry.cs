@@ -60,7 +60,7 @@ namespace Memoria.Online.Battle
             public List<Int32> Characters = new List<Int32>();
             public List<UInt64> Participants = new List<UInt64>();
             public HashSet<UInt64> Awaiting = new HashSet<UInt64>();
-            public Double TriggeredAt, StartSentAt = -1, LastFromOwner, NextAlive;
+            public Double TriggeredAt, StartSentAt = -1, LastFromOwner, NextAlive, NextControlSync;
             public Boolean PartyApplied, StartSent, GoSent, EndSent, ReadySent, InBattle;
             public Byte ExitResult;                  // participant: the owner's result once End arrived (0: none yet)
             public Boolean GoReceived;               // participant: the owner's battle runs; this PC plays it passively
@@ -676,6 +676,11 @@ namespace Memoria.Online.Battle
                     foreach (UInt64 peer in c.Participants)
                         SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Alive, c.Seq));
                 }
+                if (c.GoSent && !c.EndSent && c.Participants.Count > 0 && now >= c.NextControlSync)
+                {
+                    c.NextControlSync = now + 250;
+                    BattleControl.OwnerSync(ControlMap(c), c.Participants); // mid-battle take / swap / release / follow
+                }
                 if (c.GoSent && c.Participants.Count > 0)
                 {
                     Byte[] stream = BattleSync.TakeStream(c.Seq);
@@ -1035,7 +1040,7 @@ namespace Memoria.Online.Battle
                             foreach (KeyValuePair<UInt16, UInt32> kv in BattleEntryMessages.ReadControl(d))
                                 if (kv.Value == (UInt32)(_lobby.LocalId & 0xFFFFFFFF))
                                     mine.Add(kv.Key);
-                            BattleControl.BeginPassive(seq, peer, mine, SendTo);
+                            BattleControl.BeginPassive(seq, peer, mine, SendTo, _lobby.LocalId);
                             _current.GoReceived = true;
                         }
                     }
