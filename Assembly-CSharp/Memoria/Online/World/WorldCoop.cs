@@ -38,6 +38,36 @@ namespace Memoria.Online.World
                 return;
             Log.Message(pilot != 0 ? $"[Online] World map: riding with {SteamNative.Tag(pilot)} (the camera follows the ship)" : "[Online] World map: no longer a passenger");
             Passenger = pilot;
+            _noPlaneLogged = false;
+        }
+
+        /// <summary>The players on the world map whose state is fresh (any mode but Away), by Steam id.</summary>
+        public static UInt64[] PlayersOnWorldMap()
+        {
+            List<UInt64> result = new List<UInt64>();
+            foreach (KeyValuePair<UInt64, WorldMode> kv in WorldGhosts.FreshModes(Now))
+                if (kv.Value != WorldMode.Away)
+                    result.Add(kv.Key);
+            return result.ToArray();
+        }
+
+        /// <summary>
+        /// A player's world map state now, as the build draws it (interpolated ~110 ms behind): <paramref name="mode"/>
+        /// is a <see cref="WorldMode"/> (0 on foot, 1 chocobo, 2 flying the airship, 3 another vehicle, 4 hidden or a
+        /// passenger, 255 away); the position is absolute, in Unity units (WMActor.RealPosition; WMActor.SetPosition
+        /// takes 256 times that). False if nothing fresh came from that player.
+        /// </summary>
+        public static Boolean TryGetPlayer(UInt64 peer, out Int32 mode, out Vector3 absolutePosition, out Quaternion rotation)
+        {
+            mode = (Int32)WorldMode.Away;
+            absolutePosition = Vector3.zero;
+            rotation = Quaternion.identity;
+            if (!WorldGhosts.TryGetState(peer, Now, out WorldGhostState state))
+                return false;
+            mode = (Int32)state.Mode;
+            absolutePosition = state.Position;
+            rotation = state.Rotation;
+            return true;
         }
 
         /// <summary>The ship as the player flying it has it now (interpolated): false if no other player flies it.</summary>
@@ -57,7 +87,7 @@ namespace Memoria.Online.World
 
         private static WMActor _savedActor;
         private static ff9.s_moveCHRControl _savedControl;
-        private static Boolean _swapped, _cameraOnShip;
+        private static Boolean _swapped, _cameraOnShip, _noPlaneLogged;
         private static Int32 _cameraType = -1;
 
         private static Double Now => OnlineSession.NowMs;
@@ -74,6 +104,13 @@ namespace Memoria.Online.World
                 UInt64 pilot = FindPilot(now);
                 WorldGhostState ship = default(WorldGhostState);
                 Boolean flying = pilot != 0 && plane != null && plane.World != null && WorldGhosts.TryGetState(pilot, now, out ship);
+                if (Passenger != 0 && plane == null && !_noPlaneLogged)
+                {
+                    // The world map placed no ship on this PC (its save said airborne): nothing to follow or aim at here.
+                    // The mod draws the ship and runs its own ride camera then.
+                    _noPlaneLogged = true;
+                    Log.Message($"[Online] World map: riding with {SteamNative.Tag(Passenger)}, but this PC's world map has no ship of its own: the build's passenger camera is off for this ride (the mod's ride camera takes over)");
+                }
                 if (flying && ff9.w_moveActorPtr != plane)
                     FollowPilot(plane, ship);
                 Boolean riding = Passenger != 0 && flying && pilot == Passenger;

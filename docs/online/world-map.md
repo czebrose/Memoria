@@ -115,7 +115,19 @@ Log: `Battle entry: battle B #N on the world map (world map encounter); this PC 
 `#tag is on the world map D away (over 16.0): not in this battle`; participant: `joining #tag's battle B from the world
 map (back to this spot after it)`.
 
+**A passenger with no ship of their own.** If this PC's world map placed no ship (its save said airborne, so
+`ff9.w_movePlanePtr` is null), there's nothing to follow or aim at. `BeforeCamera` logs it once per ride (`riding
+with #tag, but this PC's world map has no ship of its own`), and the mod's own ride camera takes over. The mod avoids
+this by writing the pilot's position into the ship's save, marked landed, before a ride-along player goes onto the
+world map. World map 9007's ship init (`MoveInstantXZY` from `VAR_GenInt24_74` / `VAR_GenInt16_77` /
+`VAR_GenInt24_79`) places it at exactly that height, in mid-air, without snapping to the ground, and `FollowPilot`
+moves it from there.
+
 ## For the mod
+
+`WorldCoop.PlayersOnWorldMap()` and `WorldCoop.TryGetPlayer(peer, out mode, out absolutePosition, out rotation)` give
+the players' world map states as the build draws them (interpolated). The mode is a `WorldMode` number, and the
+position is absolute in Unity units. The mod can read those instead of its own channel 7 packets.
 
 `WorldCoop.DrawsGhosts`, `MovesSharedShip` and `HasPassengerCamera` are `true` in a build that has these parts. The
 mod can check them by reflection and leave those parts to the build. Until it does, both draw world ghosts, and both
