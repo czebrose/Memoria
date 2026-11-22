@@ -30,6 +30,7 @@ namespace Memoria.Online.Battle
     ///   RunMask    units u16 (M2: the player units running, each by its controlling PC's run buttons; applied at its frame)
     ///   TurnReady  unit u16, ready u8 (M2: a remote-controlled unit's turn came / went; its controlling PC's menu opens / closes)
     ///   UnitsLeave units u16 (M2: player units taken out of the battle because their PC fled)
+    ///   UnitJoin   character u16, slots u8 (late join: a late joiner's character added; slots = unit index | party slot << 4)
     ///   CmdMore    seq u16, short summon s8, tape count u8, (kind u8, value i32)*   (what a running command drew since
     ///              its Command went out; commands go out when they start, their tape grows while they run)
     ///
@@ -46,6 +47,7 @@ namespace Memoria.Online.Battle
         public const Byte RunMask = 13;   // stream-only (M2, replaces EscapeKey): player units running, u16 mask of btl_ids
         public const Byte TurnReady = 14; // stream-only (M2): unit u16, ready u8 (1: its controlling PC opens its menu; 0: the turn went)
         public const Byte UnitsLeave = 15; // stream-only (M2): player units leaving the battle (their PC fled), u16 mask
+        public const Byte UnitJoin = 16;   // stream-only (late join): a player character added to the running battle (BattleUnitJoin)
 
         // ---- state diffs --------------------------------------------------------------------------------------
 

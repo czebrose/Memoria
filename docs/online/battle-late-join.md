@@ -1,14 +1,16 @@
 # Late join: walking into another player's battle
 
-Branch `online-battle-join`, from `online-meet-skip` (a99d891f), 2026-11-20. **Built, not run in game yet.**
+Branch `online-battle-join`, from `online-meet-skip` (a99d891f), 2026-11-20; on `Steam-Multiplayer-v0.1.4` since
+2026-11-22, with the joiner's character fighting (section 2, "The joiner's character fights"). **Built, not run in
+game yet.**
 
 When a player walks onto a field where another player (host or guest) is fighting, that player's PC now enters the
-same battle, replays it from the start at up to 4x speed until it has caught up, and then watches it live to the end.
+same battle, replays it from the start at up to 4x speed until it has caught up, and then follows it live to the end.
 After that both players are back on the field together, as after any shared battle.
 
-**Limit: the late joiner watches. Its own character isn't in the battle.** Adding a unit to a battle that's already
-running would change the owner's battle itself (see [What's left](#whats-left)). The joiner's character fights from the
-next battle on, through the normal shared entry.
+**The joiner's character joins the fight.** Once the joiner is in, the owner adds its character to the battle in a
+free slot, and the joiner commands it, along with the free characters it leads that are in the battle. If the battle
+party is full, the joiner watches.
 
 Contents:
 1. [How battles are shared today](#1-how-battles-are-shared-today)
@@ -72,7 +74,40 @@ Why this approach and not a mid-battle snapshot:
 | Load | joiner | Jumps to the battle and applies the owner's *starting* HP/MP/status and battle party. Holds at the intro end and sends **Ready**. The owner sends Alive meanwhile, so the joiner doesn't leave on silence. |
 | In | owner | On that Ready: **Go** (the bytes sent at the battle's Go), then the history bundled into ≤ 8 KB stream messages. The joiner is then added to the participants, so the live stream follows in order (reliable channel, same frame). |
 | Catch up | joiner | `BattleReplayer.ExtraFrames`: 3 extra battle frames per update when it's over 159 frames behind (4x), 1 extra when over 39 (2x, as before). A "Catching up..." notice shows. |
-| Watch | joiner | It commands no unit: Go's control map was made before it came, so its menu stays shut. It ends through its own victory screen, like a participant. |
+| Fight | owner → every participant | The joiner's character joins (below). The owner's control map then gives the joiner its units (**ControlUpdate**, 37): its own character, and any free character it leads that's in the battle. It ends through its own victory screen, like a participant. |
+
+### The joiner's character fights
+
+`Online/Battle/BattleUnitJoin.cs`, and `BattleEntry.AddJoinerUnits` on the owner.
+
+1. **When.** On the joiner's Ready, the owner queues it. The owner adds its character at the first moment the battle
+   is in its normal phase with no command running (`cur_cmd == null`), so nothing in progress sees the unit appear.
+2. **Which character.** The one the joiner plays (`CharacterOfPeer`):
+   - none: the joiner watches;
+   - already in the battle (the owner drove it): it's only handed over.
+3. **Where.**
+   - a player unit (`btl_data` 0-3) never used in this battle, and a free party slot;
+   - none free (four in the battle already), or the battle isn't in its normal phase: the joiner watches.
+   - It stands at the end of the line, 632 past the last member. The others don't move.
+4. **How it's built.** As the battle builds its party at the start, for one member:
+   - the model (`BattlePlayerCharacter.CreatePlayer`);
+   - `btl_init.OrganizePlayerData`: shadow, character record, commands, status, weapon, abilities, and the EXP flag,
+     so it gets EXP;
+   - the battle model;
+   - `btl_sys.AddCharacter`;
+   - `SetupBattlePlayerSingle` for its place, ATB at 0;
+   - `SFX.InitBattleParty`;
+   - the menu's ability lists and party rows (`BattleHUD.OnPlayerUnitAdded`).
+
+   The character goes into the battle's party slot too. The field party is restored from its saved copy after the
+   battle, as always.
+5. **Everyone else.** The owner writes a **UnitJoin** stream record (16) at that frame: character u16, and unit index
+   and party slot in one byte. Every passive adds the same unit at the same frame (`BattleStreamIn.ApplyAtb`, before
+   that frame's events), the joiner included while it catches up. A PC whose slot is taken (its battle differs)
+   logs it and skips.
+6. **Control.** `ControlMap` follows the session a few times a second, so the next sync hands the unit to the
+   joiner's PC (MsgControlUpdate). Its turns then go to the joiner like any remote unit's. A turn that comes while
+   the joiner still catches up waits for its menu.
 
 ### Owner-side changes
 
@@ -132,6 +167,10 @@ from, or already played.
 | **More than one battle at once** | Each owner broadcasts its own battle. A PC only asks about battles on its own field, the host's first. A PC already in a battle (or asking) asks nothing. |
 | **A participant fled** | It's marked as asked, so after fleeing it doesn't walk back into the same battle. |
 | **The battle's owner plays no character in it, and nobody else is in it** | That battle isn't shared (no `BattleEntry` battle), so it isn't joinable. |
+| **The battle party is full** (four units) | The joiner's character isn't added. If it's one of the four (the owner drove it), it's handed over; otherwise the joiner watches. |
+| **The joiner's character is KO'd** | It joins KO'd, as it would start a battle. |
+| **A battle script hides or brings back units** | The added unit takes a never-used slot only, so script units keep theirs. |
+| **The slot differs on a passive PC** | The UnitJoin record is skipped there (logged: `couldn't be added to the battle here`). |
 
 ## 4. Log lines
 
@@ -147,6 +186,11 @@ All in `Memoria.log`, prefixed `[Online] Battle join:`:
 - Joiner: `#N caught up with #tag's battle, T ms after joining (extra frames, events applied, mismatches)`.
 - Owner: `#N #tag not ready 20 s after it was let in; dropped` / `#N #tag was still loading the battle; dropped (<why>)`.
 - Owner: `#N stream history over 256 KB; nobody can join this battle late any more`.
+- Owner: `#N #tag's character C joins the fight as unit U (party slot P); recorded for every participant`, or
+  `... is already in the battle: it's handed over` / `... can't join the fight (<why>): it watches` / `#N #tag plays no
+  character: it watches`.
+- Every PC (`[Battle]` notes): `Unit join: <name> (character C) added to the battle as unit U, party slot P`, then
+  `Control: <unit> changes hands mid-battle: this PC → #tag` on the owner.
 
 The usual `[Online] Battle entry:` lines (Start, units, Go, End) and `[Battle] Replay` lines follow as for any
 participant.
@@ -166,6 +210,8 @@ or guest. Run LJ1 both ways round if there's time.
 | **LJ5 joiner in a menu** | The joiner walks in and opens the main menu at once. | No ask while the menu is open. It asks when the menu closes (if the battle still runs). |
 | **LJ6 scripted battle** | A scripted fight (e.g. a Mog bag fight) on the owner, the other walks in. | As LJ1. After the battle the owner's field script goes on, on the owner only. Note what the joiner sees. |
 | **LJ7 flee** | In LJ1, the owner's party flees after the joiner is in. | The joiner's passive ends with the flee. Both back on the field. |
+| **LJ8 the joiner fights** | LJ1 with three in the owner's battle party (one slot free). | After the catch-up, the joiner's character appears at the end of the line on both PCs, at the same moment of the fight, with a party row. Its turn opens the joiner's menu; its attacks show on both. It gets EXP at the end. Owner log: `joins the fight as unit ...`, then `changes hands mid-battle`. |
+| **LJ9 full battle** | LJ1 with four in the owner's battle party. | The joiner watches (`can't join the fight (the battle party is full)`), unless its character is one of the four: then it's handed over. |
 
 Logs to keep from both PCs: `Memoria.log`, `x64\FF9_Data\output_log.txt`. On the joiner, also the `[Battle] Replay`
 summary line (mismatches, early fx, caught-up frames).
@@ -178,13 +224,10 @@ Things to watch:
 
 ## What's left
 
-1. **Fighting with the joiner's own character.** It would need a player unit added to the owner's running battle:
-   the `btl_init` / `BattlePlayerCharacter.CreatePlayer` path that Memoria's in-battle party change uses
-   (`btl_init.cs:618`, `BattleHUD.cs:2756`). The add would be recorded as a new stream event that the passive
-   replays, and the control map would grow mid-battle (`BattleControl` takes its remote units only at Go today).
-   Until then, the joiner's character fights from the next battle on.
-2. **Commanding the free characters it leads.** They're in the battle only if their leader was there at the trigger.
-   Handing an owner-driven unit to the joiner needs a control-map update message.
+1. ~~Fighting with the joiner's own character~~: done (section 2, "The joiner's character fights"). A full battle
+   party (four) still means watching. Swapping a free character out for the joiner's would be the next step.
+2. ~~Commanding the free characters it leads~~: done. The mid-battle control update (37) hands over the ones in the
+   battle. Free characters it leads that weren't in the battle at the trigger stay out.
 3. **A faster way in for long battles.** A mid-battle snapshot would avoid the catch-up, but it needs the writers
    listed in section 2.
 4. **World map battles** aren't shared at all yet, so they can't be joined.

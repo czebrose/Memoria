@@ -171,6 +171,18 @@ namespace Memoria.Online.Battle
             EndRecord(at);
         }
 
+        /// <summary>Late join: this character was added to the battle as unit <paramref name="btlIndex"/>, party slot
+        /// <paramref name="memberIndex"/> (BattleUnitJoin); every passive adds it at this frame.</summary>
+        public void WriteUnitJoin(UInt16 character, Int32 btlIndex, Int32 memberIndex)
+        {
+            if (!_recorder.Started || EndSent)
+                return;
+            Int64 at = BeginRecord(BattleWire.UnitJoin, _recorder.RelativeFrame);
+            _w.Write(character);
+            _w.Write((Byte)((btlIndex & 0x0F) | (memberIndex << 4)));
+            EndRecord(at);
+        }
+
         /// <summary>What running commands drew (or chose) since they went out.</summary>
         private void WriteCommandUpdates()
         {
@@ -340,7 +352,7 @@ namespace Memoria.Online.Battle
                         ReadCommandMore(r);
                     else if (type == BattleWire.RunMask || type == BattleWire.UnitsLeave)
                         _timed.Enqueue(new Timed { Frame = frame, Type = type, Value = r.ReadUInt16() });
-                    else if (type == BattleWire.TurnReady)
+                    else if (type == BattleWire.TurnReady || type == BattleWire.UnitJoin)
                         _timed.Enqueue(new Timed { Frame = frame, Type = type, Value = r.ReadUInt16(), Flag = r.ReadByte() });
                     else
                     {
@@ -428,6 +440,8 @@ namespace Memoria.Online.Battle
                     BattleControl.OnTurn(t.Value, t.Flag != 0);
                 else if (t.Type == BattleWire.UnitsLeave)
                     BattleControl.ApplyUnitsLeave(t.Value);
+                else if (t.Type == BattleWire.UnitJoin)
+                    BattleUnitJoin.ApplyFromStream(t.Value, t.Flag);
             }
             while (_atbQueue.Count > 0 && _atbQueue.Peek().Frame <= frame)
             {

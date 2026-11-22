@@ -716,6 +716,23 @@ public partial class BattleHUD : UIScene
         }
     }
 
+    /// <summary>[Online] A player unit added to the running battle (a late joiner's character, BattleUnitJoin): its
+    /// command menu's ability lists (as ManageAbility builds them at the start), and the party rows again.</summary>
+    public void OnPlayerUnitAdded(BattleUnit unit)
+    {
+        if (unit == null || !unit.IsPlayer)
+            return;
+        AbilityPlayerDetail abilityPlayer = new AbilityPlayerDetail { Player = unit.Player };
+        abilityPlayer.HasAp = ff9abil.FF9Abil_HasAp(abilityPlayer.Player);
+        SetAbilityAp(abilityPlayer);
+        SetAbilityEquip(abilityPlayer);
+        SetAbilityTrance(abilityPlayer);
+        SetAbilityMagic(abilityPlayer);
+        _abilityDetailDict[unit.GetIndex()] = abilityPlayer;
+        DisplayParty(true);
+        UpdateUserInterface(true);
+    }
+
     public void AddPlayerToReady(Int32 playerId)
     {
         if (_unconsciousStateList.Contains(playerId))

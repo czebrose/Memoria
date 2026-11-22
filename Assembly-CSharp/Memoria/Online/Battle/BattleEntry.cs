@@ -122,6 +122,7 @@ namespace Memoria.Online.Battle
             public Int32 HistoryBytes;
             public Boolean HistoryOverflow;
             public readonly Dictionary<UInt64, Double> LateJoiners = new Dictionary<UInt64, Double>(); // owner: accepted, not Ready yet (since)
+            public readonly List<UInt64> UnitJoinsDue = new List<UInt64>(); // owner: late joiners in, whose character isn't added yet
             public Double NextOpen;
             public Boolean Late;                     // participant: joined a battle that was already running
             public Boolean CaughtUpLogged;
@@ -707,6 +708,51 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>M2, owner at Go: each player unit commanded by another PC in this battle (the rest are this PC's).</summary>
+        /// <summary>
+        /// Owner: each late joiner's character joins the fight (BattleUnitJoin), at a moment no command runs. It's added
+        /// here, then recorded in the stream so every passive adds it at the same frame; the control map (below) then
+        /// hands it to the joiner's PC. A joiner whose character is already in the battle just gets it handed over; one
+        /// with no free slot, or no character, watches.
+        /// </summary>
+        private void AddJoinerUnits(Current c)
+        {
+            if (!BattleUnitJoin.SafeNow())
+                return;
+            foreach (UInt64 peer in c.UnitJoinsDue.ToArray())
+            {
+                c.UnitJoinsDue.Remove(peer);
+                if (!c.Participants.Contains(peer))
+                    continue;
+                Int32 character = _characterOf(peer);
+                if (character < 0)
+                {
+                    Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} plays no character: it watches");
+                    continue;
+                }
+                if (BattleUnitJoin.InBattle(character))
+                {
+                    Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)}'s character {character} is already in the battle: it's handed over");
+                    c.NextControlSync = 0;
+                    continue;
+                }
+                String why = BattleUnitJoin.CantAdd(character);
+                if (why != null || !BattleUnitJoin.TryFindSlots(out Int32 btlIndex, out Int32 memberIndex))
+                {
+                    Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)}'s character {character} can't join the fight ({why ?? "no free slot"}): it watches");
+                    continue;
+                }
+                BTL_DATA added;
+                BattleSync.Applying++;
+                try { added = BattleUnitJoin.Add(character, btlIndex, memberIndex); }
+                finally { BattleSync.Applying--; }
+                if (added == null)
+                    continue;
+                BattleSync.OwnerStream?.WriteUnitJoin((UInt16)character, btlIndex, memberIndex);
+                c.NextControlSync = 0; // hand it to the joiner at once
+                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)}'s character {character} joins the fight as unit {btlIndex} (party slot {memberIndex}); recorded for every participant");
+            }
+        }
+
         private Dictionary<UInt16, UInt64> ControlMap(Current c)
         {
             Dictionary<UInt16, UInt64> map = new Dictionary<UInt16, UInt64>();
@@ -745,6 +791,8 @@ namespace Memoria.Online.Battle
                     foreach (UInt64 peer in c.LateJoiners.Keys) // loading the battle: they'd leave on the owner's silence
                         SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Alive, c.Seq));
                 }
+                if (c.GoSent && !c.EndSent && c.UnitJoinsDue.Count > 0)
+                    AddJoinerUnits(c);
                 if (c.GoSent && !c.EndSent && c.Participants.Count > 0 && now >= c.NextControlSync)
                 {
                     c.NextControlSync = now + 250;
@@ -1227,6 +1275,7 @@ namespace Memoria.Online.Battle
             foreach (Byte[] chunk in chunks)
                 SendTo(peer, chunk);
             c.Participants.Add(peer);
+            c.UnitJoinsDue.Add(peer); // its character joins the fight at the next quiet moment (AddJoinerUnits)
             Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} is in ({_now - c.GoAt:0} ms into the battle): Go + {c.History.Count} stream messages ({c.HistoryBytes} B, in {chunks.Count} sends) sent; it replays the battle from its start and catches up; {c.Participants.Count} participant(s) now");
         }
 
