@@ -45,8 +45,10 @@ namespace Memoria.Online.Battle
         public const Byte MsgFleeResult = 33;
 
         /// <summary>Owner → participants: who commands which unit now (the whole map), after a mid-battle handover.
-        /// [40, seq u16, count u8, (unit u16, account u32)*]; units not listed are the owner's. (34-36: online-battle-join.)</summary>
-        public const Byte MsgControlUpdate = 40;
+        /// [37, seq u16, count u8, (unit u16, account u32)*]; units not listed are the owner's. (34-36: online-battle-join.
+        /// It was 40 in v0.1.1, which is SceneSync.MsgStart: the battle handler claimed every scene start.)
+        /// Every control-channel type byte is listed in <see cref="MessageIds"/>.</summary>
+        public const Byte MsgControlUpdate = 37;
 
         public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate);
 

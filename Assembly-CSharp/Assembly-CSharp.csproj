@@ -397,6 +397,7 @@
     <Compile Include="Memoria\Online\SteamCallbacks.cs" />
     <Compile Include="Memoria\Online\SteamLobby.cs" />
     <Compile Include="Memoria\Online\SteamNative.cs" />
+    <Compile Include="Memoria\Online\MessageIds.cs" />
     <Compile Include="Memoria\Online\OnlineSession.cs" />
     <Compile Include="Memoria\Online\Session\BlobTransfer.cs" />
     <Compile Include="Memoria\Online\Session\GameSnapshot.cs" />

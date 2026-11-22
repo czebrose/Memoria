@@ -31,9 +31,9 @@ namespace Memoria.Online
     /// </summary>
     public sealed class OnlineSession : MonoBehaviour
     {
-        private const Byte MsgPing = 1;
-        private const Byte MsgPong = 2;
-        private const Byte MsgSentCount = 3;
+        internal const Byte MsgPing = 1; // every message type byte: MessageIds
+        internal const Byte MsgPong = 2;
+        internal const Byte MsgSentCount = 3;
         private const Double StallMs = 5000;
 
         private static readonly Stopwatch Clock = Stopwatch.StartNew();
@@ -236,6 +236,7 @@ namespace Memoria.Online
         private void TryInitialize()
         {
             _debug = Configuration.Debug.OnlineDebug;
+            MessageIds.Check(); // two handlers sharing a type byte: logged once
             if (_debug && GetComponent<Menus.MenuTour>() == null && Menus.MenuTour.Requested)
                 gameObject.AddComponent<Menus.MenuTour>(); // the Online menu's test driver
             if (!SteamSdkWrapper.IsInitialized)
