@@ -255,7 +255,7 @@ namespace Memoria.Online
             _session = new SessionLobby(_lobby, _transport, _blobs, IsConnected);
             _blobs.Completed += OnSnapshotReceived;
             _blobs.Completed += _session.OnBlob;
-            _party = new PartySync(_blobs, () => _lobby.IsHost, () => _lobby.OwnerId, () => _transport.Peers, CharacterOfPeer, () => _session.MyCharacter);
+            _party = new PartySync(_blobs, () => _lobby.IsHost, () => _lobby.OwnerId, () => _transport.Peers, CharacterOfPeer, () => _session.MyCharacter, IsPlayed);
             _blobs.Completed += _party.OnBlob;
             _battle = new BattleEntry(_transport, _lobby, _blobs, () => _session.Phase == SessionPhase.Playing, () => _session.MyCharacter, CharacterOfPeer, IsPlayed, c => _session.ControllerOf(c));
             _blobs.Completed += _battle.OnBlob;

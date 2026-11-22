@@ -264,6 +264,7 @@ public class PartySettingUI : UIScene
             {
                 if (this.FF9Party_Check())
                 {
+                    Memoria.Online.Party.PartySync.OnPartyScreenConfirmed(); // [Online] a guest's new party goes to the host as a party-screen change
                     for (Int32 i = 0; i < 4; i++)
                         ff9play.FF9Play_SetParty(i, this.info.menu[i]);
                     FF9Sfx.FF9SFX_Play(103);

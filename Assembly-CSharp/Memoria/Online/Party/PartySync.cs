@@ -19,6 +19,7 @@ namespace Memoria.Online.Party
     ///    menus, shops, chests, story) go out the same way.
     ///  - Guest on an update: the host's state, with its unanswered requests re-applied on top. A rejected request
     ///    simply disappears: the guest's numbers become the host's.
+    ///  - Guests change who's in the party only with the party screen (CheckPartyScreen).
     ///  - Blocked on guests: saving, arranging items, discarding cards, changing the party order (rows: own character
     ///    only); a short message says why.
     /// Messages ride on BlobTransfer (chunked, reliable), tagged with <see cref="MagicRequest"/> / <see cref="MagicUpdate"/>.
@@ -42,6 +43,7 @@ namespace Memoria.Online.Party
         private readonly Func<IList<UInt64>> _peers;
         private readonly Func<UInt64, Int32> _characterOf;
         private readonly Func<Int32> _myCharacter;
+        private readonly Func<Int32, Boolean> _isPlayed; // a player (the host or a guest) plays this character
 
         // Host
         private Int32 _version;
@@ -68,8 +70,9 @@ namespace Memoria.Online.Party
         private static String _toast;
         private static Single _toastUntil;
 
-        public PartySync(BlobTransfer blobs, Func<Boolean> isHost, Func<UInt64> hostId, Func<IList<UInt64>> peers, Func<UInt64, Int32> characterOf, Func<Int32> myCharacter)
+        public PartySync(BlobTransfer blobs, Func<Boolean> isHost, Func<UInt64> hostId, Func<IList<UInt64>> peers, Func<UInt64, Int32> characterOf, Func<Int32> myCharacter, Func<Int32, Boolean> isPlayed)
         {
+            _isPlayed = isPlayed;
             _blobs = blobs;
             _isHost = isHost;
             _hostId = hostId;
@@ -224,11 +227,11 @@ namespace Memoria.Online.Party
             Int32 seq = request["seq"].AsInt;
             Int32 character = _characterOf(peer);
             JSONClass state = PartyState.Capture();
-            String reason = Validate(request, character, state);
+            String reason = Validate(request, character, state, c => c != character && _isPlayed(c));
             if (reason == null)
             {
                 ApplyChanges(state, request, character);
-                PartyState.Apply(state);
+                ApplyState(state);
                 if (request["found"] != null && request["found"].AsArray != null)
                     GuestFinds.Apply(request["found"].AsArray); // M5: a guest's chests, gifts, quest items, gil
                 _hostFingerprint = PartyState.Fingerprint();
@@ -244,12 +247,20 @@ namespace Memoria.Online.Party
             Broadcast(); // at once: the guest's menu waits on it
         }
 
-        /// <summary>Null if the request may be applied to <paramref name="state"/> (the host's state now), else why not.</summary>
-        private static String Validate(JSONClass request, Int32 character, JSONClass state)
+        /// <summary>Null if the request may be applied to <paramref name="state"/> (the host's state now), else why not.
+        /// <paramref name="playedByOther"/>: whether another player (not this request's) plays a character.</summary>
+        private static String Validate(JSONClass request, Int32 character, JSONClass state, Func<Int32, Boolean> playedByOther)
         {
             JSONArray other = request["other"].AsArray;
             if (other != null && other.Count > 0)
-                return $"only the host can change: {Join(other)}";
+            {
+                // The one exception: the party screen's new party (a moogle's party menu, a Party() call in a field script)
+                if (!IsPartyScreenRequest(request) || other.Count != 1 || other[0].Value != "slot")
+                    return $"only the host can change: {Join(other)}";
+                String why = CheckPartyScreen(request, state, playedByOther);
+                if (why != null)
+                    return why;
+            }
             Boolean shop = IsShopRequest(request);
             Int64 gilDelta = request["gil"] != null ? request["gil"].AsLong : 0;
             if (gilDelta != 0 && !shop)
@@ -320,6 +331,109 @@ namespace Memoria.Online.Party
 
         /// <summary>A guest's request made while its shop screen was open (buy, sell, synthesis): it may change gil.</summary>
         private static Boolean IsShopRequest(JSONClass request) => request["shop"] != null && request["shop"].AsInt == 1;
+
+        // ---- Guest party changes from the party screen -----------------------------------------------------------
+        // A guest may change who's in the party with the game's party screen (PartySettingUI: a moogle's party menu, a
+        // field script's Party()). The screen itself enforces the story's rules: it offers only the characters the story
+        // has made available, and keeps the ones the script locks. The host adds the multiplayer rules below. Everything
+        // else in the party list (story changes, the order) stays the host's.
+
+        private static Single _partyScreenAt = -100f;
+
+        /// <summary>[Online] hook, PartySettingUI: the player confirmed a new party (just before it's written).</summary>
+        public static void OnPartyScreenConfirmed() => _partyScreenAt = Time.realtimeSinceStartup;
+
+        private static Boolean IsPartyScreenRequest(JSONClass request) => request["partyScreen"] != null && request["partyScreen"].AsInt == 1 && request["slot"]?.AsArray != null;
+
+        /// <summary>Guest: a party-list change made with the party screen (still open, or confirmed a moment ago).</summary>
+        private static Boolean FromPartyScreen(JSONClass changes)
+        {
+            JSONArray other = changes["other"].AsArray;
+            if (other == null || other.Count != 1 || other[0].Value != "slot")
+                return false;
+            return PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.PartySetting
+                || Time.realtimeSinceStartup - _partyScreenAt < 5f;
+        }
+
+        /// <summary>Host: null if a guest's new party from the party screen may be applied now, else why not.</summary>
+        private static String CheckPartyScreen(JSONClass request, JSONClass state, Func<Int32, Boolean> playedByOther)
+        {
+            if (!CanTouchPartyNow() || IsMenuBusy() || SceneSync.Active)
+                return "the host's game is busy (a cutscene, battle or menu): try again in a moment";
+            JSONArray now = state[PartyState.Common]["slot"].AsArray, want = request["slot"].AsArray;
+            if (now == null || want.Count != now.Count)
+                return "the new party didn't come through";
+            Dictionary<Int32, JSONNode> players = PartyState.PlayersById(state[PartyState.Common]);
+            HashSet<Int32> wanted = new HashSet<Int32>();
+            foreach (JSONNode n in want)
+            {
+                Int32 id = n.AsInt;
+                if (id == EmptySlot)
+                    continue;
+                if (!players.TryGetValue(id, out JSONNode p) || p["info"]["party"].AsInt == 0)
+                    return $"{CharacterName(id)} can't join the party now";
+                if (!wanted.Add(id))
+                    return "a character is in the party twice";
+            }
+            if (wanted.Count == 0)
+                return "the party can't be empty";
+            if (FirstMember(now) != FirstMember(want))
+                return "the party's first member leads on the field for everyone: only the host can change it";
+            foreach (JSONNode n in now)
+            {
+                Int32 id = n.AsInt;
+                if (id != EmptySlot && !wanted.Contains(id) && playedByOther(id))
+                    return $"{CharacterName(id)} is another player's character";
+            }
+            return null;
+        }
+
+        private const Int32 EmptySlot = 255;
+
+        private static Int32 FirstMember(JSONArray slots)
+        {
+            foreach (JSONNode n in slots)
+                if (n.AsInt != EmptySlot)
+                    return n.AsInt;
+            return EmptySlot;
+        }
+
+        private static String CharacterName(Int32 id)
+        {
+            try { return FF9StateSystem.Common.FF9.GetPlayer((Memoria.Data.CharacterId)id)?.Name ?? $"character {id}"; }
+            catch (Exception) { return $"character {id}"; }
+        }
+
+        /// <summary>Puts a state into the game. If that changed who's in the party, the field's party entries are
+        /// updated too (what a script's UpdatePartyUID() does after Party()): the change came from another PC, so no
+        /// script here did it.</summary>
+        private static void ApplyState(JSONClass state)
+        {
+            String before = FF9StateSystem.Common.FF9.party.member == null ? null : SlotKey();
+            PartyState.Apply(state);
+            if (before == null || before == SlotKey())
+                return;
+            try
+            {
+                EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+                if (engine != null && engine.gMode == 1)
+                    engine.SetupPartyUID();
+                Log.Message($"[Online] Party: the party is now {SlotKey()} (was {before})");
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, "[Online] Party: the field's party entries couldn't be updated");
+            }
+        }
+
+        private static String SlotKey()
+        {
+            PLAYER[] members = FF9StateSystem.Common.FF9.party.member;
+            String[] ids = new String[members.Length];
+            for (Int32 i = 0; i < members.Length; i++)
+                ids[i] = members[i] == null ? "-" : ((Int32)members[i].info.slot_no).ToString();
+            return String.Join(" ", ids);
+        }
 
         /// <summary>What the items a request removes sell for (the most gil a shop request can bring in).</summary>
         private static Int64 SellValue(JSONArray items)
@@ -392,6 +506,8 @@ namespace Memoria.Online.Party
                 Int64 gil = Math.Max(0L, Math.Min(9999999L, state[PartyState.Common]["gil"].AsLong + request["gil"].AsLong));
                 state[PartyState.Common]["gil"] = new JSONData(gil.ToString());
             }
+            if (IsPartyScreenRequest(request))
+                state[PartyState.Common]["slot"] = PartyState.Clone(request["slot"]);
         }
 
         // ---- Guest ---------------------------------------------------------------------------------------------
@@ -450,6 +566,12 @@ namespace Memoria.Online.Party
             if (changes["found"] == null && (changes["gil"] != null || changes["items"] != null)
                 && PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.Shop)
                 changes.Add("shop", new JSONData(1)); // bought, sold or synthesized: the host lets it change gil
+            if (changes["found"] == null && FromPartyScreen(changes))
+            {
+                // the party screen's new party: the host lets it change who's in the party (CheckPartyScreen)
+                changes.Add("partyScreen", new JSONData(1));
+                changes.Add("slot", PartyState.Clone(now[PartyState.Common]["slot"]));
+            }
             Int32 seq = _nextSeq++;
             changes.Add("seq", new JSONData(seq));
             _pending.Add(new KeyValuePair<Int32, JSONClass>(seq, changes));
@@ -492,7 +614,7 @@ namespace Memoria.Online.Party
             Int32 character = _myCharacter();
             foreach (KeyValuePair<Int32, JSONClass> pending in _pending)
                 ApplyChanges(state, pending.Value, character); // not answered yet: stays on top (optimistic)
-            PartyState.Apply(state);
+            ApplyState(state);
             _expected = PartyState.Capture();
             _expectedFingerprint = PartyState.Fingerprint();
             UpdatesApplied++;
@@ -657,6 +779,8 @@ namespace Memoria.Online.Party
                 parts.Add($"gil {request["gil"].AsLong}");
             if (IsShopRequest(request))
                 parts.Add("in a shop");
+            if (IsPartyScreenRequest(request))
+                parts.Add($"party screen: {request["slot"].ToString()}");
             JSONArray other = request["other"].AsArray;
             if (other != null && other.Count > 0)
                 parts.Add($"other: {Join(other)}");

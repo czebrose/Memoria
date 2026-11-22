@@ -26,7 +26,8 @@ points). M5 isn't built yet, so until then a guest *can* interact; the protocol 
 | **Status / Config** | `MainMenuUI` | nothing shared (Config is per-PC) | yes | nothing to do |
 | **Shop buy / sell / synthesis** | `ShopUI` (`FF9Item_Add`, `party.gil -=`), `ff9sell` | items, gil | by talking to a shop | **Anyone**; a guest's change is a shop request (see "Guest shopping") |
 | **Chests, gil, items, key items from scripts** | field opcodes (`AddItem`, `AddGil`, ...) | items, gil, key items | only by interacting (host-only from M5) | **Host only** (M5); broadcast |
-| **Party changes from scripts** | `PartySettingUI`, `EventEngine` party opcodes | who's in the party | story (host) | **Host only**; broadcast, may trigger control changes |
+| **Party changes from scripts** | `EventEngine` party opcodes (`AddParty`, `RemoveParty`) | who's in the party | story (host) | **Host only**; broadcast, may trigger control changes |
+| **Party screen** | `PartySettingUI` (a moogle's party menu, a script's `Party()`) | who's in the party | the screen offers only who the story allows | **Anyone**, with guards; a guest's change is a party-screen request (see "Guest party changes") |
 | **Rename** | `NameSettingUI` (from scripts) | a character's name | story (host) | **Host only**; broadcast |
 | **Moogle: save, tent, Mognet** | `EventService.OpenSaveMenu`, Moogle menu | save file; tent heals the party | interaction (host-only from M5) | **Save blocked on guests** (below); tent host-only |
 | **Save menu** | `SaveLoadUI` with `Type = Save` (from `EventService.OpenSaveMenu` and `FieldHUD.OnSaveClickSwitchScene`) | the save file | Moogles, save points, Memoria's field menu | **Blocked on guests** with "Only the host can save" |
@@ -202,3 +203,34 @@ Guests can buy, sell and synthesize in shops; the gil and items are the party's 
 Two-PC test: guest talks to a shop and buys an item (both PCs show the item and the lower gil), sells one (gil
 goes up on both), synthesizes one if the shop can; the host spends the gil down first, then the guest tries to buy
 more than is left (rejected toast, guest's gil and items back to the host's).
+
+## Guest party changes
+
+Guests can change who's in the party with the game's party screen (`PartySettingUI`): a moogle's party menu, or a
+field script's `Party()`. It's the one exception to "only the host can change" the party list. Story changes
+(`AddParty` / `RemoveParty`) and the party order stay the host's.
+
+The screen itself carries the story's rules. It offers only characters the story has made available
+(`info.party`), and keeps the ones the script locks (the Black Waltz moogles lock Clove, the leader). The host adds
+the multiplayer rules.
+
+- Guest (`PartySync.GuestUpdate`): a change to the party list (`slot`) alone, made with the screen open or within 5 s
+  of its confirm (`PartySettingUI.OnKeyCancel` calls `PartySync.OnPartyScreenConfirmed` just before it writes the
+  party), is sent with `"partyScreen": 1` and the new `slot` list. Changes made by this PC's copy of another player's
+  party scene still aren't sent (`GuestGuard.HoldLiveFlags`).
+- Host (`PartySync.CheckPartyScreen`) rejects it if:
+  - the host's game is in a shared scene, a battle, loading, or a busy menu (its own party screen, a shop...): "try
+    again in a moment";
+  - a character in it isn't available (`info.party` 0), or appears twice, or the party would be empty;
+  - the party's first member changes (it leads on the field for everyone);
+  - it removes a character another player plays (the host's, or another guest's). The guest's own character may go:
+    the usual rules for a played character leaving the party apply.
+- Applying a party state that changes who's in the party also updates the field's party entries
+  (`EventEngine.SetupPartyUID`, what a script's `UpdatePartyUID()` does after `Party()`), on every PC it reaches. This
+  covers host story changes reaching guests too, which used to wait for the next field load.
+- Log: guest `Party: request N sent to the host (party screen: [0,10,11,255], other: slot)`; host `... applied` and
+  `Party: the party is now 0 10 11 - (was 0 10 2 -)`, or `... rejected: Vivi is another player's character`.
+
+Two-PC test: on the Cargo Ship (field 451), the guest talks to the moogle and swaps a free character in. Both PCs
+show the new party in the menu, the battle party matches, and the swapped-in character's field entry follows. Then the
+guest tries to remove the host's character (rejected toast, the party goes back).

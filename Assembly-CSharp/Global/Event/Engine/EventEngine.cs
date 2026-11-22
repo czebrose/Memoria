@@ -719,7 +719,8 @@ public partial class EventEngine : PersistenSingleton<EventEngine>
         }
     }
 
-    private void SetupPartyUID()
+    // [Online] internal: PartySync calls it when another PC's change put someone else in the party
+    internal void SetupPartyUID()
     {
         // Order of priorities is Zidane, Eiko, Steiner, Vivi, Freya, others, Quina, Amarant, Garnet, Beatrix
         CharacterId[] reorderArray = [CharacterId.Zidane, CharacterId.Eiko, CharacterId.Steiner, CharacterId.Vivi, CharacterId.Freya, CharacterId.NONE ,CharacterId.Quina, CharacterId.Amarant, CharacterId.Garnet, CharacterId.Beatrix];
