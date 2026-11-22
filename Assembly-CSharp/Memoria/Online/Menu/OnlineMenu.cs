@@ -322,6 +322,7 @@ namespace Memoria.Online.Menus
                 if (_fromCommand && _command != null && control != null)
                 {
                     _mode = Mode.Command;
+                    ShowOwners(false); // the ONLINE window covers them
                     _stateKey = StateKey(control);
                     FillCommand(control, false); // what changed while the party had the cursor (an offer came or went)
                     ButtonGroupState.SetCursorMemorize(_command.Rows[0].Go, CommandGroup);
@@ -348,9 +349,9 @@ namespace Memoria.Online.Menus
         {
             Active = true;
             _stateKey = StateKey(control);
-            ShowOwners(true);
             RefreshOwners(control);
             List<Row> rows = BuildCommandRows(control);
+            ShowOwners(rows.Count <= 1); // with the ONLINE window first, the labels come with the party step
             if (rows.Count > 1)
             {
                 _fromCommand = true;
@@ -373,6 +374,7 @@ namespace Memoria.Online.Menus
         private void EnterCharacters(Int32 member)
         {
             _mode = Mode.Characters;
+            ShowOwners(true);
             if (_command != null)
                 _command.Root.SetActive(false);
             _menu.OnlineSelectCharacter(member);
@@ -714,6 +716,7 @@ namespace Memoria.Online.Menus
                 go.transform.parent = window.Root.transform;
                 go.transform.localScale = Vector3.one;
                 go.transform.localPosition = Vector3.zero; // re-parenting keeps the world position (an odd z)
+                UIEventListener.Get(go).Click += _menu.onClick; // mouse: the copy has the listener but not the menu's handler (delegates aren't copied)
                 ButtonGroupState button = go.GetComponent<ButtonGroupState>();
                 button.GroupName = window.Group;
                 button.Help = new ButtonGroupState.HelpDetail { Enable = !String.IsNullOrEmpty(row.Help), TextKey = String.Empty, Text = row.Help ?? String.Empty, Tail = true };

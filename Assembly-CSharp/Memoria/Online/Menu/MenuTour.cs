@@ -81,7 +81,7 @@ namespace Memoria.Online.Menus
             yield return Shot("cursor-on-online");
             yield return Press(Control.Confirm, 1f);
             yield return Shot("online-window-guest-with-offer");
-            yield return Press(Control.Confirm, 1f);
+            yield return Click("Online Command Window", "Party", 1f); // as a left click on the row
             yield return Shot("party-owners");
             yield return Press(Control.Confirm, 1f);
             yield return Shot("my-character-release");
@@ -168,6 +168,25 @@ namespace Memoria.Online.Menus
         private Coroutine Press(Control control, Single after = 0.6f) => StartCoroutine(PressCo(control, after));
         private Coroutine Press(KeyCode key, Single after = 0.6f) => StartCoroutine(PressCo(key, after));
         private Coroutine Shot(String name) => StartCoroutine(ShotCo(name));
+        private Coroutine Click(String window, String row, Single after) => StartCoroutine(ClickCo(window, row, after));
+
+        /// <summary>What NGUI does for a left click on a row: OnClick on it, with the mouse as the current touch.</summary>
+        private IEnumerator ClickCo(String window, String row, Single after)
+        {
+            GameObject target = null;
+            foreach (ButtonGroupState button in FindObjectsOfType<ButtonGroupState>())
+                if (button.transform.parent != null && button.transform.parent.name == window && button.name.EndsWith(" " + row))
+                    target = button.gameObject;
+            Log.Message($"[Online] Menu tour: click {window} / {row}{(target == null ? " (not found)" : "")}");
+            if (target != null)
+            {
+                Int32 touch = UICamera.currentTouchID;
+                UICamera.currentTouchID = -1;
+                target.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                UICamera.currentTouchID = touch;
+            }
+            yield return Wait(after);
+        }
 
         private static IEnumerator WaitCo(Single seconds)
         {
