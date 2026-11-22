@@ -438,6 +438,11 @@ namespace Memoria.Online
                 BattleEntry.FreeCharactersJoinHost = !BattleEntry.FreeCharactersJoinHost; // Spike D
                 Log.Message($"[Online] Battle entry: party members nobody plays {(BattleEntry.FreeCharactersJoinHost ? "join" : "sit out")} the battles the host takes part in");
             }
+            else if (Input.GetKeyDown(KeyCode.Alpha8))
+            {
+                BattleEntry.LateJoin = !BattleEntry.LateJoin; // late join (docs/online/battle-late-join.md)
+                Log.Message($"[Online] Battle join: walking into another player's running battle {(BattleEntry.LateJoin ? "joins it" : "doesn't (late join off)")}");
+            }
             else if (Input.GetKeyDown(KeyCode.Alpha7))
             {
                 BattleEntry.StartAtTrigger = !BattleEntry.StartAtTrigger; // Step 3: measure trigger-to-Go both ways

@@ -26,6 +26,9 @@ namespace Memoria.Online
             for (Byte b = Battle.BattleEntryMessages.Presence; b <= Battle.BattleEntryMessages.Alive; b++)
                 yield return Id(b, $"BattleEntryMessages ({b})");
             yield return Id(Battle.BattleWire.MsgStream, "BattleWire.MsgStream");
+            yield return Id(Battle.BattleEntryMessages.BattleOpen, "BattleEntryMessages.BattleOpen");
+            yield return Id(Battle.BattleEntryMessages.JoinAsk, "BattleEntryMessages.JoinAsk");
+            yield return Id(Battle.BattleEntryMessages.JoinRefuse, "BattleEntryMessages.JoinRefuse");
             for (Byte b = Battle.BattleControl.MsgCommandRequest; b <= Battle.BattleControl.MsgFleeResult; b++)
                 yield return Id(b, $"BattleControl ({b})");
             yield return Id(Battle.BattleControl.MsgControlUpdate, "BattleControl.MsgControlUpdate");

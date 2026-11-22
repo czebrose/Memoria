@@ -31,6 +31,22 @@ namespace Memoria.Online.Battle
 
         public static Boolean IsBattleEntry(Byte[] data) => data != null && data.Length >= 3 && data[0] >= Presence && data[0] <= Alive;
 
+        // ---- Late join (docs/online/battle-late-join.md) ----
+        //   BattleOpen [34, seq u16, field u16, battle u16, state, seconds u8]  9 B, owner → every peer, 1/s while its
+        //              field battle runs, once more when it ends (state 0 = joinable, else a refusal reason)
+        //   JoinAsk    [35, seq u16]                                            3 B, a PC on that field → owner
+        //   JoinRefuse [36, seq u16, reason]                                    4 B, owner → that PC
+        // An accepted ask gets the owner's Start (the battle's start values); the joiner's Ready gets Go and every
+        // stream message so far, then the live stream as any participant.
+        public const Byte BattleOpen = 34;
+        public const Byte JoinAsk = 35;
+        public const Byte JoinRefuse = 36;
+
+        public static Boolean IsLateJoin(Byte[] data) => data != null && data.Length >= 3 && data[0] >= BattleOpen && data[0] <= JoinRefuse;
+
+        public static Byte[] Open(UInt16 seq, UInt16 field, UInt16 battleId, Byte state, Int32 seconds)
+            => Short(BattleOpen, seq, (Byte)field, (Byte)(field >> 8), (Byte)battleId, (Byte)(battleId >> 8), state, (Byte)Math.Min(255, Math.Max(0, seconds)));
+
         public static Byte[] Short(Byte type, UInt16 seq, params Byte[] extra)
         {
             Byte[] message = new Byte[3 + extra.Length];

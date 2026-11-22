@@ -39,6 +39,52 @@ namespace Memoria.Online.Battle
         private const Double AliveEveryMs = 1000;
         private const Double OwnerEndedFallbackMs = 45000; // participant: the owner's End came this long ago, this battle still runs → leave
         private const Double OwnerSilentMs = 6000;       // participant: nothing from the owner this long → leave the battle
+        // Late join (docs/online/battle-late-join.md)
+        private const Double OpenEveryMs = 1000;         // owner: BattleOpen this often while its battle runs
+        private const Double OpenStaleMs = 3500;         // joiner: no BattleOpen this long → that battle is over
+        private const Double LateJoinMaxMs = 180000;     // owner: the battle has run this long since Go → no late joins (catch-up too long)
+        private const Int32 HistoryMaxBytes = 256 * 1024; // owner: stream history kept for late joiners
+
+        /// <summary>Why a battle can't be joined late (BattleOpen state, JoinRefuse reason). 0 = joinable.</summary>
+        private enum LateRefusal : byte
+        {
+            Joinable = 0, Ending = 1, TooLong = 2, Scene = 3, Settings = 4, NotRunning = 5, AlreadyIn = 6, Unknown = 7,
+            Off = 8, Debug = 9, NotStreamed = 10
+        }
+
+        private static String RefusalText(Byte reason)
+        {
+            switch ((LateRefusal)reason)
+            {
+                case LateRefusal.Joinable: return "joinable";
+                case LateRefusal.Ending: return "the battle is ending";
+                case LateRefusal.TooLong: return $"the battle has run over {LateJoinMaxMs / 1000:0} s (catching up would take too long)";
+                case LateRefusal.Scene: return "the battle belongs to a party scene";
+                case LateRefusal.Settings: return "battle settings differ";
+                case LateRefusal.NotRunning: return "the battle is still starting";
+                case LateRefusal.AlreadyIn: return "already in it";
+                case LateRefusal.Unknown: return "no such battle running";
+                case LateRefusal.Off: return "late join is off on the owner";
+                case LateRefusal.Debug: return "debug battle";
+                case LateRefusal.NotStreamed: return "the battle isn't streamed";
+                default: return $"reason {reason}";
+            }
+        }
+
+        /// <summary>
+        /// Late join: a PC that walks onto a field where another PC owns a running battle enters that battle and plays it
+        /// from its start at up to 4x speed until it has caught up (spectator: its character isn't in the battle).
+        /// Debug toggle: Ctrl+Shift+8.
+        /// </summary>
+        public static Boolean LateJoin = true;
+
+        private sealed class OpenBattle
+        {
+            public UInt16 Seq, Field, BattleId;
+            public Byte State;
+            public Int32 Seconds;
+            public Double At;
+        }
 
         private enum Role { None, Owner, Participant }
         private enum Busy : byte { Control = 0, Menu = 1, NoControl = 2, Battle = 3, WorldMap = 4, Other = 5 }
@@ -69,6 +115,16 @@ namespace Memoria.Online.Battle
             public Boolean ExitRequested, Exiting;
             public String ExitWhy;
             public JSONClass Before;                 // guest owner: party state before the battle (for the results)
+            // Late join
+            public Byte[] GoBytes;                   // owner: the Go it sent (a late joiner gets the same)
+            public Double GoAt = -1;
+            public readonly List<Byte[]> History = new List<Byte[]>(); // owner: every stream message with a body, in order
+            public Int32 HistoryBytes;
+            public Boolean HistoryOverflow;
+            public readonly Dictionary<UInt64, Double> LateJoiners = new Dictionary<UInt64, Double>(); // owner: accepted, not Ready yet (since)
+            public Double NextOpen;
+            public Boolean Late;                     // participant: joined a battle that was already running
+            public Boolean CaughtUpLogged;
         }
 
         private sealed class Incoming
@@ -79,7 +135,12 @@ namespace Memoria.Online.Battle
             public Double PendingAt;
             public BattleStartData Start;
             public Double StartAt;
+            public Boolean Late;                     // asked to join a running battle (JoinAsk)
         }
+
+        private readonly Dictionary<UInt64, OpenBattle> _open = new Dictionary<UInt64, OpenBattle>(); // late join: each peer's running field battle
+        private readonly HashSet<String> _asked = new HashSet<String>();   // "owner/seq": asked, refused, fled or left: not again
+        private readonly Dictionary<String, Byte> _noted = new Dictionary<String, Byte>(); // "owner/seq" → last state logged
 
         private readonly SteamTransport _transport;
         private readonly SteamLobby _lobby;
@@ -224,6 +285,7 @@ namespace Memoria.Online.Battle
                 if (_current != null || _incoming != null)
                     Log.Message("[Online] Battle entry: session not playing; forgetting the shared battle");
                 _incoming = null;
+                _open.Clear();
                 if (_current != null && !_current.InBattle)
                     _current = null;
                 if (_current == null)
@@ -233,6 +295,7 @@ namespace Memoria.Online.Battle
             PublishPresence(now);
             TrackField();
             UpdateIncoming(now);
+            UpdateLateJoin(now);
             UpdateCurrent(now);
             BattleControl.Flush();
             ApplyPendingResult();
@@ -496,7 +559,9 @@ namespace Memoria.Online.Battle
                 PlayOwnerMusic(c.Data.Music); // from the start of the battle; Go checks again
             }
             c.PartyApplied = BattleEntryParty.Apply(c.Characters);
-            if (c.Role == Role.Owner && c.Participants.Count > 0)
+            // Late join: every owned field battle is recorded and streamed (kept as history), so a player who walks in
+            // later can replay it from its start
+            if (c.Role == Role.Owner && (c.Participants.Count > 0 || (LateJoin && LocalSettingsSupported)))
                 BattleSync.BeginOwner();
             else if (c.Role == Role.Participant)
                 BattleSync.BeginPassive();
@@ -620,6 +685,8 @@ namespace Memoria.Online.Battle
                     Int32 music = FF9Snd.GetCurrentMusicId();
                     Dictionary<UInt16, UInt64> control = ControlMap(c);
                     Byte[] go = BattleEntryMessages.GoWithUnits(c.Seq, units, music, control);
+                    c.GoBytes = go;
+                    c.GoAt = _now;
                     BattleControl.BeginOwner(c.Seq, control, SendTo);
                     foreach (UInt64 peer in c.Participants)
                         SendTo(peer, go);
@@ -670,10 +737,12 @@ namespace Memoria.Online.Battle
                 }
                 if (c.InBattle && !c.GoSent && c.Awaiting.Count > 0)
                     Notice = $"Waiting for {c.Awaiting.Count} player(s) to join the battle...";
-                if (c.StartSent && c.Participants.Count > 0 && now >= c.NextAlive)
+                if (c.StartSent && (c.Participants.Count > 0 || c.LateJoiners.Count > 0) && now >= c.NextAlive)
                 {
                     c.NextAlive = now + AliveEveryMs;
                     foreach (UInt64 peer in c.Participants)
+                        SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Alive, c.Seq));
+                    foreach (UInt64 peer in c.LateJoiners.Keys) // loading the battle: they'd leave on the owner's silence
                         SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Alive, c.Seq));
                 }
                 if (c.GoSent && !c.EndSent && c.Participants.Count > 0 && now >= c.NextControlSync)
@@ -681,12 +750,16 @@ namespace Memoria.Online.Battle
                     c.NextControlSync = now + 250;
                     BattleControl.OwnerSync(ControlMap(c), c.Participants); // mid-battle take / swap / release / follow
                 }
-                if (c.GoSent && c.Participants.Count > 0)
+                // Taken even with nobody in the battle yet: the history is what a late joiner replays
+                if (c.GoSent && BattleSync.OwnerStream != null)
                 {
                     Byte[] stream = BattleSync.TakeStream(c.Seq);
                     if (stream != null)
+                    {
                         foreach (UInt64 peer in c.Participants)
                             SendTo(peer, stream);
+                        KeepHistory(c, stream);
+                    }
                 }
                 Boolean streamed = BattleSync.OwnerStream != null;
                 if (c.StartSent && c.GoSent && !c.EndSent && (streamed ? BattleSync.OwnerStreamEnded : ff9.btl_result != FF9StateGlobal.BTL_RESULT_INITIAL))
@@ -695,12 +768,16 @@ namespace Memoria.Online.Battle
                     foreach (UInt64 peer in c.Participants)
                         SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.End, c.Seq, ff9.btl_result));
                     Log.Message($"[Online] Battle entry: #{c.Seq} ended: {ResultName(ff9.btl_result)}; End sent to {c.Participants.Count} participant(s)");
+                    DropLateJoiners(c, ff9.btl_result, "the battle ended before they were in");
                 }
+                OwnerLateJoin(c, now);
                 return;
             }
             // Participant, in the battle
             String ownerName = SteamNative.GetName(c.Owner);
-            Notice = c.ExitRequested || c.GoReceived ? null : $"{ownerName} is running this battle...";
+            Notice = c.ExitRequested || c.GoReceived ? null : c.Late ? $"Joining {ownerName}'s battle..." : $"{ownerName} is running this battle...";
+            if (c.Late && c.GoReceived && !c.ExitRequested)
+                LateCatchUp(c, now);
             // The passive plays the owner's battle a few frames behind; once the owner's End is in, it ends through its
             // own screens shortly after. This is the fallback if it doesn't (the owner may have left already: no silence check).
             if (c.OwnerEnded && !c.ExitRequested && now - c.OwnerEndedAt > OwnerEndedFallbackMs && BattlePhaseRunning())
@@ -720,7 +797,7 @@ namespace Memoria.Online.Battle
                 return;
             if (inc.Start == null)
             {
-                Notice = "A battle is starting...";
+                Notice = inc.Late ? $"Asking to join {SteamNative.GetName(inc.Owner)}'s battle..." : "A battle is starting...";
                 if (now - inc.PendingAt > PendingTimeoutMs)
                 {
                     Log.Warning($"[Online] Battle entry: #{inc.Seq} {SteamNative.Tag(inc.Owner)}'s battle never came ({PendingTimeoutMs / 1000:0} s); carrying on");
@@ -775,7 +852,9 @@ namespace Memoria.Online.Battle
             Incoming inc = _incoming;
             BattleStartData d = inc.Start;
             _incoming = null;
-            _current = new Current { Role = Role.Participant, Seq = inc.Seq, Owner = inc.Owner, Data = d, TriggeredAt = _now, LastFromOwner = _now };
+            _current = new Current { Role = Role.Participant, Seq = inc.Seq, Owner = inc.Owner, Data = d, TriggeredAt = _now, LastFromOwner = _now, Late = inc.Late };
+            if (inc.Late)
+                Log.Message($"[Online] Battle join: #{inc.Seq} joined: entering {SteamNative.Tag(inc.Owner)}'s running battle {d.BattleId} (watching; this PC's character isn't in it)");
             foreach (BattleStartData.Member m in d.Members)
                 _current.Characters.Add(m.Character);
             // As the field's own encounter / ENCOUNT opcode would set them; the pattern is forced through btlSubMapNo
@@ -867,6 +946,12 @@ namespace Memoria.Online.Battle
                 return;
             _current = null;
             Notice = null;
+            if (c.Role == Role.Participant)
+                _asked.Add($"{c.Owner}/{c.Seq}"); // played it, fled or was dropped: never join it again late
+            if (c.Role == Role.Owner)
+                DropLateJoiners(c, FF9StateSystem.Common.FF9.btl_result, "this PC left the battle");
+            if (c.Role == Role.Owner && c.InBattle)
+                BroadcastOpen(c, (Byte)LateRefusal.Ending); // the battle is over: joiners forget it now, not at the stale timeout
             if (c.Role == Role.Participant && c.ExitRequested && c.ExitResult != 0)
                 FF9StateSystem.Common.FF9.btl_result = c.ExitResult; // left early: the field sees the owner's result
             if (c.Role == Role.Participant && _lobby.IsHost)
@@ -925,6 +1010,7 @@ namespace Memoria.Online.Battle
             Current c = _current;
             if (c == null || c.Role != Role.Participant || result != 0)
                 return;
+            _asked.Add($"{c.Owner}/{c.Seq}"); // late join: don't walk back into the battle just fled
             _fleeReturn = _prevField >= 0 ? new KeyValuePair<Int32, Int32>(_prevField, _prevEntrance) : new KeyValuePair<Int32, Int32>(_curField, _curEntrance);
             Log.Message($"[Online] Battle entry: #{c.Seq} this PC fled; back to field {_fleeReturn.Value.Key} (entrance {_fleeReturn.Value.Value}, {(_prevField >= 0 ? "the field it came from" : "the way into this field: the previous one is unknown")})");
             RequestExit(c, FF9StateGlobal.BTL_RESULT_ESCAPE, "this PC fled", "You fled.");
@@ -970,6 +1056,278 @@ namespace Memoria.Online.Battle
             return EventEngine.FLOW_STATE_JUMP_FIELD;
         }
 
+        // ---- Late join (docs/online/battle-late-join.md) ------------------------------------------------------------
+
+        /// <summary>Owner: a stream message, kept so a late joiner can replay the battle from its start (heartbeats with
+        /// nothing in them aren't kept: the next live message carries the owner's frame).</summary>
+        private void KeepHistory(Current c, Byte[] stream)
+        {
+            if (!LateJoin || stream.Length <= 7 || c.HistoryOverflow)
+                return;
+            if (c.HistoryBytes + stream.Length > HistoryMaxBytes)
+            {
+                c.HistoryOverflow = true;
+                c.History.Clear();
+                c.HistoryBytes = 0;
+                Log.Message($"[Online] Battle join: #{c.Seq} stream history over {HistoryMaxBytes / 1024} KB; nobody can join this battle late any more");
+                return;
+            }
+            c.History.Add(stream);
+            c.HistoryBytes += stream.Length;
+        }
+
+        /// <summary>Owner: can this battle be joined late now (by <paramref name="peer"/>, or by anyone: 0)?</summary>
+        private LateRefusal LateJoinState(Current c, UInt64 peer)
+        {
+            if (!LateJoin)
+                return LateRefusal.Off;
+            if (FF9StateSystem.Battle.isDebug)
+                return LateRefusal.Debug;
+            if (Memoria.Online.Session.SceneSync.Active)
+                return LateRefusal.Scene;
+            if (BattleSync.OwnerStream == null || c.Data == null)
+                return LateRefusal.NotStreamed;
+            if (!c.GoSent || c.GoBytes == null)
+                return LateRefusal.NotRunning;
+            if (c.EndSent || FF9StateSystem.Common.FF9.btl_result != FF9StateGlobal.BTL_RESULT_INITIAL || PersistenSingleton<EventEngine>.Instance?.gMode != 2)
+                return LateRefusal.Ending;
+            if (c.HistoryOverflow || _now - c.GoAt > LateJoinMaxMs)
+                return LateRefusal.TooLong;
+            if (peer != 0)
+            {
+                if (c.Participants.Contains(peer) || c.LateJoiners.ContainsKey(peer))
+                    return LateRefusal.AlreadyIn;
+                if (_presence.TryGetValue(peer, out PeerPresence p) && (p.Speed != LocalSpeed || p.Sfx != LocalSfx))
+                    return LateRefusal.Settings;
+            }
+            return LateRefusal.Joinable;
+        }
+
+        private Byte _lastOpenState = 255;
+
+        private void BroadcastOpen(Current c, Byte state)
+        {
+            UInt16 field = c.Data != null && c.Data.Field != 0 ? c.Data.Field : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            UInt16 battleId = c.Data?.BattleId ?? (UInt16)FF9StateSystem.Battle.battleMapIndex;
+            Int32 seconds = c.GoAt < 0 ? 0 : (Int32)((_now - c.GoAt) / 1000);
+            if (state != _lastOpenState)
+            {
+                _lastOpenState = state;
+                Log.Message($"[Online] Battle join: #{c.Seq} this PC's battle {battleId} on field {field} is {(state == 0 ? "open to players who walk in" : $"closed to late joins: {RefusalText(state)}")} ({seconds} s in)");
+            }
+            Byte[] message = BattleEntryMessages.Open(c.Seq, field, battleId, state, seconds);
+            foreach (UInt64 peer in _transport.Peers)
+                SendTo(peer, message);
+        }
+
+        /// <summary>Owner, per frame: tell the session the battle runs (and if it's joinable); drop joiners who never got ready.</summary>
+        private void OwnerLateJoin(Current c, Double now)
+        {
+            if (!c.InBattle)
+                return;
+            if (now >= c.NextOpen)
+            {
+                c.NextOpen = now + OpenEveryMs;
+                BroadcastOpen(c, (Byte)LateJoinState(c, 0));
+            }
+            if (c.LateJoiners.Count == 0)
+                return;
+            List<UInt64> late = null;
+            foreach (KeyValuePair<UInt64, Double> kv in c.LateJoiners)
+                if (now - kv.Value > ReadyTimeoutMs)
+                    (late ?? (late = new List<UInt64>())).Add(kv.Key);
+            if (late == null)
+                return;
+            foreach (UInt64 peer in late)
+            {
+                c.LateJoiners.Remove(peer);
+                SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.End, c.Seq, 0));
+                Log.Warning($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} not ready {ReadyTimeoutMs / 1000:0} s after it was let in; dropped");
+            }
+        }
+
+        private void DropLateJoiners(Current c, Byte result, String why)
+        {
+            if (c.LateJoiners.Count == 0)
+                return;
+            foreach (UInt64 peer in c.LateJoiners.Keys)
+            {
+                SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.End, c.Seq, result));
+                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} was still loading the battle; dropped ({why})");
+            }
+            c.LateJoiners.Clear();
+        }
+
+        private void OnLateJoinMessage(UInt64 peer, Byte[] d)
+        {
+            UInt16 seq = BattleEntryMessages.Seq(d);
+            switch (d[0])
+            {
+                case BattleEntryMessages.BattleOpen:
+                    if (d.Length < 9)
+                        return;
+                    if (d[7] == (Byte)LateRefusal.Ending)
+                    {
+                        _open.Remove(peer);
+                        return;
+                    }
+                    _open[peer] = new OpenBattle { Seq = seq, Field = (UInt16)(d[3] | (d[4] << 8)), BattleId = (UInt16)(d[5] | (d[6] << 8)), State = d[7], Seconds = d[8], At = _now };
+                    return;
+                case BattleEntryMessages.JoinAsk:
+                    OwnerAnswerAsk(peer, seq);
+                    return;
+                case BattleEntryMessages.JoinRefuse:
+                    if (_incoming != null && _incoming.Late && _incoming.Owner == peer && _incoming.Seq == seq)
+                    {
+                        Byte reason = d.Length > 3 ? d[3] : (Byte)LateRefusal.Unknown;
+                        Log.Message($"[Online] Battle join: #{seq} refused by {SteamNative.Tag(peer)}: {RefusalText(reason)}; carrying on on the field");
+                        PartySync.Toast($"Can't join {SteamNative.GetName(peer)}'s battle: {RefusalText(reason)}.");
+                        _incoming = null;
+                    }
+                    return;
+            }
+        }
+
+        private void OwnerAnswerAsk(UInt64 peer, UInt16 seq)
+        {
+            Current c = _current;
+            LateRefusal reason = c == null || c.Role != Role.Owner || c.Seq != seq ? LateRefusal.Unknown : LateJoinState(c, peer);
+            if (reason != LateRefusal.Joinable)
+            {
+                SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.JoinRefuse, seq, (Byte)reason));
+                Log.Message($"[Online] Battle join: #{seq} {SteamNative.Tag(peer)} asked to join; refused: {RefusalText((Byte)reason)}");
+                return;
+            }
+            c.LateJoiners[peer] = _now;
+            c.NextAlive = Math.Min(c.NextAlive, _now + AliveEveryMs);
+            Byte[] start = c.Data.Serialize();
+            SendTo(peer, start);
+            Log.Message($"[Online] Battle join: #{seq} {SteamNative.Tag(peer)} asked to join battle {c.Data.BattleId} ({(_now - c.GoAt) / 1000:0.0} s in); accepted: Start sent ({start.Length} B); Go and {c.History.Count} stream messages ({c.HistoryBytes} B) follow when it's ready");
+        }
+
+        /// <summary>Owner: a late joiner's Ready (its battle is loaded, intro done) or Decline.</summary>
+        private void OnLateJoinerReady(Current c, UInt64 peer, Boolean ready, Byte declineReason)
+        {
+            c.LateJoiners.Remove(peer);
+            if (!ready)
+            {
+                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} declined after all (reason {declineReason})");
+                return;
+            }
+            LateRefusal state = LateJoinState(c, peer);
+            if (state != LateRefusal.Joinable)
+            {
+                SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.End, c.Seq, c.EndSent ? FF9StateSystem.Common.FF9.btl_result : (Byte)0));
+                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} ready, but the battle can't take it any more: {RefusalText((Byte)state)}");
+                return;
+            }
+            // Same order as a participant from the start: Go, then the stream so far, then the live stream
+            SendTo(peer, c.GoBytes);
+            List<Byte[]> chunks = BundleHistory(c.History);
+            foreach (Byte[] chunk in chunks)
+                SendTo(peer, chunk);
+            c.Participants.Add(peer);
+            Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} is in ({_now - c.GoAt:0} ms into the battle): Go + {c.History.Count} stream messages ({c.HistoryBytes} B, in {chunks.Count} sends) sent; it replays the battle from its start and catches up; {c.Participants.Count} participant(s) now");
+        }
+
+        /// <summary>
+        /// The history in fewer, bigger stream messages: a stream message is [28, seq u16, owner frame u32, records...]
+        /// and each record carries its own frame, so consecutive bodies can be joined under the last one's header.
+        /// </summary>
+        private static List<Byte[]> BundleHistory(List<Byte[]> history)
+        {
+            const Int32 Header = 7, ChunkBytes = 8 * 1024;
+            List<Byte[]> chunks = new List<Byte[]>();
+            Int32 i = 0;
+            while (i < history.Count)
+            {
+                Int32 first = i, size = Header;
+                do
+                    size += history[i++].Length - Header;
+                while (i < history.Count && size + history[i].Length - Header <= ChunkBytes);
+                Byte[] chunk = new Byte[size];
+                Buffer.BlockCopy(history[i - 1], 0, chunk, 0, Header); // type, seq and the latest owner frame
+                Int32 at = Header;
+                for (Int32 j = first; j < i; j++)
+                {
+                    Buffer.BlockCopy(history[j], Header, chunk, at, history[j].Length - Header);
+                    at += history[j].Length - Header;
+                }
+                chunks.Add(chunk);
+            }
+            return chunks;
+        }
+
+        /// <summary>A PC on a field: another PC owns a running battle here → ask to join it.</summary>
+        private void UpdateLateJoin(Double now)
+        {
+            if (_open.Count == 0)
+                return;
+            List<UInt64> stale = null;
+            foreach (KeyValuePair<UInt64, OpenBattle> kv in _open)
+                if (now - kv.Value.At > OpenStaleMs)
+                    (stale ?? (stale = new List<UInt64>())).Add(kv.Key);
+            if (stale != null)
+                foreach (UInt64 peer in stale)
+                    _open.Remove(peer);
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            if (_current != null || _incoming != null || engine == null || engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1)
+                return;
+            UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            UInt64 owner = 0;
+            OpenBattle pick = null;
+            foreach (KeyValuePair<UInt64, OpenBattle> kv in _open)
+            {
+                OpenBattle o = kv.Value;
+                if (o.Field != field)
+                    continue;
+                String key = $"{kv.Key}/{o.Seq}";
+                if (_asked.Contains(key))
+                    continue;
+                if (!_noted.TryGetValue(key, out Byte last) || last != o.State)
+                {
+                    _noted[key] = o.State;
+                    Log.Message($"[Online] Battle join: #{o.Seq} detected {SteamNative.Tag(kv.Key)}'s battle {o.BattleId} on this field ({field}, {o.Seconds} s in): {(o.State == 0 ? "joinable" : $"can't be joined: {RefusalText(o.State)}")}");
+                }
+                if (o.State != (Byte)LateRefusal.Joinable)
+                    continue;
+                if (pick == null || kv.Key == _lobby.OwnerId) // two battles here: the host's first
+                {
+                    pick = o;
+                    owner = kv.Key;
+                }
+            }
+            if (pick == null || !LateJoin || Memoria.Online.Session.SceneSync.Active)
+                return;
+            if (LocalBusy() != Busy.Control)
+                return; // after the arrival fade and the field's opening scripts, with no menu open
+            _asked.Add($"{owner}/{pick.Seq}");
+            _incoming = new Incoming { Owner = owner, Seq = pick.Seq, Field = field, BattleId = pick.BattleId, PendingAt = now, Late = true };
+            SendTo(owner, BattleEntryMessages.Short(BattleEntryMessages.JoinAsk, pick.Seq));
+            Log.Message($"[Online] Battle join: #{pick.Seq} asked {SteamNative.Tag(owner)} to join its battle {pick.BattleId} ({pick.Seconds} s in); holding the player");
+        }
+
+        /// <summary>Late joiner, in the battle: it replays the owner's battle from the start, faster, until it's caught up.</summary>
+        private void LateCatchUp(Current c, Double now)
+        {
+            BattleReplayer r = BattleSync.Replayer;
+            if (r == null || !r.Live || !r.Started)
+                return;
+            Int32 behind = r.FramesBehind;
+            if (behind > BattleStreamIn.Margin + 30)
+            {
+                Notice = $"Catching up with {SteamNative.GetName(c.Owner)}'s battle ({behind} frames to go)...";
+                if (c.OwnerEnded)
+                    c.OwnerEndedAt = now; // the "owner ended long ago" fallback counts from when this PC has caught up
+                return;
+            }
+            if (!c.CaughtUpLogged)
+            {
+                c.CaughtUpLogged = true;
+                Log.Message($"[Online] Battle join: #{c.Seq} caught up with {SteamNative.Tag(c.Owner)}'s battle, {now - c.TriggeredAt:0} ms after joining ({r.CaughtUpFrames} extra frames run, {r.Applied} events applied, {r.Mismatches} mismatches)");
+            }
+        }
+
         // ---- Messages -----------------------------------------------------------------------------------------
 
         public Boolean OnControlMessage(UInt64 peer, Byte[] d)
@@ -1001,6 +1359,12 @@ namespace Memoria.Online.Battle
                     BattleControl.OnMessage(peer, d);
                 return true;
             }
+            if (BattleEntryMessages.IsLateJoin(d))
+            {
+                if (Online)
+                    OnLateJoinMessage(peer, d);
+                return true;
+            }
             if (!BattleEntryMessages.IsBattleEntry(d))
                 return false;
             if (!Online)
@@ -1016,7 +1380,9 @@ namespace Memoria.Online.Battle
                     break;
                 case BattleEntryMessages.Ready:
                 case BattleEntryMessages.Decline:
-                    if (_current?.Role == Role.Owner && _current.Seq == seq && _current.Awaiting.Remove(peer))
+                    if (_current?.Role == Role.Owner && _current.Seq == seq && _current.LateJoiners.ContainsKey(peer))
+                        OnLateJoinerReady(_current, peer, d[0] == BattleEntryMessages.Ready, d.Length > 3 ? d[3] : (Byte)0);
+                    else if (_current?.Role == Role.Owner && _current.Seq == seq && _current.Awaiting.Remove(peer))
                     {
                         if (d[0] == BattleEntryMessages.Decline)
                         {
@@ -1129,6 +1495,9 @@ namespace Memoria.Online.Battle
         public void OnPeerLeft(UInt64 peer)
         {
             _presence.Remove(peer);
+            _open.Remove(peer);
+            if (_current?.Role == Role.Owner && _current.LateJoiners.Remove(peer))
+                Log.Message($"[Online] Battle join: #{_current.Seq} {SteamNative.Tag(peer)} left the session while joining");
             if (_incoming != null && _incoming.Owner == peer)
             {
                 Log.Message($"[Online] Battle entry: #{_incoming.Seq} {SteamNative.Tag(peer)} left before its battle started here");
@@ -1156,7 +1525,8 @@ namespace Memoria.Online.Battle
             String state = c != null ? $"{c.Role} #{c.Seq}{(c.Role == Role.Owner ? $", awaiting {c.Awaiting.Count}/{c.Participants.Count}" : "")}" : _incoming != null ? $"incoming #{_incoming.Seq}" : "idle";
             String stream = BattleSync.StatusLine;
             String who = c == null ? "" : c.Role == Role.Owner ? $", owner this PC, participants [{String.Join(" ", c.Participants.ConvertAll(p => SteamNative.Tag(p)).ToArray())}]" : $", owner {SteamNative.Tag(c.Owner)}";
-            return $"Battle: {state}{who}{(stream != null ? $"\n  {stream}" : "")}\n  U free characters join the host's battles {(FreeCharactersJoinHost ? "ON" : "off")}, 1 encounter now, 7 Start {(StartAtTrigger ? "at the trigger" : "after init")}; settings Speed {LocalSpeed} SFXRework {LocalSfx}";
+            String late = c?.Role == Role.Owner ? $"; late join: history {c.History.Count} msgs / {c.HistoryBytes} B{(c.HistoryOverflow ? " (full)" : "")}, joining {c.LateJoiners.Count}" : c?.Late == true ? "; joined late" : "";
+            return $"Battle: {state}{who}{late}{(stream != null ? $"\n  {stream}" : "")}\n  U free characters join the host's battles {(FreeCharactersJoinHost ? "ON" : "off")}, 1 encounter now, 7 Start {(StartAtTrigger ? "at the trigger" : "after init")}, 8 late join {(LateJoin ? "ON" : "off")}; settings Speed {LocalSpeed} SFXRework {LocalSfx}";
         }
 
         private static String ResultName(Byte result)
