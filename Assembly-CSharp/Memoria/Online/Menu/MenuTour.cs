@@ -27,7 +27,45 @@ namespace Memoria.Online.Menus
         /// <summary>With this too: tour the title screen's Online entry and lobby instead.</summary>
         public const String TitleFlag = "-memoria-online-menu-tour-title";
 
+        /// <summary>With this too (and -memoria-battle N): the battle's Online window, with the pretend session.</summary>
+        public const String BattleFlag = "-memoria-online-menu-tour-battle";
+
         public static Boolean Requested => HasArg(Flag);
+
+        private IEnumerator BattleSteps()
+        {
+            while (PersistenSingleton<UIManager>.Instance?.State != UIManager.UIState.BattleHUD || FF9StateSystem.Battle.FF9Battle.btl_phase != FF9StateBattleSystem.PHASE_NORMAL)
+                yield return Wait(1f);
+            List<Int32> party = new List<Int32>();
+            foreach (PLAYER p in FF9StateSystem.Common.FF9.party.member)
+                if (p != null)
+                    party.Add((Int32)p.info.slot_no);
+            OnlineMenu.Preview = new PreviewPartyControl(party, true);
+            yield return Wait(2f);
+            yield return Shot("battle");
+            yield return Press(Control.Select, 1f);
+            yield return Shot("battle-party");
+            yield return Press(Control.Down);
+            yield return Press(Control.Down);
+            yield return Press(Control.Confirm, 1f);
+            yield return Shot("battle-free-character");
+            yield return Press(Control.Down);
+            yield return Press(Control.Confirm, 1f);
+            yield return Shot("battle-follow-list");
+            yield return Press(Control.Cancel);
+            yield return Press(Control.Cancel, 1f);
+            yield return Press(Control.Down);
+            yield return Press(Control.Confirm, 1f);
+            yield return Shot("battle-offer");
+            yield return Press(Control.Cancel);
+            yield return Press(Control.Select, 1f);
+            yield return Shot("battle-closed");
+            yield return Wait(6f);
+            yield return Press(Control.Select, 1f);
+            yield return Shot("battle-reopened-during-turns");
+            yield return Wait(8f);
+            yield return Shot("battle-later");
+        }
 
         private static Boolean AtTitle => PersistenSingleton<UIManager>.Instance?.State == UIManager.UIState.Title;
 
@@ -97,6 +135,13 @@ namespace Memoria.Online.Menus
 
         private IEnumerator Run()
         {
+            if (HasArg(BattleFlag))
+            {
+                yield return StartCoroutine(BattleSteps());
+                OnlineMenu.Preview = null;
+                Log.Message("[Online] Menu tour: done");
+                yield break;
+            }
             if (HasArg(TitleFlag))
             {
                 yield return StartCoroutine(TitleSteps());

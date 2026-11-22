@@ -184,6 +184,8 @@ public partial class BattleHUD : UIScene
     {
         if (!base.OnKeyConfirm(go) || _hidingHud || _usingMainMenu)
             return true;
+        if (this.OnlineConfirm(go)) // [Online] the battle's Online window
+            return true;
 
         if (ButtonGroupState.ActiveGroup == CommandGroupButton)
         {
@@ -350,6 +352,8 @@ public partial class BattleHUD : UIScene
 
     public override Boolean OnKeyCancel(GameObject go)
     {
+        if (this.OnlineCancel(go)) // [Online] the battle's Online window
+            return true;
         if (UIManager.Input.GetKey(Control.Special))
             return true;
 

@@ -91,6 +91,24 @@ A greyed command plays the buzzer and does nothing. After a command the cursor g
 change when the host's answer arrives (usually within a second), and every open window redraws if anything changes
 meanwhile (another player takes a character, an offer expires, a player leaves).
 
+## In battle: Select
+
+In an online session, **Select** (its keyboard key otherwise) opens a **PARTY** window over the battle. It doesn't
+pause: ATB keeps running, as with any battle menu. Each row is a party member with who plays it; choose one for the
+same commands as the main menu (Take, Follow, Swap, Accept / Decline, Release), and Follow for the list of players.
+Select or Cancel closes it; a turn of yours coming up takes the cursor and closes it. Outside a session Select does
+what it always did. (In an online session that means its help toggle isn't available in battle.)
+
+In a shared battle a change moves the character **at its next turn**: at once, unless its turn is open (its command
+menu is up on some PC, or it waits in the battle owner's own ready queue); then once that turn is done. Only players
+in that battle can command its characters: a character taken by a player who isn't in the battle stays with the
+battle's owner until the next battle. A player who never acts on an open turn holds the handover.
+
+How it works: the battle's owner checks the session's control state four times a second
+(`BattleControl.OwnerSync`), moves units whose controller changed, and sends every participant the new map
+(`MsgControlUpdate`, 40). The next TurnReady for that unit goes to its new PC, which opens its menu as usual; a
+TurnReady that arrives before the map is kept until it does.
+
 ## Notices on the field
 
 A framed **ONLINE** notice at the top of the field screen shows:
@@ -114,6 +132,9 @@ The connection status box (Ctrl+Shift+O) hides while the Online menu has the cur
 - `MenuWindows.cs`: the window builder both menus use (frame, info text, rows, cursor group, mouse clicks, window
   colour). Copies drop anchors that point outside themselves and get the menu's click handler again (Unity copies
   neither delegates nor outside references).
+- `BattleOnline.cs` with `BattleHUD.Online.cs` and two `[Online]` lines in `BattleHUD.Scene.cs`: the battle's
+  Online window (Select). `PartyCommands.cs`: the per-character commands both in-game menus show. The mid-battle
+  handover is in `Battle/BattleControl.cs` (`OwnerSync`, `OnControlUpdate`) and `BattleEntry.UpdateCurrent`.
 - `TitleOnline.cs` with `TitleUI.Online.cs` and the `[Online]` lines in `Global/TitleUI.cs`: the title's Online
   button (a copy of the language button) and its ONLINE / LOBBY / GAME / JOIN A FRIEND windows (cursor groups
   `Online.Title`, `Online.TitleList`). `SessionLobby.Title.cs` exposes the lobby to it; `SteamLobby.FriendLobbies`
@@ -131,7 +152,9 @@ the window can stay in the background) and saves screenshots to `%TEMP%\FF9Onlin
 - with `-memoria-online-menu-tour-host` too (and without `-memoria-autoload`), it hosts a lobby alone at the title,
   starts the latest save and tours the real session (host views, the Follow list, a Take);
 - with `-memoria-online-menu-tour-title` too (without `-memoria-autoload`), it tours the title screen: keyboard to
-  the Online button, Host a game (alone), the GAME list, Leave lobby, Join a friend.
+  the Online button, Host a game (alone), the GAME list, Leave lobby, Join a friend;
+- with `-memoria-online-menu-tour-battle` too and `-memoria-battle 1 -memoria-party 0,1,2,3` (instead of
+  `-memoria-autoload`), it opens the battle's Online window over a test battle, with the pretend session.
 
 Nothing of this runs without the flags.
 
@@ -185,5 +208,19 @@ Host on PC 1, a guest on PC 2, a party of at least three; both in the same field
     redraws (or goes back to the party if the command no longer applies), no stuck cursor.
 12. **Leaving:** the guest leaves the lobby while the host has the Online menu open: the guest's character shows as
     free. Ending the session with the menu open on a guest closes the Online windows and removes the entry next time.
+**In battle (a shared battle, both PCs in it, Active ATB):**
+
+- B1. **Window:** Select opens PARTY on both PCs without pausing; rows show who plays each character; Select / Cancel
+  close it and give the cursor back to the battle menu if one was open. A turn coming up closes it.
+- B2. **Take mid-battle:** the guest takes a free character while its ATB fills: its next turn opens on the guest's
+  PC (not the host's); the host's PC logs "changes hands mid-battle".
+- B3. **Open turn:** with a character's command menu open on the host, the guest takes it: the host finishes that
+  command; the turn after opens on the guest's PC. No turn lost or doubled.
+- B4. **Swap mid-battle:** accept a swap: both characters' next turns open on their new PCs.
+- B5. **Follow / Release mid-battle:** a free character set to follow the guest moves to the guest's PC at its next
+  turn; the guest releasing moves its character to the host's.
+- B6. **Not in the battle:** a player outside the battle taking one of its characters changes nothing in it; after the
+  battle the character is theirs.
+
 13. **No leftovers:** no IMGUI lobby or "Party control" panel anywhere; the F-key shortcuts do nothing without
     `OnlineDebug`.

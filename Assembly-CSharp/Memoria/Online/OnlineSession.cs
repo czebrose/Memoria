@@ -125,6 +125,7 @@ namespace Memoria.Online
                 HandleHotkeys(now);
                 Menus.OnlineNotice.Update(); // party-control news on the field (swap offers)
                 Menus.TitleOnline.Current?.Update(); // the title screen's Online button and lobby window
+                Menus.BattleOnline.Current?.Update(); // the battle's Online window
 
                 if (_init == InitState.Ready)
                 {
@@ -855,7 +856,7 @@ namespace Memoria.Online
                 GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, noticeY, messageSize.x + 16, messageSize.y + 8), message, _style);
                 noticeY += messageSize.y + 14;
             }
-            if (!_showStatus || Menus.OnlineMenu.Active || Menus.TitleOnline.Active) // the Online windows cover it: the status box steps aside
+            if (!_showStatus || Menus.OnlineMenu.Active || Menus.TitleOnline.Active || (Menus.BattleOnline.Current?.IsOpen ?? false)) // the Online windows cover it: the status box steps aside
                 return;
             StringBuilder text = new StringBuilder();
             if (_init == InitState.NoSteam)

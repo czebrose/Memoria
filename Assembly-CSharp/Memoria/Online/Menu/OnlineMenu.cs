@@ -434,43 +434,7 @@ namespace Memoria.Online.Menus
         {
             Int32 character = MemberCharacter(_member);
             String name = MemberName(_member);
-            UInt64 me = control.Me;
-            UInt64 holder = control.HolderOf(character);
-            Int32 mine = control.CharacterOf(me);
-            String mineName = CharacterName(mine);
-            List<Row> rows = new List<Row>();
-            String info;
-            if (holder == me)
-            {
-                info = "You play this character.";
-                if (control.IsHost)
-                    rows.Add(MenuWindows.NewRow("Release", false, "The host always plays a character: take or swap for another one instead.", null));
-                else
-                    rows.Add(MenuWindows.NewRow("Release", true, $"Give {name} back to the host's game and watch.", () => { Control?.Release(); Done(); }));
-            }
-            else if (holder == 0)
-            {
-                UInt64 leader = control.LeaderOf(character);
-                info = $"Nobody plays {name}. Follows {PlayerLabel(control, leader)}.";
-                rows.Add(MenuWindows.NewRow("Take", true, mine >= 0 ? $"Play {name}. {mineName} goes back to the host's game." : $"Play {name}.", () => { Control?.Take(character); Done(); }));
-                rows.Add(MenuWindows.NewRow("Follow", true, $"Who {name} follows: they join that player's battles, commanded from that player's PC.", OpenPlayers));
-            }
-            else
-            {
-                info = $"{PlayerLabel(control, holder)} plays {name}.";
-                if (control.OfferFrom == holder)
-                {
-                    String offer = OfferText(control, holder);
-                    rows.Add(MenuWindows.NewRow("Accept swap", true, offer, () => { Control?.AnswerOffer(true); Done(); }));
-                    rows.Add(MenuWindows.NewRow("Decline swap", true, offer, () => { Control?.AnswerOffer(false); Done(); }));
-                }
-                else if (control.OfferSent(holder))
-                    rows.Add(MenuWindows.NewRow("Swap offered", false, $"Waiting for {control.PlayerName(holder)}'s answer (offers expire after 30 s).", null));
-                else if (mine < 0)
-                    rows.Add(MenuWindows.NewRow("Swap", false, "You're watching: take a character nobody plays first.", null));
-                else
-                    rows.Add(MenuWindows.NewRow("Swap", true, $"Offer {control.PlayerName(holder)} your {mineName} for {name}. They accept or decline.", () => { Control?.OfferSwap(character); Done(); }));
-            }
+            List<Row> rows = PartyCommands.ForCharacter(control, character, name, () => Control, Done, OpenPlayers, false, out String info);
             if (_action == null)
                 _action = _windows.Create("Action", ActionGroup, 420, _panelDepth, _panelDepth + 2);
             _windows.Fill(_action, name.ToUpperInvariant(), info, rows, refresh, ref _actionCursor);
@@ -482,14 +446,7 @@ namespace Memoria.Online.Menus
         {
             Int32 character = MemberCharacter(_member);
             String name = MemberName(_member);
-            UInt64 leader = control.LeaderOf(character);
-            List<Row> rows = new List<Row>();
-            foreach (UInt64 player in control.Players)
-            {
-                UInt64 p = player;
-                Boolean current = p == leader;
-                rows.Add(MenuWindows.NewRow(PlayerLabel(control, p), !current, current ? $"{name} already follows {PlayerLabel(control, p)}." : $"{name} follows {PlayerLabel(control, p)} from the next battle.", () => { Control?.Follow(character, p); Done(); }));
-            }
+            List<Row> rows = PartyCommands.FollowRows(control, character, name, () => Control, Done, false);
             Int32 cursor = rows.FindIndex(r => r.Enabled);
             if (_players == null)
                 _players = _windows.Create("Players", PlayerGroup, 460, _panelDepth + 2, _panelDepth + 4);
@@ -619,15 +576,7 @@ namespace Memoria.Online.Menus
             return member >= 0 && member < members.Length && members[member] != null ? members[member].Name : "?";
         }
 
-        private static String CharacterName(Int32 character)
-        {
-            if (character < 0)
-                return "nobody";
-            foreach (PLAYER p in FF9StateSystem.Common.FF9.PlayerList)
-                if ((Int32)p.info.slot_no == character && !String.IsNullOrEmpty(p.Name))
-                    return p.Name;
-            return $"character {character}";
-        }
+        private static String CharacterName(Int32 character) => PartyCommands.CharacterName(character);
 
         private static Int32 MyMember(IPartyControl control)
         {
@@ -639,19 +588,11 @@ namespace Memoria.Online.Menus
             return -1;
         }
 
-        private static String PlayerLabel(IPartyControl control, UInt64 player)
-        {
-            if (player == control.Me)
-                return "you";
-            return control.PlayerName(player) + (player == control.Host ? " (host)" : "");
-        }
+        private static String PlayerLabel(IPartyControl control, UInt64 player) => PartyCommands.PlayerLabel(control, player);
 
-        private static String OfferText(IPartyControl control, UInt64 from)
-        {
-            return $"{control.PlayerName(from)} offers {CharacterName(control.CharacterOf(from))} for your {CharacterName(control.CharacterOf(control.Me))}.";
-        }
+        private static String OfferText(IPartyControl control, UInt64 from) => PartyCommands.OfferText(control, from);
 
-        private static String StateKey(IPartyControl control)
+        internal static String StateKey(IPartyControl control)
         {
             StringBuilder key = new StringBuilder();
             key.Append(control.Me).Append('/').Append(control.OfferFrom).Append('/').Append(control.WithHost).Append('/');

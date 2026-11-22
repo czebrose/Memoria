@@ -44,7 +44,11 @@ namespace Memoria.Online.Battle
         public const Byte MsgFleeTry = 32;
         public const Byte MsgFleeResult = 33;
 
-        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult;
+        /// <summary>Owner → participants: who commands which unit now (the whole map), after a mid-battle handover.
+        /// [40, seq u16, count u8, (unit u16, account u32)*]; units not listed are the owner's. (34-36: online-battle-join.)</summary>
+        public const Byte MsgControlUpdate = 40;
+
+        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate);
 
         public const Byte RejectNotReady = 1, RejectNoItem = 2, RejectNoMp = 3, RejectBadCommand = 4;
 
@@ -69,6 +73,8 @@ namespace Memoria.Online.Battle
         private static Role _role;
         private static UInt16 _seq;
         private static UInt64 _owner;
+        private static UInt64 _local; // passive: this PC (to read ControlUpdate)
+        private static readonly HashSet<UInt16> _earlyTurns = new HashSet<UInt16>(); // passive: TurnReady for a unit not (yet) this PC's
         private static Action<UInt64, Byte[]> _send;
 
         // Owner
@@ -115,6 +121,7 @@ namespace Memoria.Online.Battle
             _remoteRunning.Clear();
             _acceptedAt.Clear();
             _mine.Clear();
+            _earlyTurns.Clear();
             _captured.Clear();
             _pending.Clear();
             _wantTurn.Clear();
@@ -142,12 +149,13 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>Participant, at Go: the units this PC commands (may be none: it only watches).</summary>
-        public static void BeginPassive(UInt16 seq, UInt64 owner, IEnumerable<UInt16> mine, Action<UInt64, Byte[]> send)
+        public static void BeginPassive(UInt16 seq, UInt64 owner, IEnumerable<UInt16> mine, Action<UInt64, Byte[]> send, UInt64 local = 0)
         {
             Reset();
             _role = Role.Passive;
             _seq = seq;
             _owner = owner;
+            _local = local;
             _send = send;
             foreach (UInt16 unit in mine)
                 _mine.Add(unit);
@@ -243,6 +251,101 @@ namespace Memoria.Online.Battle
                 BattleSync.Note($"Control: {SteamNative.Tag(peer)} {why}: {units.Count} unit(s) now take this PC's commands");
         }
 
+        // ---- Owner: mid-battle handovers -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Owner, a few times a second (BattleEntry): the control map the session wants now (its players' take / swap /
+        /// release / follow). A unit whose controller changed moves at its next turn: at once, unless its turn is open
+        /// (a TurnReady waits on another PC, or this PC's own menu has it); then once that turn is done. Any move is
+        /// sent to every participant (<see cref="MsgControlUpdate"/>); the next TurnReady then goes to the new PC.
+        /// </summary>
+        public static void OwnerSync(Dictionary<UInt16, UInt64> desired, IEnumerable<UInt64> participants)
+        {
+            if (_role != Role.Owner)
+                return;
+            HashSet<UInt16> units = new HashSet<UInt16>(_remote.Keys);
+            units.UnionWith(desired.Keys);
+            Boolean changed = false;
+            foreach (UInt16 unit in units)
+            {
+                _remote.TryGetValue(unit, out UInt64 current);
+                desired.TryGetValue(unit, out UInt64 wanted);
+                if (current == wanted || TurnOpen(unit))
+                    continue;
+                if (wanted == 0)
+                    _remote.Remove(unit);
+                else
+                    _remote[unit] = wanted;
+                _acceptedAt.Remove(unit);
+                changed = true;
+                BattleSync.Note($"Control: {BattleSync.UnitName(unit)} changes hands mid-battle: {(current == 0 ? "this PC" : SteamNative.Tag(current))} → {(wanted == 0 ? "this PC" : SteamNative.Tag(wanted))}");
+            }
+            if (!changed)
+                return;
+            List<Byte> msg = new List<Byte> { MsgControlUpdate, (Byte)_seq, (Byte)(_seq >> 8), (Byte)_remote.Count };
+            foreach (KeyValuePair<UInt16, UInt64> kv in _remote)
+            {
+                msg.Add((Byte)kv.Key);
+                msg.Add((Byte)(kv.Key >> 8));
+                UInt32 account = (UInt32)(kv.Value & 0xFFFFFFFF);
+                msg.Add((Byte)account);
+                msg.Add((Byte)(account >> 8));
+                msg.Add((Byte)(account >> 16));
+                msg.Add((Byte)(account >> 24));
+            }
+            Byte[] bytes = msg.ToArray();
+            foreach (UInt64 peer in participants)
+                _send(peer, bytes);
+        }
+
+        /// <summary>Owner: this unit's turn is open somewhere (its command is being chosen).</summary>
+        private static Boolean TurnOpen(UInt16 unit)
+        {
+            if (_awaiting.Contains(unit))
+                return true;
+            if (_remote.ContainsKey(unit))
+                return false;
+            Int32 index = PlayerIndex(unit);
+            BattleHUD hud = UIManager.Battle;
+            return index >= 0 && hud != null && (hud.ReadyQueue.Contains(index) || hud.CurrentPlayerIndex == index) && !hud.InputFinishList.Contains(index);
+        }
+
+        /// <summary>Participant: the owner's control map after a handover; this PC's units are the ones listed for it.</summary>
+        private static void OnControlUpdate(Byte[] d)
+        {
+            Int32 count = d.Length >= 4 ? d[3] : 0;
+            HashSet<UInt16> mine = new HashSet<UInt16>();
+            for (Int32 i = 0, o = 4; i < count && o + 6 <= d.Length; i++, o += 6)
+            {
+                UInt16 unit = (UInt16)(d[o] | (d[o + 1] << 8));
+                UInt32 account = (UInt32)(d[o + 2] | (d[o + 3] << 8) | (d[o + 4] << 16) | (d[o + 5] << 24));
+                if (_local != 0 && account == (UInt32)(_local & 0xFFFFFFFF))
+                    mine.Add(unit);
+            }
+            List<String> gained = new List<String>(), lost = new List<String>();
+            foreach (UInt16 unit in new List<UInt16>(_mine))
+            {
+                if (mine.Contains(unit))
+                    continue;
+                Int32 index = PlayerIndex(unit);
+                if (_wantTurn.ContainsKey(unit) || index >= 0 && UIManager.Battle != null && UIManager.Battle.ReadyQueue.Contains(index))
+                    OnTurn(unit, false); // its menu closes (the owner waits for open turns, so this is only a safety net)
+                _mine.Remove(unit);
+                lost.Add(BattleSync.UnitName(unit));
+            }
+            foreach (UInt16 unit in mine)
+            {
+                if (!_mine.Add(unit))
+                    continue;
+                gained.Add(BattleSync.UnitName(unit));
+                BTL_DATA btl = BattleSync.FindBtl(unit);
+                if (_earlyTurns.Remove(unit) && btl != null && btl.cur.hp > 0 && btl.cur.at >= btl.max.at && !btl_cmd.CheckUsingCommand(btl.cmd[0]))
+                    OnTurn(unit, true); // its turn was announced before this update arrived, and it's still waiting to act
+            }
+            if (gained.Count > 0 || lost.Count > 0)
+                BattleSync.Note($"Control: handover: this PC now also commands {(gained.Count > 0 ? String.Join(", ", gained.ToArray()) : "-")}; no longer {(lost.Count > 0 ? String.Join(", ", lost.ToArray()) : "-")}");
+        }
+
         // ---- Owner: requests --------------------------------------------------------------------------------------
 
         public static void OnMessage(UInt64 peer, Byte[] d)
@@ -258,6 +361,9 @@ namespace Memoria.Online.Battle
                         break;
                     case MsgCommandRejected:
                         if (_role == Role.Passive && peer == _owner) OnRejected(d);
+                        break;
+                    case MsgControlUpdate:
+                        if (_role == Role.Passive && peer == _owner) OnControlUpdate(d);
                         break;
                     case MsgRunHeld:
                         if (_role == Role.Owner && d.Length >= 4)
@@ -548,7 +654,16 @@ namespace Memoria.Online.Battle
         /// <summary>Stream: the owner says this unit's turn came (or went).</summary>
         public static void OnTurn(UInt16 unit, Boolean ready)
         {
-            if (_role != Role.Passive || !_mine.Contains(unit))
+            if (_role == Role.Passive && !_mine.Contains(unit))
+            {
+                // A handover's TurnReady can come before its ControlUpdate (other channel): kept until the update
+                if (ready)
+                    _earlyTurns.Add(unit);
+                else
+                    _earlyTurns.Remove(unit);
+                return;
+            }
+            if (_role != Role.Passive)
                 return;
             Int32 index = PlayerIndex(unit);
             if (index < 0)

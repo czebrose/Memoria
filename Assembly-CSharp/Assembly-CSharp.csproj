@@ -380,12 +380,15 @@
     <Compile Include="Memoria\Online\Bodies\BodySwap.cs" />
     <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
+    <Compile Include="Memoria\Online\Menu\BattleHUD.Online.cs" />
+    <Compile Include="Memoria\Online\Menu\BattleOnline.cs" />
     <Compile Include="Memoria\Online\Menu\IPartyControl.cs" />
     <Compile Include="Memoria\Online\Menu\MainMenuUI.Online.cs" />
     <Compile Include="Memoria\Online\Menu\MenuTour.cs" />
     <Compile Include="Memoria\Online\Menu\MenuWindows.cs" />
     <Compile Include="Memoria\Online\Menu\OnlineMenu.cs" />
     <Compile Include="Memoria\Online\Menu\OnlineNotice.cs" />
+    <Compile Include="Memoria\Online\Menu\PartyCommands.cs" />
     <Compile Include="Memoria\Online\Menu\TitleOnline.cs" />
     <Compile Include="Memoria\Online\Menu\TitleUI.Online.cs" />
     <Compile Include="Memoria\Online\Party\PartyState.cs" />
