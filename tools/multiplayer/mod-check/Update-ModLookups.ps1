@@ -71,13 +71,15 @@ $reAssignMemberType = [regex]'\b(\w+)\s*=\s*\(?\s*(\w+)\s*\.\s*(FieldType|Proper
 $reAssignRuntimeType = [regex]'\b(\w+)\s*=\s*(\w+)\s*\.\s*GetType\(\s*\)\s*;'
 $reAssignMember = [regex]('\b(\w+)' + $rhs + $recv + '\s*\.\s*Get(Field|Property|Method)\(\s*"([^"]+)"')
 $reAssignValue = [regex]('\b(\w+)' + $rhs + '\b(\w+)\s*\.\s*GetValue\(')
-$reAssignHelper = [regex]('\b(\w+)' + $rhs + '\b(?:GetMember|Get)\(\s*([\w.]+)\s*,\s*"([^"]+)"\s*\)')
+# The mod's helpers that look a member up by name on an object: GetMember(obj, "x"), Get(obj, "x"), Prop<T>(obj, "x")
+$helper = '\b(?:GetMember|Get|Prop)(?:<[\w.]+>)?\('
+$reAssignHelper = [regex]('\b(\w+)' + $rhs + $helper + '\s*([\w.]+)\s*,\s*"([^"]+)"\s*\)')
 $reAssignItem = [regex]'\b(\w+)\s*=\s*(\w+)\s*\[[^\]]+\]\s*;'
 $reForeach = [regex]'\bforeach\s*\(\s*[\w.]+\s+(\w+)\s+in\s+(\w+)(?:\s*\.\s*Values)?\s*\)'
 $reType = [regex]'\bGetType\(\s*"([^"]+)"\s*\)'
 $reChained = [regex]'\bGetType\(\s*"([^"]+)"\s*\)\s*\.\s*Get(Field|Property|Method)\(\s*"([^"]+)"'
 $reOnRecv = [regex]($recv + '\s*\.\s*Get(Field|Property|Method)\(\s*"([^"]+)"')
-$reHelper = [regex]'\b(?:GetMember|Get)\(\s*([^,()"]+?)\s*,\s*"([^"]+)"\s*\)'
+$reHelper = [regex]($helper + '\s*([^,()"]+?)\s*,\s*"([^"]+)"\s*\)')
 $reDynamic = [regex]'\.\s*Get(Field|Property|Method)\(\s*(?!")(\w+)\s*[,)]'
 
 foreach ($file in $sources.Keys) {
@@ -187,9 +189,9 @@ foreach ($file in $sources.Keys) {
             elseif (-not $map.ContainsKey("$file $name")) { $unresolved.Add(@{ File = $file; Kind = 'member'; Name = $name; Where = $where }) }
         }
         foreach ($m in $reDynamic.Matches($l)) {
-            # A name that isn't written in the source: fine inside the GetMember/Get helpers (their callers are scanned)
+            # A name that isn't written in the source: fine inside the helpers above (their callers are scanned)
             $from = [Math]::Max(0, $i - 12)
-            if (-not (($lines[$from..$i] -join "`n") -match '\b(GetMember|Get)\(\s*(System\.)?Object \w+,\s*String \w+\)')) {
+            if (-not (($lines[$from..$i] -join "`n") -match '\b(GetMember|Get|Prop)(<\w+>)?\(\s*(System\.)?Object \w+,\s*String \w+\)')) {
                 Write-Warning "${where}: a lookup by a name that isn't written in the source ($($m.Groups[2].Value)): check it by hand"
             }
         }

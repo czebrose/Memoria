@@ -20,6 +20,11 @@ OnlineWatchers.cs        _anim               Memoria.Online.Ghosts.GhostActor
 OnlineWatchers.cs        _animClock          Memoria.Online.Ghosts.GhostActor
 OnlineWatchers.cs        _frameCount         Memoria.Online.Ghosts.GhostActor
 
+# The session's transport, from WorldTogether's Transport() (SceneSync.Instance._transport)
+WorldTogether.cs         IsActive            Memoria.Online.Session.SceneSync::_transport
+WorldTogether.cs         LocalPeer           Memoria.Online.Session.SceneSync::_transport
+WorldTogether.cs         HostPeer            Memoria.Online.Session.SceneSync::_transport
+
 # The lobby passed in as a parameter (ChestOnlyRedraw / ClearRefreshBytes)
 OnlineWatchers.cs        _refreshBytes       Memoria.Online.Session.SessionLobby
 OnlineWatchers.cs        Clear               -
