@@ -711,6 +711,7 @@ public partial class BattleHUD : UIScene
                 continue;
 
             UI.PanelParty.Character character = _partyDetail.Characters[index];
+            EnsureHpMp(index, unit);
             DamageAnimationInfo hp = _hpInfoVal[index];
             DamageAnimationInfo mp = _mpInfoVal[index];
             index++;

@@ -1309,6 +1309,17 @@ public partial class BattleHUD : UIScene
         }
     }
 
+    /// <summary>[Online] InitHpMp counts the units present when the HUD opens. A player unit that enters the unit list
+    /// later (seen on an online guest: B.Waltz in Black Waltz No. 2) has no HP/MP entry, so DisplayParty threw every
+    /// frame for the rest of the battle. This adds the missing entries, at the unit's current values.</summary>
+    private void EnsureHpMp(Int32 index, BattleUnit unit)
+    {
+        while (_hpInfoVal.Count <= index)
+            _hpInfoVal.Add(new DamageAnimationInfo { RequiredValue = (Int32)unit.CurrentHp, CurrentValue = (Int32)unit.CurrentHp });
+        while (_mpInfoVal.Count <= index)
+            _mpInfoVal.Add(new DamageAnimationInfo { RequiredValue = (Int32)unit.CurrentMp, CurrentValue = (Int32)unit.CurrentMp });
+    }
+
     private Int32 GetActionMpCost(AA_DATA aaData, BattleUnit unit, BattleAbilityId abilId = BattleAbilityId.Void, Boolean considerCommandMenu = true)
     {
         Int32 mpCost = aaData.MP;

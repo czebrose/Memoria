@@ -376,6 +376,7 @@ public partial class BattleHUD : UIScene
 
             Int32 playerId = unit.GetIndex();
             UI.PanelParty.Character character = _partyDetail.Characters[hudIndex];
+            EnsureHpMp(hudIndex, unit);
             DamageAnimationInfo hp = _hpInfoVal[hudIndex];
             DamageAnimationInfo mp = _mpInfoVal[hudIndex];
             if (resetPointAnimations)
@@ -720,9 +721,21 @@ public partial class BattleHUD : UIScene
         if (_unconsciousStateList.Contains(playerId))
             return;
 
+        // [Online] No party row shows this unit (it entered the unit list after the HUD last laid out its rows, e.g. on a
+        // guest): lay them out again. If there is still none, it isn't ready yet; BattleControl offers the turn again
+        // every frame. Before, this threw after ReadyQueue.Add, leaving a ready unit the HUD can't show.
+        UI.PanelParty.Character row = _partyDetail.FindCharacter(playerId);
+        if (row == null)
+        {
+            DisplayParty();
+            row = _partyDetail.FindCharacter(playerId);
+            if (row == null)
+                return;
+        }
+
         // ATB bar is full
         ReadyQueue.Add(playerId);
-        _partyDetail.GetCharacter(playerId).ATBBlink = true;
+        row.ATBBlink = true;
     }
 
     public void RemovePlayerFromAction(Int32 btlId, Boolean isNeedToClearCommand)
