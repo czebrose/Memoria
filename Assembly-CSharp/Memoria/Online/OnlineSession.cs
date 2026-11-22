@@ -37,7 +37,7 @@ namespace Memoria.Online
         private const Double StallMs = 5000;
 
         private static readonly Stopwatch Clock = Stopwatch.StartNew();
-        private static Double NowMs => Clock.Elapsed.TotalMilliseconds;
+        internal static Double NowMs => Clock.Elapsed.TotalMilliseconds;
 
         private enum InitState { Waiting, Ready, NoSteam }
 
@@ -108,6 +108,7 @@ namespace Memoria.Online
             {
                 GhostManager.ApplyRender();
                 BodySwap.ApplyRender();
+                World.WorldGhosts.ApplyRender(NowMs);
             }
             catch (Exception err)
             {
@@ -616,7 +617,17 @@ namespace Memoria.Online
                 }
             }
             _shadow.Feed(_ghostBuffer, length, now);
+
+            // The world map's state (World.WorldGhosts), on the same channel and at the same rate
+            if (_transport != null && _transport.IsActive && World.WorldGhosts.TrySample(now, out World.WorldGhostState world))
+            {
+                Int32 worldLength = world.Serialize(_worldBuffer, 0);
+                foreach (UInt64 peer in _transport.Peers)
+                    _transport.Send(peer, TransportChannel.Movement, _worldBuffer, worldLength, false);
+            }
         }
+
+        private readonly Byte[] _worldBuffer = new Byte[World.WorldGhostState.Size];
 
         private void SampleLocal(Double now)
         {
@@ -707,7 +718,10 @@ namespace Memoria.Online
                     break;
                 case TransportChannel.Movement:
                     s.GhostReceived++;
-                    GhostManager.OnPacket(msg.Peer, d, 0, d.Length, now); // unknown message types are counted and ignored
+                    if (d.Length > 0 && d[0] == World.WorldGhostState.MessageType)
+                        World.WorldGhosts.OnPacket(msg.Peer, d, 0, d.Length, now);
+                    else
+                        GhostManager.OnPacket(msg.Peer, d, 0, d.Length, now); // unknown message types are counted and ignored
                     break;
                 case TransportChannel.State:
                     _blobs.OnMessage(msg.Peer, d, d.Length);
@@ -731,6 +745,7 @@ namespace Memoria.Online
             _battle?.OnPeerLeft(peer);
             GhostManager.Remove(peer, "left the lobby");
             GhostManager.ForgetPeer(peer);
+            World.WorldGhosts.Remove(peer);
             _blobs.Forget(peer);
             Log.Message($"[Online] Connected to {_transport.Peers.Count} peer(s)");
         }

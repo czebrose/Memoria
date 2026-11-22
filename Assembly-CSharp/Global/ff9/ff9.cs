@@ -2661,6 +2661,21 @@ public static class ff9
 
     public static void w_cameraUpdate()
     {
+        // [Online] world map co-op: the shared ship follows another player flying it, and a passenger's camera follows
+        // the ship (Memoria.Online.World.WorldCoop); what it points at the ship is put back after the camera update
+        Memoria.Online.World.WorldCoop.BeforeCamera();
+        try
+        {
+            w_cameraUpdateBody();
+        }
+        finally
+        {
+            Memoria.Online.World.WorldCoop.AfterCamera();
+        }
+    }
+
+    private static void w_cameraUpdateBody()
+    {
         if (!ff9.w_cameraFixMode)
             ff9.w_cameraChangeUpdate();
 

@@ -413,6 +413,9 @@
     <Compile Include="Memoria\Online\Session\LiveRedraw.cs" />
     <Compile Include="Memoria\Online\Session\SceneSync.cs" />
     <Compile Include="Memoria\Online\SteamTransport.cs" />
+    <Compile Include="Memoria\Online\World\WorldCoop.cs" />
+    <Compile Include="Memoria\Online\World\WorldGhosts.cs" />
+    <Compile Include="Memoria\Online\World\WorldGhostState.cs" />
     <Compile Include="Memoria\Application\WindowManager.cs" />
     <Compile Include="Memoria\Application\WindowProc.cs" />
     <Compile Include="Memoria\Assets\3DModel\FbxBone.cs" />
