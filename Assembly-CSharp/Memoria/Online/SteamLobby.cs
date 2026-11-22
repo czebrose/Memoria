@@ -114,6 +114,22 @@ namespace Memoria.Online
             SetEvent($"Opened the overlay invite dialog (overlay enabled: {SteamNative.IsOverlayEnabled(SteamNative.Utils)})");
         }
 
+        /// <summary>Steam friends playing FF9 in a lobby, with that lobby (the title screen's "Join a friend" list).</summary>
+        public List<KeyValuePair<UInt64, UInt64>> FriendLobbies()
+        {
+            List<KeyValuePair<UInt64, UInt64>> lobbies = new List<KeyValuePair<UInt64, UInt64>>();
+            Int32 count = SteamNative.GetFriendCount(SteamNative.Friends, SteamNative.FriendFlagImmediate);
+            for (Int32 i = 0; i < count; i++)
+            {
+                UInt64 friend = SteamNative.GetFriendByIndex(SteamNative.Friends, i, SteamNative.FriendFlagImmediate);
+                if (!SteamNative.GetFriendGamePlayed(SteamNative.Friends, friend, out SteamNative.FriendGameInfo info))
+                    continue;
+                if ((UInt32)(info.GameId & 0xFFFFFF) == SteamNative.FF9AppId && info.SteamIdLobby != 0 && info.SteamIdLobby != LobbyId)
+                    lobbies.Add(new KeyValuePair<UInt64, UInt64>(friend, info.SteamIdLobby));
+            }
+            return lobbies;
+        }
+
         /// <summary>Fallback for when the overlay doesn't work: join the lobby of a Steam friend who is playing FF9.</summary>
         public Boolean JoinFriendLobby()
         {

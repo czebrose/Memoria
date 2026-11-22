@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using Row = Memoria.Online.Menus.MenuWindows.Row;
+using Window = Memoria.Online.Menus.MenuWindows.Window;
 
 namespace Memoria.Online.Menus
 {
@@ -46,30 +48,8 @@ namespace Memoria.Online.Menus
 
         private enum Mode { Off, Command, Characters, Action, Players }
 
-        private sealed class Row
-        {
-            public GameObject Go;
-            public UILabel Label;
-            public Boolean Enabled;
-            public Action Act;
-            public String Text, Help;
-        }
-
-        private sealed class Window
-        {
-            public String Group;
-            public GameObject Root;
-            public UIWidget Frame;
-            public UILabel Caption;
-            public UILabel Info;
-            public Int32 Width;
-            public readonly List<Row> Rows = new List<Row>();
-        }
-
         private readonly MainMenuUI _menu;
-        private readonly GameObject _rowTemplate;
-        private readonly GameObject _frameTemplate;
-        private readonly GameObject _infoTemplate;
+        private readonly MenuWindows _windows;
         private readonly UILabel[] _owners;
         private readonly GameObject[] _stones;
         private readonly Dictionary<GameObject, Vector3> _entryPositions = new Dictionary<GameObject, Vector3>();
@@ -101,21 +81,11 @@ namespace Memoria.Online.Menus
             Entry.name = "Online SubMenu";
             Entry.transform.parent = template.transform.parent;
             Entry.transform.localScale = Vector3.one;
-            SetText(Entry.GetComponentsInChildren<UILabel>(true).FirstOrDefault(), "Online");
+            MenuWindows.SetText(Entry.GetComponentsInChildren<UILabel>(true).FirstOrDefault(), "Online");
             Entry.GetComponent<ButtonGroupState>().Help = new ButtonGroupState.HelpDetail { Enable = true, TextKey = String.Empty, Text = "Who plays each party member: take, swap, release or set who a character follows.", Tail = true };
             Entry.SetActive(false);
 
-            // Row template: a copy of a submenu row made while inactive, so its copies can join another cursor group
-            template.SetActive(false);
-            _rowTemplate = Object.Instantiate(template);
-            template.SetActive(true);
-            _rowTemplate.name = "Online Row Template";
-            _rowTemplate.transform.parent = menu.transform;
-            Object.DestroyImmediate(_rowTemplate.GetComponentsInChildren<UILocalize>(true).FirstOrDefault());
-            DetachOutsideAnchors(_rowTemplate);
-
-            _frameTemplate = menu.GenericInfoPanel.transform.Find("Frame Background").gameObject;
-            _infoTemplate = menu.LocationInfoPanel.GetChild(0);
+            _windows = new MenuWindows(menu, menu.transform, template);
 
             // Owner labels: in place of each character's magic stones while the Online entry is in use
             List<CharacterDetailHUD> huds = menu.OnlineCharacterHUDs;
@@ -182,9 +152,9 @@ namespace Memoria.Online.Menus
         /// <summary>The main menu closes (or the session ended): everything back as the game has it.</summary>
         public void Close()
         {
-            DestroyWindow(ref _players);
-            DestroyWindow(ref _action);
-            DestroyWindow(ref _command);
+            MenuWindows.Destroy(ref _players);
+            MenuWindows.Destroy(ref _action);
+            MenuWindows.Destroy(ref _command);
             ShowOwners(false);
             _mode = Mode.Off;
             Active = false;
@@ -226,7 +196,7 @@ namespace Memoria.Online.Menus
                 case Mode.Players:
                     if (MemberCharacter(_member) < 0 || control.HolderOf(MemberCharacter(_member)) != 0)
                     {
-                        DestroyWindow(ref _players);
+                        MenuWindows.Destroy(ref _players);
                         _mode = Mode.Action;
                         FillAction(control, true);
                         ButtonGroupState.ActiveGroup = ActionGroup;
@@ -277,7 +247,7 @@ namespace Memoria.Online.Menus
                 if (_mode == Mode.Action && ButtonGroupState.ContainButtonInGroup(go, _menu.OnlineCharacterGroup) && MemberCharacter(go.transform.GetSiblingIndex()) >= 0)
                 {
                     FF9Sfx.FF9SFX_Play(103);
-                    DestroyWindow(ref _action);
+                    MenuWindows.Destroy(ref _action);
                     OpenAction(go.transform.GetSiblingIndex());
                     return true;
                 }
@@ -304,7 +274,7 @@ namespace Memoria.Online.Menus
             if (group == PlayerGroup)
             {
                 FF9Sfx.FF9SFX_Play(101);
-                DestroyWindow(ref _players);
+                MenuWindows.Destroy(ref _players);
                 _mode = Mode.Action;
                 ButtonGroupState.ActiveGroup = ActionGroup;
                 return true;
@@ -382,8 +352,8 @@ namespace Memoria.Online.Menus
 
         private void BackToCharacters()
         {
-            DestroyWindow(ref _players);
-            DestroyWindow(ref _action);
+            MenuWindows.Destroy(ref _players);
+            MenuWindows.Destroy(ref _action);
             _mode = Mode.Characters;
             _menu.OnlineSelectCharacter(_member);
         }
@@ -431,18 +401,18 @@ namespace Memoria.Online.Menus
         private List<Row> BuildCommandRows(IPartyControl control)
         {
             List<Row> rows = new List<Row>();
-            rows.Add(NewRow("Party", true, "Choose a party member: take, swap, release or set who they follow.", () => EnterCharacters(MyMember(control))));
+            rows.Add(MenuWindows.NewRow("Party", true, "Choose a party member: take, swap, release or set who they follow.", () => EnterCharacters(MyMember(control))));
             UInt64 from = control.OfferFrom;
             if (from != 0)
             {
                 String offer = OfferText(control, from);
-                rows.Add(NewRow("Accept swap", true, offer, () => { Control?.AnswerOffer(true); ExitToSubMenu(); }));
-                rows.Add(NewRow("Decline swap", true, offer, () => { Control?.AnswerOffer(false); ExitToSubMenu(); }));
+                rows.Add(MenuWindows.NewRow("Accept swap", true, offer, () => { Control?.AnswerOffer(true); ExitToSubMenu(); }));
+                rows.Add(MenuWindows.NewRow("Decline swap", true, offer, () => { Control?.AnswerOffer(false); ExitToSubMenu(); }));
             }
             if (!control.IsHost)
             {
                 Boolean with = control.WithHost;
-                rows.Add(NewRow("Join host", !with, with ? "You're already on the host's field." : "Go to where the host is (their field and their world).", () => { Control?.JoinHost(); ExitToSubMenu(); }));
+                rows.Add(MenuWindows.NewRow("Join host", !with, with ? "You're already on the host's field." : "Go to where the host is (their field and their world).", () => { Control?.JoinHost(); ExitToSubMenu(); }));
             }
             // Later: an "Inventory" / "Trade" row goes here (per-player inventories aren't built yet)
             return rows;
@@ -454,10 +424,10 @@ namespace Memoria.Online.Menus
             UInt64 from = control.OfferFrom;
             String info = from != 0 ? OfferText(control, from) : null;
             if (_command == null)
-                _command = CreateWindow("Command", CommandGroup, 420);
+                _command = _windows.Create("Command", CommandGroup, 420, _panelDepth, _panelDepth + 2);
             Vector3 entry = MenuPosition(Entry.transform);
-            FillWindow(_command, "ONLINE", info, rows, refresh, ref _commandCursor);
-            Place(_command, 331f - 12f - _command.Width / 2f, entry.y + 45f);
+            _windows.Fill(_command, "ONLINE", info, rows, refresh, ref _commandCursor);
+            MenuWindows.Place(_command, 331f - 12f - _command.Width / 2f, entry.y + 45f);
         }
 
         private void FillAction(IPartyControl control, Boolean refresh)
@@ -474,16 +444,16 @@ namespace Memoria.Online.Menus
             {
                 info = "You play this character.";
                 if (control.IsHost)
-                    rows.Add(NewRow("Release", false, "The host always plays a character: take or swap for another one instead.", null));
+                    rows.Add(MenuWindows.NewRow("Release", false, "The host always plays a character: take or swap for another one instead.", null));
                 else
-                    rows.Add(NewRow("Release", true, $"Give {name} back to the host's game and watch.", () => { Control?.Release(); Done(); }));
+                    rows.Add(MenuWindows.NewRow("Release", true, $"Give {name} back to the host's game and watch.", () => { Control?.Release(); Done(); }));
             }
             else if (holder == 0)
             {
                 UInt64 leader = control.LeaderOf(character);
                 info = $"Nobody plays {name}. Follows {PlayerLabel(control, leader)}.";
-                rows.Add(NewRow("Take", true, mine >= 0 ? $"Play {name}. {mineName} goes back to the host's game." : $"Play {name}.", () => { Control?.Take(character); Done(); }));
-                rows.Add(NewRow("Follow", true, $"Who {name} follows: they join that player's battles, commanded from that player's PC.", OpenPlayers));
+                rows.Add(MenuWindows.NewRow("Take", true, mine >= 0 ? $"Play {name}. {mineName} goes back to the host's game." : $"Play {name}.", () => { Control?.Take(character); Done(); }));
+                rows.Add(MenuWindows.NewRow("Follow", true, $"Who {name} follows: they join that player's battles, commanded from that player's PC.", OpenPlayers));
             }
             else
             {
@@ -491,21 +461,21 @@ namespace Memoria.Online.Menus
                 if (control.OfferFrom == holder)
                 {
                     String offer = OfferText(control, holder);
-                    rows.Add(NewRow("Accept swap", true, offer, () => { Control?.AnswerOffer(true); Done(); }));
-                    rows.Add(NewRow("Decline swap", true, offer, () => { Control?.AnswerOffer(false); Done(); }));
+                    rows.Add(MenuWindows.NewRow("Accept swap", true, offer, () => { Control?.AnswerOffer(true); Done(); }));
+                    rows.Add(MenuWindows.NewRow("Decline swap", true, offer, () => { Control?.AnswerOffer(false); Done(); }));
                 }
                 else if (control.OfferSent(holder))
-                    rows.Add(NewRow("Swap offered", false, $"Waiting for {control.PlayerName(holder)}'s answer (offers expire after 30 s).", null));
+                    rows.Add(MenuWindows.NewRow("Swap offered", false, $"Waiting for {control.PlayerName(holder)}'s answer (offers expire after 30 s).", null));
                 else if (mine < 0)
-                    rows.Add(NewRow("Swap", false, "You're watching: take a character nobody plays first.", null));
+                    rows.Add(MenuWindows.NewRow("Swap", false, "You're watching: take a character nobody plays first.", null));
                 else
-                    rows.Add(NewRow("Swap", true, $"Offer {control.PlayerName(holder)} your {mineName} for {name}. They accept or decline.", () => { Control?.OfferSwap(character); Done(); }));
+                    rows.Add(MenuWindows.NewRow("Swap", true, $"Offer {control.PlayerName(holder)} your {mineName} for {name}. They accept or decline.", () => { Control?.OfferSwap(character); Done(); }));
             }
             if (_action == null)
-                _action = CreateWindow("Action", ActionGroup, 420);
-            FillWindow(_action, name.ToUpperInvariant(), info, rows, refresh, ref _actionCursor);
+                _action = _windows.Create("Action", ActionGroup, 420, _panelDepth, _panelDepth + 2);
+            _windows.Fill(_action, name.ToUpperInvariant(), info, rows, refresh, ref _actionCursor);
             Vector3 hud = MenuPosition(_menu.OnlineCharacterHUDs[_member].Self.transform);
-            Place(_action, 293f - 16f - _action.Width / 2f, hud.y + 97f);
+            MenuWindows.Place(_action, 293f - 16f - _action.Width / 2f, hud.y + 97f);
         }
 
         private void FillPlayers(IPartyControl control, Boolean refresh)
@@ -518,14 +488,14 @@ namespace Memoria.Online.Menus
             {
                 UInt64 p = player;
                 Boolean current = p == leader;
-                rows.Add(NewRow(PlayerLabel(control, p), !current, current ? $"{name} already follows {PlayerLabel(control, p)}." : $"{name} follows {PlayerLabel(control, p)} from the next battle.", () => { Control?.Follow(character, p); Done(); }));
+                rows.Add(MenuWindows.NewRow(PlayerLabel(control, p), !current, current ? $"{name} already follows {PlayerLabel(control, p)}." : $"{name} follows {PlayerLabel(control, p)} from the next battle.", () => { Control?.Follow(character, p); Done(); }));
             }
             Int32 cursor = rows.FindIndex(r => r.Enabled);
             if (_players == null)
-                _players = CreateWindow("Players", PlayerGroup, 460);
-            FillWindow(_players, "FOLLOW", null, rows, refresh, ref cursor);
+                _players = _windows.Create("Players", PlayerGroup, 460, _panelDepth + 2, _panelDepth + 4);
+            _windows.Fill(_players, "FOLLOW", null, rows, refresh, ref cursor);
             Vector3 action = MenuPosition(_action.Root.transform);
-            Place(_players, action.x + _action.Width / 2f + 12f + _players.Width / 2f, action.y + _action.Frame.height / 2f - 40f);
+            MenuWindows.Place(_players, action.x + _action.Width / 2f + 12f + _players.Width / 2f, action.y + _action.Frame.height / 2f - 40f);
         }
 
         // ---- Owner labels -----------------------------------------------------------------------------------------
@@ -628,263 +598,11 @@ namespace Memoria.Online.Menus
 
         private Boolean _layoutChanged;
 
-        // ---- Windows ----------------------------------------------------------------------------------------------
-
-        private Window CreateWindow(String name, String group, Int32 width)
-        {
-            Window window = new Window { Group = group, Width = width };
-            GameObject root = new GameObject("Online " + name + " Window");
-            window.Root = root;
-            root.layer = _menu.gameObject.layer;
-            root.transform.parent = _menu.transform;
-            root.transform.localScale = Vector3.one;
-            root.transform.localPosition = Vector3.zero;
-            UIPanel panel = root.AddComponent<UIPanel>();
-            panel.depth = group == PlayerGroup ? _panelDepth + 2 : _panelDepth;
-
-            GameObject frameGo = Object.Instantiate(_frameTemplate);
-            frameGo.name = "Frame Background";
-            DetachOutsideAnchors(frameGo); // the frame is anchored to the Time & Gil panel it was copied from
-            frameGo.transform.parent = root.transform;
-            frameGo.transform.localScale = Vector3.one;
-            frameGo.transform.localPosition = Vector3.zero;
-            window.Frame = frameGo.GetComponent<UIWidget>();
-            window.Caption = frameGo.transform.Find("Caption")?.GetComponent<UILabel>();
-            if (window.Caption != null)
-                Object.DestroyImmediate(window.Caption.GetComponent<UILocalize>());
-
-            GameObject infoGo = Object.Instantiate(_infoTemplate);
-            infoGo.name = "Info";
-            infoGo.transform.parent = root.transform;
-            infoGo.transform.localScale = Vector3.one;
-            infoGo.transform.localPosition = Vector3.zero;
-            window.Info = infoGo.GetComponent<UILabel>();
-            window.Info.leftAnchor.target = null;
-            window.Info.rightAnchor.target = null;
-            window.Info.topAnchor.target = null;
-            window.Info.bottomAnchor.target = null;
-            window.Info.pivot = UIWidget.Pivot.TopLeft;
-            window.Info.alignment = NGUIText.Alignment.Left;
-            window.Info.overflowMethod = UILabel.Overflow.ShrinkContent;
-            window.Info.fontSize = 30;
-            NGUITools.SetLayer(root, _menu.gameObject.layer);
-            ApplyWindowColor(root);
-            return window;
-        }
-
-        private Row NewRow(String text, Boolean enabled, String help, Action act)
-        {
-            return new Row { Enabled = enabled, Act = act ?? (() => { }), Text = text, Help = help };
-        }
-
-        private void FillWindow(Window window, String caption, String info, List<Row> rows, Boolean refresh, ref Int32 cursor)
-        {
-            Boolean hadCursor = refresh && ButtonGroupState.ActiveGroup == window.Group;
-            if (hadCursor)
-            {
-                GameObject current = ButtonGroupState.ActiveButton;
-                Int32 index = window.Rows.FindIndex(r => r.Go == current);
-                if (index >= 0)
-                    cursor = index;
-            }
-            foreach (Row old in window.Rows)
-            {
-                old.Go.SetActive(false); // leaves the cursor group (ButtonGroupState.OnDisable)
-                Object.Destroy(old.Go);
-            }
-            window.Rows.Clear();
-
-            Int32 width = window.Width;
-            // About 24 characters per line at this size; one, two or three lines
-            Int32 infoLines = String.IsNullOrEmpty(info) ? 0 : Math.Min(3, (info.Length + 23) / 24);
-            Int32 infoHeight = infoLines == 0 ? 0 : 14 + 42 * infoLines;
-            Int32 height = CaptionSpace + infoHeight + rows.Count * RowHeight + BottomSpace;
-            SizeFrame(window.Frame, width, height, caption);
-            Single top = height / 2f - CaptionSpace;
-            window.Info.gameObject.SetActive(infoHeight > 0);
-            if (infoHeight > 0)
-            {
-                window.Info.rawText = info;
-                window.Info.SetRawRect(-width / 2f + 30f, top - 6f, width - 60f, infoHeight - 10f);
-                top -= infoHeight;
-            }
-            for (Int32 i = 0; i < rows.Count; i++)
-            {
-                Row row = rows[i];
-                GameObject go = Object.Instantiate(_rowTemplate);
-                go.name = $"Row {i} {row.Text}";
-                go.transform.parent = window.Root.transform;
-                go.transform.localScale = Vector3.one;
-                go.transform.localPosition = Vector3.zero; // re-parenting keeps the world position (an odd z)
-                UIEventListener.Get(go).Click += _menu.onClick; // mouse: the copy has the listener but not the menu's handler (delegates aren't copied)
-                ButtonGroupState button = go.GetComponent<ButtonGroupState>();
-                button.GroupName = window.Group;
-                button.Help = new ButtonGroupState.HelpDetail { Enable = !String.IsNullOrEmpty(row.Help), TextKey = String.Empty, Text = row.Help ?? String.Empty, Tail = true };
-                UIWidget widget = go.GetComponent<UIWidget>();
-                Int32 rowWidth = width - 36;
-                widget.SetRawRect(0f, top - RowHeight / 2f, rowWidth, RowHeight);
-                go.GetComponent<BoxCollider>().size = new Vector3(rowWidth, RowHeight);
-                foreach (UIWidget child in go.GetComponentsInChildren<UIWidget>(true))
-                {
-                    if (child == widget || child.isAnchored)
-                        continue;
-                    if (child.name == "Spliter")
-                    {
-                        child.width = rowWidth;
-                        child.transform.localPosition = new Vector3(0f, -RowHeight / 2f - 4f, 0f);
-                        child.gameObject.SetActive(i < rows.Count - 1);
-                    }
-                    else
-                    {
-                        child.width = child is UILabel ? rowWidth - 20 : rowWidth;
-                        child.height = RowHeight;
-                        child.transform.localPosition = Vector3.zero;
-                    }
-                }
-                row.Go = go;
-                row.Label = go.GetComponentsInChildren<UILabel>(true).FirstOrDefault();
-                SetText(row.Label, row.Text);
-                row.Label.color = row.Enabled ? FF9TextTool.White : FF9TextTool.Gray;
-                window.Rows.Add(row);
-                top -= RowHeight;
-            }
-            for (Int32 i = 0; i < window.Rows.Count; i++)
-            {
-                UIKeyNavigation nav = window.Rows[i].Go.GetComponent<UIKeyNavigation>();
-                nav.onUp = window.Rows[(i + window.Rows.Count - 1) % window.Rows.Count].Go;
-                nav.onDown = window.Rows[(i + 1) % window.Rows.Count].Go;
-                nav.onLeft = null;
-                nav.onRight = null;
-                nav.startsSelected = i == 0;
-            }
-            NGUITools.SetLayer(window.Root, _menu.gameObject.layer);
-            window.Root.SetActive(true);
-            foreach (Row row in window.Rows)
-                row.Go.SetActive(true);
-            cursor = Math.Max(0, Math.Min(cursor, window.Rows.Count - 1));
-            if (hadCursor && window.Rows.Count > 0)
-            {
-                ButtonGroupState.MuteActiveSound = true;
-                ButtonGroupState.ActiveButton = window.Rows[cursor].Go;
-                ButtonGroupState.MuteActiveSound = false;
-            }
-        }
-
-        internal static void SizeFrame(UIWidget frame, Int32 width, Int32 height, String caption)
-        {
-            frame.width = width;
-            frame.height = height;
-            foreach (UIWidget child in frame.GetComponentsInChildren<UIWidget>(true))
-            {
-                if (child == frame)
-                    continue;
-                if (child is UILabel label)
-                {
-                    SetText(label, caption);
-                    if (!label.isAnchored)
-                    {
-                        label.width = width - 40;
-                        label.transform.localPosition = new Vector3(-width / 2f + 40f, height / 2f - 6f, 0f);
-                    }
-                    continue;
-                }
-                if (child.isAnchored)
-                    continue;
-                switch (child.name)
-                {
-                    case "Body":
-                        child.width = width - 36;
-                        child.height = height - 36;
-                        child.transform.localPosition = Vector3.zero;
-                        break;
-                    case "Shadow":
-                        child.width = width;
-                        child.height = height;
-                        child.transform.localPosition = new Vector3(12f, -12f, 0f);
-                        break;
-                    default:
-                        child.width = width;
-                        child.height = height;
-                        child.transform.localPosition = Vector3.zero;
-                        break;
-                }
-            }
-        }
-
-        /// <summary>Places a window by its centre x and its top y (menu coordinates), kept inside the screen.</summary>
-        private static void Place(Window window, Single centerX, Single top)
-        {
-            Single half = window.Frame.height / 2f;
-            Single y = top - half;
-            y = Math.Min(y, 500f - half);
-            y = Math.Max(y, -420f + half);
-            centerX = Math.Max(-760f + window.Width / 2f, Math.Min(760f - window.Width / 2f, centerX));
-            window.Root.transform.localPosition = new Vector3((Single)Math.Round(centerX), (Single)Math.Round(y), 0f);
-        }
-
-        private static void DestroyWindow(ref Window window)
-        {
-            if (window == null)
-                return;
-            foreach (Row row in window.Rows)
-                if (row.Go != null)
-                    row.Go.SetActive(false);
-            if (window.Root != null)
-            {
-                window.Root.SetActive(false);
-                Object.Destroy(window.Root);
-            }
-            ButtonGroupState.RemoveCursorMemorize(window.Group); // no cursor memory on a destroyed row
-            window = null;
-        }
-
         // ---- Helpers ----------------------------------------------------------------------------------------------
 
         private Vector3 MenuPosition(Transform t)
         {
             return _menu.transform.InverseTransformPoint(t.position);
-        }
-
-        private static void SetText(UILabel label, String text)
-        {
-            if (label == null)
-                return;
-            UILocalize localize = label.GetComponent<UILocalize>();
-            if (localize != null)
-                Object.DestroyImmediate(localize);
-            label.rawText = text;
-        }
-
-        /// <summary>
-        /// A copied widget keeps its anchors, and an anchor to something outside the copy still points at the
-        /// original (Unity only remaps references inside the copy): the main menu's window frames are anchored to
-        /// their panel, so a copied frame would snap back onto the Time &amp; Gil window every frame while its text
-        /// stays where we put it. Drops those anchors; anchors within the copy (border to frame, ...) stay.
-        /// </summary>
-        /// <summary>The player's window colour (Config), as UIScene.DisplayWindowBackground gives a scene's windows.</summary>
-        internal static void ApplyWindowColor(GameObject go)
-        {
-            foreach (UISprite sprite in go.GetComponentsInChildren<UISprite>(true))
-                if (sprite.gameObject.tag == "Window Color" && sprite.atlas != FF9UIDataTool.GeneralAtlas && sprite.atlas != FF9UIDataTool.IconAtlas)
-                    sprite.atlas = FF9UIDataTool.WindowAtlas;
-        }
-
-        internal static void DetachOutsideAnchors(GameObject copy)
-        {
-            foreach (UIRect rect in copy.GetComponentsInChildren<UIRect>(true))
-            {
-                Boolean changed = false;
-                foreach (UIRect.AnchorPoint anchor in new[] { rect.leftAnchor, rect.rightAnchor, rect.topAnchor, rect.bottomAnchor })
-                {
-                    if (anchor.target != null && !anchor.target.IsChildOf(copy.transform))
-                    {
-                        anchor.target = null;
-                        changed = true;
-                    }
-                }
-                if (changed)
-                    rect.ResetAnchors();
-            }
         }
 
         private static Int32 MemberCharacter(Int32 member)

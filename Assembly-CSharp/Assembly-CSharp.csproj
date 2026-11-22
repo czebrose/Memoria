@@ -383,8 +383,11 @@
     <Compile Include="Memoria\Online\Menu\IPartyControl.cs" />
     <Compile Include="Memoria\Online\Menu\MainMenuUI.Online.cs" />
     <Compile Include="Memoria\Online\Menu\MenuTour.cs" />
+    <Compile Include="Memoria\Online\Menu\MenuWindows.cs" />
     <Compile Include="Memoria\Online\Menu\OnlineMenu.cs" />
     <Compile Include="Memoria\Online\Menu\OnlineNotice.cs" />
+    <Compile Include="Memoria\Online\Menu\TitleOnline.cs" />
+    <Compile Include="Memoria\Online\Menu\TitleUI.Online.cs" />
     <Compile Include="Memoria\Online\Party\PartyState.cs" />
     <Compile Include="Memoria\Online\Party\PartySync.cs" />
     <Compile Include="Memoria\Online\Party\GuestFinds.cs" />
@@ -398,6 +401,7 @@
     <Compile Include="Memoria\Online\Session\SessionLobby.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Control.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Menu.cs" />
+    <Compile Include="Memoria\Online\Session\SessionLobby.Title.cs" />
     <Compile Include="Memoria\Online\Session\SessionSettings.cs" />
     <Compile Include="Memoria\Online\Session\SessionSettings.Configuration.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Meet.cs" />

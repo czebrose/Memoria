@@ -48,7 +48,7 @@ namespace Memoria.Online.Menus
             }
             if (!_root.activeSelf)
             {
-                OnlineMenu.ApplyWindowColor(_root); // the window colour may have changed in Config
+                MenuWindows.ApplyWindowColor(_root); // the window colour may have changed in Config
                 _root.SetActive(true);
             }
         }
@@ -87,7 +87,7 @@ namespace Memoria.Online.Menus
             _root.AddComponent<UIPanel>().depth = depth + 1;
 
             GameObject frameGo = Object.Instantiate(frameTemplate.gameObject);
-            OnlineMenu.DetachOutsideAnchors(frameGo); // anchored to the Time & Gil panel it was copied from
+            MenuWindows.DetachOutsideAnchors(frameGo); // anchored to the Time & Gil panel it was copied from
             frameGo.transform.parent = _root.transform;
             frameGo.transform.localScale = Vector3.one;
             frameGo.transform.localPosition = Vector3.zero;
@@ -95,8 +95,8 @@ namespace Memoria.Online.Menus
             if (caption != null)
                 Object.DestroyImmediate(caption.GetComponent<UILocalize>());
             _frame = frameGo.GetComponent<UIWidget>();
-            OnlineMenu.SizeFrame(_frame, Width, Height, "ONLINE");
-            OnlineMenu.ApplyWindowColor(frameGo); // the copy keeps the prefab's blue until a menu has been shown
+            MenuWindows.SizeFrame(_frame, Width, Height, "ONLINE");
+            MenuWindows.ApplyWindowColor(frameGo); // the copy keeps the prefab's blue until a menu has been shown
 
             GameObject labelGo = Object.Instantiate(menu.LocationInfoPanel.GetChild(0));
             labelGo.transform.parent = _root.transform;

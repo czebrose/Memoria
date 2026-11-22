@@ -124,6 +124,7 @@ namespace Memoria.Online
                 Double now = NowMs;
                 HandleHotkeys(now);
                 Menus.OnlineNotice.Update(); // party-control news on the field (swap offers)
+                Menus.TitleOnline.Current?.Update(); // the title screen's Online button and lobby window
 
                 if (_init == InitState.Ready)
                 {
@@ -321,7 +322,11 @@ namespace Memoria.Online
                             _session.AnswerOffer(false);
                     }
                 }
-                // Step 2 lobby (title screen): F1 release, F2-F4 pick party slot 2-4, F5 next game (host), F6 start (host)
+                // Step 2 lobby (title screen; the Online button's lobby window does all this). Debug shortcuts:
+                // F1 release, F2-F4 pick party slot 2-4, F5 next game (host), F6 start (host)
+                else if (!_debug)
+                {
+                }
                 else if (Input.GetKeyDown(KeyCode.F1))
                     _session.Pick(-1);
                 else if (Input.GetKeyDown(KeyCode.F2))
@@ -850,7 +855,7 @@ namespace Memoria.Online
                 GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, noticeY, messageSize.x + 16, messageSize.y + 8), message, _style);
                 noticeY += messageSize.y + 14;
             }
-            if (!_showStatus || Menus.OnlineMenu.Active) // the Online menu covers the party panels: the status box steps aside
+            if (!_showStatus || Menus.OnlineMenu.Active || Menus.TitleOnline.Active) // the Online windows cover it: the status box steps aside
                 return;
             StringBuilder text = new StringBuilder();
             if (_init == InitState.NoSteam)
@@ -893,7 +898,6 @@ namespace Memoria.Online
             GUIContent content = new GUIContent(text.ToString());
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
-            _session?.OnGUI();
         }
 
         private Boolean IsConnected(UInt64 peer)

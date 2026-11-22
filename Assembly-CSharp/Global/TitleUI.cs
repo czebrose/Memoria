@@ -1,4 +1,4 @@
-using Assets.Scripts.Common;
+﻿using Assets.Scripts.Common;
 using Assets.SiliconSocial;
 using Memoria;
 using Memoria.Assets;
@@ -29,7 +29,7 @@ using UnityEngine.UI;
 #pragma warning disable 414
 #pragma warning disable 169
 
-public class TitleUI : UIScene
+public partial class TitleUI : UIScene // [Online] partial: Memoria/Online/Menu/TitleUI.Online.cs
 {
     private const String MenuGroupButton = "Title.Menu";
     private const String LanguageGroupButton = "Title.MenuLanguage";
@@ -393,6 +393,8 @@ public class TitleUI : UIScene
     {
         if (base.OnKeyConfirm(go))
         {
+            if (this.OnlineConfirm(go)) // [Online] the Online button and its windows
+                return true;
             if (ButtonGroupState.ActiveGroup == MenuGroupButton)
             {
                 if (go == this.continueButton)
@@ -545,6 +547,8 @@ public class TitleUI : UIScene
     {
         if (base.OnKeyCancel(go))
         {
+            if (this.OnlineCancel(go)) // [Online]
+                return true;
             if (ButtonGroupState.ActiveGroup == MenuGroupButton)
             {
                 if (Application.platform == RuntimePlatform.Android)
@@ -1549,6 +1553,7 @@ public class TitleUI : UIScene
 
         ScriptsLoader.InitializeAsync();
         QualitySettings.antiAliasing = Configuration.Graphics.AntiAliasing;
+        this.OnlineAwake(); // [Online] the Online button and lobby (Memoria/Online/Menu/TitleOnline.cs)
     }
 
     private class SlideShow

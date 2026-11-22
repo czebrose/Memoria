@@ -24,7 +24,58 @@ namespace Memoria.Online.Menus
         /// <summary>With this too: host a lobby alone at the title, start the latest save, and tour the real session.</summary>
         public const String HostFlag = "-memoria-online-menu-tour-host";
 
+        /// <summary>With this too: tour the title screen's Online entry and lobby instead.</summary>
+        public const String TitleFlag = "-memoria-online-menu-tour-title";
+
         public static Boolean Requested => HasArg(Flag);
+
+        private static Boolean AtTitle => PersistenSingleton<UIManager>.Instance?.State == UIManager.UIState.Title;
+
+        /// <summary>The title screen: its Online entry and the lobby windows (hosting alone).</summary>
+        private IEnumerator TitleSteps()
+        {
+            while (!AtTitle || !PersistenSingleton<UIManager>.Instance.TitleScene.MenuPanelObject.activeInHierarchy)
+                yield return Wait(1f);
+            yield return Wait(3f);
+            yield return Shot("title");
+            yield return Press(Control.Down);
+            yield return Press(Control.Down);
+            yield return Press(Control.Down);
+            yield return Press(Control.Left);
+            yield return Shot("title-left-of-cloud");
+            yield return Press(Control.Up);
+            yield return Shot("title-up");
+            yield return ClickObject(TitleOnline.Current.Entry, 1f);
+            yield return Shot("title-online-window");
+            yield return Click("Online Title Window", "Host a game", 6f);
+            yield return Shot("lobby-host-alone");
+            yield return Click("Online Title Window", "Game: ", 1.5f, true);
+            yield return Shot("lobby-game-list");
+            yield return Press(Control.Cancel, 1f);
+            yield return Shot("lobby-after-cancel-list");
+            yield return Click("Online Title Window", "Leave lobby", 3f);
+            yield return Shot("left-lobby");
+            yield return Click("Online Title Window", "Join a friend", 2f);
+            yield return Shot("join-friend-list");
+            yield return Press(Control.Cancel, 1f);
+            yield return Press(Control.Cancel, 1f);
+            yield return Shot("title-back");
+        }
+
+        private Coroutine ClickObject(GameObject target, Single after) => StartCoroutine(ClickObjectCo(target, after));
+
+        private IEnumerator ClickObjectCo(GameObject target, Single after)
+        {
+            Log.Message($"[Online] Menu tour: click {target?.name ?? "(nothing)"}");
+            if (target != null)
+            {
+                Int32 touch = UICamera.currentTouchID;
+                UICamera.currentTouchID = -1;
+                target.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                UICamera.currentTouchID = touch;
+            }
+            yield return Wait(after);
+        }
 
         private static Boolean HasArg(String flag)
         {
@@ -46,6 +97,12 @@ namespace Memoria.Online.Menus
 
         private IEnumerator Run()
         {
+            if (HasArg(TitleFlag))
+            {
+                yield return StartCoroutine(TitleSteps());
+                Log.Message("[Online] Menu tour: done");
+                yield break;
+            }
             Boolean host = HasArg(HostFlag);
             if (host)
             {
@@ -168,14 +225,14 @@ namespace Memoria.Online.Menus
         private Coroutine Press(Control control, Single after = 0.6f) => StartCoroutine(PressCo(control, after));
         private Coroutine Press(KeyCode key, Single after = 0.6f) => StartCoroutine(PressCo(key, after));
         private Coroutine Shot(String name) => StartCoroutine(ShotCo(name));
-        private Coroutine Click(String window, String row, Single after) => StartCoroutine(ClickCo(window, row, after));
+        private Coroutine Click(String window, String row, Single after, Boolean prefix = false) => StartCoroutine(ClickCo(window, row, after, prefix));
 
         /// <summary>What NGUI does for a left click on a row: OnClick on it, with the mouse as the current touch.</summary>
-        private IEnumerator ClickCo(String window, String row, Single after)
+        private IEnumerator ClickCo(String window, String row, Single after, Boolean prefix)
         {
             GameObject target = null;
             foreach (ButtonGroupState button in FindObjectsOfType<ButtonGroupState>())
-                if (button.transform.parent != null && button.transform.parent.name == window && button.name.EndsWith(" " + row))
+                if (button.transform.parent != null && button.transform.parent.name == window && (prefix ? button.name.Contains(" " + row) : button.name.EndsWith(" " + row)))
                     target = button.gameObject;
             Log.Message($"[Online] Menu tour: click {window} / {row}{(target == null ? " (not found)" : "")}");
             if (target != null)

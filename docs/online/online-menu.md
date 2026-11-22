@@ -1,7 +1,46 @@
-# The Online menu (party control in game)
+# The Online menus (title-screen lobby, party control in game)
 
-Who plays which party member is now changed from the game's own main menu. The old debug-style "Party control"
-panel (top right, IMGUI) is gone; its Ctrl+Shift+F1-F12 shortcuts only work with `OnlineDebug = 1`.
+Online play is set up and run from game-style menus:
+
+- **The title screen** has an **Online** button (above the language button, "US"). It hosts or joins a lobby
+  and shows the lobby: see [Title screen: hosting and joining](#title-screen-hosting-and-joining).
+- **In game**, who plays which party member is changed from the main menu's **Online** entry (the rest of this page).
+
+The old debug-style panels (the title-screen lobby panel and the in-game "Party control" panel, both IMGUI) are gone.
+Their F-key shortcuts (title: Ctrl+Shift+F1-F6; in game: Ctrl+Shift+F1-F12) only work with `OnlineDebug = 1`.
+Ctrl+Shift+H (host), I (invite), J (join), L (leave) and O (status box) still work for everyone.
+
+## Title screen: hosting and joining
+
+Choose **Online** on the title screen: with the keyboard or a controller, Left from CLOUD DATA, or Up from "US".
+It opens a window; Cancel closes it and keeps you in the lobby you're in (Online opens it again). The title's idle
+slideshow waits while a window is open.
+
+**Not in a lobby: ONLINE**
+- **Host a game**: creates a friends-only Steam lobby (up to 4 players) and shows it.
+- **Join a friend**: lists your Steam friends who are in an FF9 lobby; choose one to join. **Refresh** looks again.
+  Accepting a Steam invite (from the Steam overlay or the friends list) joins too.
+
+While a lobby is being created or joined the window says so, with **Cancel**.
+
+**In a lobby: LOBBY**
+The top of the window lists the players (host, connecting, already in game), the game, and what's missing
+before the host can start. Then:
+
+| Who | Rows |
+|---|---|
+| host | **Game: ...**: a list of New Game and the saves, newest first. The party shown comes from that game |
+| guest | one row per party member, with who plays it: choose a free one to pick it, choose yours to give it back. The first is always the host's |
+| everyone | **Invite friends**: the Steam overlay's invite dialog (if the overlay doesn't open, friends can use Join a friend) |
+| host | **Start**: greyed until everyone is at the title screen and connected; the reason is in the window |
+| everyone | **Leave lobby** |
+
+The host's window also lists the party with who picked what. When the host starts, the guests' windows say
+"receiving the host's game" and everyone goes into the game. The window opens by itself when you enter a lobby some
+other way (a Steam invite, Ctrl+Shift+H / J). A lobby whose game has already started says so: joining a game in
+progress isn't possible yet.
+
+## In game: the Online entry
 
 The rules haven't changed: every action is still a request to the host, as described in
 [step2-m4-party-state.md](step2-m4-party-state.md) (section 8) and [step3-m2-results.md](step3-m2-results.md) (Follow).
@@ -72,6 +111,13 @@ The connection status box (Ctrl+Shift+O) hides while the Online menu has the cur
 - `IPartyControl.cs`: what the menu reads and does; `SessionLobby.Menu.cs` implements it with the existing requests
   (`take`, `swap`, `release`, `follow`, `accept` / `decline`, Join host).
 - `OnlineNotice.cs`: the field notice.
+- `MenuWindows.cs`: the window builder both menus use (frame, info text, rows, cursor group, mouse clicks, window
+  colour). Copies drop anchors that point outside themselves and get the menu's click handler again (Unity copies
+  neither delegates nor outside references).
+- `TitleOnline.cs` with `TitleUI.Online.cs` and the `[Online]` lines in `Global/TitleUI.cs`: the title's Online
+  button (a copy of the language button) and its ONLINE / LOBBY / GAME / JOIN A FRIEND windows (cursor groups
+  `Online.Title`, `Online.TitleList`). `SessionLobby.Title.cs` exposes the lobby to it; `SteamLobby.FriendLobbies`
+  lists friends in FF9 lobbies.
 - **A later Inventory / Trade tab:** add a row in `OnlineMenu.BuildCommandRows` (the guest's ONLINE window; the host
   gets that window too as soon as it has more than one row) and a window for it, built like the action window.
 
@@ -83,13 +129,37 @@ the window can stay in the background) and saves screenshots to `%TEMP%\FF9Onlin
 
 - alone, it tours a pretend four-player session (`PreviewPartyControl`): every window and state, no network;
 - with `-memoria-online-menu-tour-host` too (and without `-memoria-autoload`), it hosts a lobby alone at the title,
-  starts the latest save and tours the real session (host views, the Follow list, a Take).
+  starts the latest save and tours the real session (host views, the Follow list, a Take);
+- with `-memoria-online-menu-tour-title` too (without `-memoria-autoload`), it tours the title screen: keyboard to
+  the Online button, Host a game (alone), the GAME list, Leave lobby, Join a friend.
 
 Nothing of this runs without the flags.
 
 ## Two-PC test list
 
 Host on PC 1, a guest on PC 2, a party of at least three; both in the same field unless a step says otherwise.
+
+**Title screen (first):**
+
+- T1. **Button:** both PCs show Online above "US"; keyboard and controller reach it (Left from CLOUD DATA, Up from
+  US) and a mouse click opens it. The idle slideshow doesn't start while a window is open.
+- T2. **Host:** PC 1 chooses Host a game: the LOBBY window lists PC 1 as host, the latest save as the game and its
+  party, all free but the host's character.
+- T3. **Join a friend:** PC 2 chooses Join a friend: PC 1's name is in the list; choosing it joins. Both windows now
+  list two players (PC 2 "connecting..." for a few seconds).
+- T4. **Invite:** PC 1's Invite friends opens the Steam overlay's invite dialog; accepting the invite on PC 2 (after
+  leaving) joins and opens PC 2's LOBBY window by itself.
+- T5. **Pick:** PC 2 picks a free character (its row and PC 1's party line show PC 2's name), picks another, gives it
+  back. The host's character can't be picked.
+- T6. **Game:** PC 1 changes the game (New Game, a save); PC 2's window follows (game and party), PC 2's pick of a
+  character that isn't in the new party is dropped.
+- T7. **Start:** greyed while PC 2 is connecting or not at the title (the reason shows); Start puts both in the game,
+  PC 2 playing its pick.
+- T8. **Leave / cancel:** Cancel closes the window but keeps the lobby (Online reopens it); Leave lobby on PC 2 drops
+  it from PC 1's list. (Known: if the host leaves first, Steam makes PC 2 the lobby's owner with no game chosen;
+  PC 2 should leave too. There's no host-leave handling yet.)
+
+**In game:**
 
 1. **Entry:** outside a session the main menu has no Online entry. In a session it's above Config on both PCs; the
    seven / eight other entries still work (Item, Status, Order, Config...) and the transitions into them look right.
@@ -115,4 +185,5 @@ Host on PC 1, a guest on PC 2, a party of at least three; both in the same field
     redraws (or goes back to the party if the command no longer applies), no stuck cursor.
 12. **Leaving:** the guest leaves the lobby while the host has the Online menu open: the guest's character shows as
     free. Ending the session with the menu open on a guest closes the Online windows and removes the entry next time.
-13. **No leftovers:** no IMGUI "Party control" panel anywhere; Ctrl+Shift+F1-F12 do nothing without `OnlineDebug`.
+13. **No leftovers:** no IMGUI lobby or "Party control" panel anywhere; the F-key shortcuts do nothing without
+    `OnlineDebug`.
