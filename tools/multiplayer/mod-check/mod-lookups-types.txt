@@ -1,0 +1,25 @@
+# Types for mod lookups Update-ModLookups.ps1 can't place by itself: the object comes from a method parameter, a
+# method call, or an expression such as UIManager.Battle. Hand-kept; the updater lists any new one it needs.
+#
+# <mod file> <member name> <type it's looked up on>
+#   type: a full type name, or Type::member (that member's type), as in mod-lookups.txt
+#   '-':  the type isn't in Assembly-CSharp (e.g. a HashSet's Clear): not checked
+# Lookups on objects read through these (GetValue, GetMember(obj, ...), foreach) are then followed automatically.
+
+# BattleHUD's party rows and ability lists (GetMember(UIManager.Battle, ...))
+CageHud.cs               _abilityDetailDict  BattleHUD
+CageHud.cs               _partyDetail        BattleHUD
+IceTrial.cs              _partyDetail        BattleHUD
+
+# The ini value PlayerCountIni() returns: Configuration.Instance._multiplayer.PlayerCount
+CageCoopControls.cs      Value               Memoria.Configuration::_multiplayer::PlayerCount
+
+# A ghost passed in as a parameter
+CoopFootsteps.cs         Newest              Memoria.Online.Ghosts.GhostActor
+OnlineWatchers.cs        _anim               Memoria.Online.Ghosts.GhostActor
+OnlineWatchers.cs        _animClock          Memoria.Online.Ghosts.GhostActor
+OnlineWatchers.cs        _frameCount         Memoria.Online.Ghosts.GhostActor
+
+# The lobby passed in as a parameter (ChestOnlyRedraw / ClearRefreshBytes)
+OnlineWatchers.cs        _refreshBytes       Memoria.Online.Session.SessionLobby
+OnlineWatchers.cs        Clear               -

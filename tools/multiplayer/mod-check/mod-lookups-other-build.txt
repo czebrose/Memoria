@@ -1,0 +1,17 @@
+# Mod lookups for the local (same-PC) multiplayer build, not this online build. The mod also runs on that build:
+# it looks for these and does without them when they're missing, so Test-ModLookups.ps1 skips them here.
+# Hand-kept. Each line is the start of a lookup as Test-ModLookups.ps1 prints it: "<type> <kind> <member>".
+# All of these were checked against the local multiplayer build's source (branch multiplayer) on 2026-11-22.
+
+# Its own namespace
+Memoria.Multiplayer.
+# Its [Multiplayer] settings section
+Configuration field _multiplayer
+Configuration::_multiplayer
+Memoria.Configuration::_multiplayer
+# Its additions to the event engine and the field actor controller
+EventEngine property MultiplayerInteractions
+EventEngine property MultiplayerRedirects
+EventEngine+MultiplayerInteraction
+EventEngine+MultiplayerRedirect
+FieldMapActorController field multiplayerMoveSpeedFactor
