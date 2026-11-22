@@ -84,7 +84,7 @@ never forwarded. When a field is left, its last changes (an exit scene) are flus
 - The host replays the finds with the same game functions, then broadcasts as usual.
 - Log: guest `Finds: a script gave item N xK (sent to the host)`; host `Party: request N ... (found: item N +K)
   applied`.
-- Not covered: a guest's shop purchases are still rejected (M4: "only the host can change gil").
+- Guest shop purchases: allowed on `Steam-Multiplayer` after v0.1.2 (step2-m4-party-state.md, "Guest shopping").
 
 ### Tier 2: flags (`EventWatch.cs`, `SessionLobby.Meet.cs`)
 - Every 250 ms, a guest that has acted on its field sends its changed event bytes to the host (`MsgFlags`: index and

@@ -24,7 +24,7 @@ points). M5 isn't built yet, so until then a guest *can* interact; the protocol 
 | **Order / rows** | `MainMenuUI` Order (`party.member` swap, row) | party order, rows | yes | **Order: block on guests** (the host's; position 1 is the host's character). **Row: own character only** (a property of the character, like equipment) |
 | **Card discard** | `CardUI.OnDiscardDialogKeyConfirm` | shared card collection | yes | **Block on guests** |
 | **Status / Config** | `MainMenuUI` | nothing shared (Config is per-PC) | yes | nothing to do |
-| **Shop buy / sell / synthesis** | `ShopUI` (`FF9Item_Add`, `party.gil -=`), `ff9sell` | items, gil | only by talking to a shop (host-only from M5) | **Host only**; the host's changes are broadcast |
+| **Shop buy / sell / synthesis** | `ShopUI` (`FF9Item_Add`, `party.gil -=`), `ff9sell` | items, gil | by talking to a shop | **Anyone**; a guest's change is a shop request (see "Guest shopping") |
 | **Chests, gil, items, key items from scripts** | field opcodes (`AddItem`, `AddGil`, ...) | items, gil, key items | only by interacting (host-only from M5) | **Host only** (M5); broadcast |
 | **Party changes from scripts** | `PartySettingUI`, `EventEngine` party opcodes | who's in the party | story (host) | **Host only**; broadcast, may trigger control changes |
 | **Rename** | `NameSettingUI` (from scripts) | a character's name | story (host) | **Host only**; broadcast |
@@ -183,3 +183,22 @@ the host's Clove ghost was hidden on the guest. Now the player entry counts as t
 no longer hides the lead's ghost, and you see two Cloves until the character gets a body. The ghost log now says
 "its character is already shown here" for this case, instead of "its player is in field N".
 Not covered: the host's own Take (step 7) and the offer Decline (step 4). Neither shows in the guest log.
+
+## Guest shopping
+
+Guests can buy, sell and synthesize in shops; the gil and items are the party's (the host's game).
+
+- Guest: a party change made while its shop screen is open (`UIManager.UIState.Shop`) and carrying gil or items is
+  sent with `"shop": 1` (`PartySync.GuestUpdate`). The shop screen itself works as before (optimistic).
+- Host (`PartySync.Validate`): a shop request may change gil and gain items. It's rejected if the party's gil
+  (the host's, now) can't cover it ("not enough gil"), if an item would go below 0, or if selling brings in more gil
+  than the removed items' `selling_price` adds up to. Applied gil is clamped to 0..9,999,999.
+- Anything else in the request (other characters' equipment, "other" sections) follows the usual rules.
+- Both players shopping at once: requests are applied in order of arrival; the second one is rejected if the gil ran
+  out, and the guest's numbers go back to the host's.
+- Log: guest `Party: request N sent to the host (item 236 +2, gil -400, in a shop)`; host `... applied` or
+  `... rejected: not enough gil (the party has 300, 400 needed)`.
+
+Two-PC test: guest talks to a shop and buys an item (both PCs show the item and the lower gil), sells one (gil
+goes up on both), synthesizes one if the shop can; the host spends the gil down first, then the guest tries to buy
+more than is left (rejected toast, guest's gil and items back to the host's).

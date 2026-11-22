@@ -43,7 +43,7 @@ Disconnects (old M7 plan in [step2-m5-m7-plan.md](step2-m5-m7-plan.md#m7-disconn
 - Joining mid-game isn't supported (the lobby says "already started").
 
 Known bugs and gaps:
-- Guests can't buy in shops: the host rejects the gil change ("only the host can change gil").
+- ~~Guests can't buy in shops~~ fixed on `Steam-Multiplayer` (after v0.1.2): see "Guest shopping" in step2-m4-party-state.md.
 - The guest's first party request at a session start is rejected (party setup by the field opening) and shows a
   "didn't accept that" toast.
 - Walkmesh NRE (`WalkMesh.BGI_findAccessibleTriangle` from the player's `ServiceChar`), seen a few times on guests.

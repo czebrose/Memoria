@@ -250,8 +250,20 @@ namespace Memoria.Online.Party
             JSONArray other = request["other"].AsArray;
             if (other != null && other.Count > 0)
                 return $"only the host can change: {Join(other)}";
-            if (request["gil"] != null && request["gil"].AsLong != 0)
+            Boolean shop = IsShopRequest(request);
+            Int64 gilDelta = request["gil"] != null ? request["gil"].AsLong : 0;
+            if (gilDelta != 0 && !shop)
                 return "only the host can change gil";
+            if (shop)
+            {
+                // A guest's shop: buying, selling, synthesis. The host's gil must cover it, and selling can't bring in
+                // more than the sold items are worth here.
+                Int64 hostGil = state[PartyState.Common]["gil"].AsLong;
+                if (hostGil + gilDelta < 0)
+                    return $"not enough gil (the party has {hostGil}, {-gilDelta} needed)";
+                if (gilDelta > 0 && gilDelta > SellValue(request["items"].AsArray))
+                    return $"{gilDelta} gil is more than the sold items are worth";
+            }
 
             Dictionary<Int32, JSONNode> players = PartyState.PlayersById(state[PartyState.Common]);
             Dictionary<Int32, Int32> freedByUnequip = new Dictionary<Int32, Int32>();
@@ -299,11 +311,29 @@ namespace Memoria.Online.Party
                     have.TryGetValue(id, out Int32 count);
                     if (d < 0 && count + d < 0)
                         return $"not enough of item {id} (the host has {count}, {-d} needed)";
-                    if (d > 0 && (!freedByUnequip.TryGetValue(id, out Int32 freed) || d > freed))
+                    if (d > 0 && !shop && (!freedByUnequip.TryGetValue(id, out Int32 freed) || d > freed))
                         return $"item {id} can't be gained from a menu";
                 }
             }
             return null;
+        }
+
+        /// <summary>A guest's request made while its shop screen was open (buy, sell, synthesis): it may change gil.</summary>
+        private static Boolean IsShopRequest(JSONClass request) => request["shop"] != null && request["shop"].AsInt == 1;
+
+        /// <summary>What the items a request removes sell for (the most gil a shop request can bring in).</summary>
+        private static Int64 SellValue(JSONArray items)
+        {
+            Int64 value = 0;
+            if (items == null)
+                return value;
+            foreach (JSONNode item in items)
+            {
+                Int32 d = item["d"].AsInt;
+                if (d < 0 && ff9item._FF9Item_Data.TryGetValue((Memoria.Data.RegularItem)item["id"].AsInt, out FF9ITEM_DATA data) && data.selling_price > 0)
+                    value += (Int64)data.selling_price * -d;
+            }
+            return value;
         }
 
         private static Dictionary<Int32, Int32> Counts(JSONNode array)
@@ -357,6 +387,11 @@ namespace Memoria.Online.Party
             if (items != null)
                 foreach (JSONNode item in items)
                     PartyState.AddItem(state, item["id"].AsInt, item["d"].AsInt);
+            if (IsShopRequest(request) && request["gil"] != null && request["gil"].AsLong != 0)
+            {
+                Int64 gil = Math.Max(0L, Math.Min(9999999L, state[PartyState.Common]["gil"].AsLong + request["gil"].AsLong));
+                state[PartyState.Common]["gil"] = new JSONData(gil.ToString());
+            }
         }
 
         // ---- Guest ---------------------------------------------------------------------------------------------
@@ -412,6 +447,9 @@ namespace Memoria.Online.Party
             }
             if (changes == null)
                 return;
+            if (changes["found"] == null && (changes["gil"] != null || changes["items"] != null)
+                && PersistenSingleton<UIManager>.Instance.State == UIManager.UIState.Shop)
+                changes.Add("shop", new JSONData(1)); // bought, sold or synthesized: the host lets it change gil
             Int32 seq = _nextSeq++;
             changes.Add("seq", new JSONData(seq));
             _pending.Add(new KeyValuePair<Int32, JSONClass>(seq, changes));
@@ -617,6 +655,8 @@ namespace Memoria.Online.Party
                     parts.Add($"item {i["id"].AsInt} {(i["d"].AsInt > 0 ? "+" : "")}{i["d"].AsInt}");
             if (request["gil"] != null)
                 parts.Add($"gil {request["gil"].AsLong}");
+            if (IsShopRequest(request))
+                parts.Add("in a shop");
             JSONArray other = request["other"].AsArray;
             if (other != null && other.Count > 0)
                 parts.Add($"other: {Join(other)}");
