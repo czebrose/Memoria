@@ -108,6 +108,10 @@ namespace Memoria.Online.Session
 
         private Double _nextPoll;
         private String _where;
+        private Boolean _buildPublished;
+        private readonly Dictionary<UInt64, Double> _buildSeenAt = new Dictionary<UInt64, Double>(); // peer → first seen (for "no build id")
+        private readonly HashSet<UInt64> _buildChecked = new HashSet<UInt64>();
+        private const Double NoBuildIdAfterMs = 5000;
 
         public SessionLobby(SteamLobby lobby, SteamTransport transport, BlobTransfer blobs, Func<UInt64, Boolean> isConnected)
         {
@@ -172,6 +176,7 @@ namespace Memoria.Online.Session
                     _where = where;
                     _lobby.SetMemberData("where", where);
                 }
+                CheckBuilds(nowMs);
                 if (IsHost && Phase == SessionPhase.Playing)
                     HostControl(nowMs); // M4: in-game control changes (SessionLobby.Control.cs)
                 else if (IsHost)
@@ -601,9 +606,46 @@ namespace Memoria.Online.Session
             _publishedAssign = null;
             _myPick = -1;
             _where = null;
+            _buildPublished = false;
+            _buildSeenAt.Clear();
+            _buildChecked.Clear();
             ResetControl();
             ResetMeet();
             Status = String.Empty;
+        }
+
+        /// <summary>
+        /// Every PC puts its build (<see cref="OnlineBuild.Id"/>) in its lobby member data; each other member's is
+        /// compared once. A different build, or none after a few seconds (a build from before build ids, such as the first v0.1.4 zip), is logged and
+        /// shown: most "bugs" between two PCs on different builds are only that.
+        /// </summary>
+        private void CheckBuilds(Double nowMs)
+        {
+            if (!_buildPublished)
+            {
+                _lobby.SetMemberData("build", OnlineBuild.Id);
+                _buildPublished = true;
+                Log.Message($"[Online] Build: this PC runs {OnlineBuild.Id}");
+            }
+            foreach (UInt64 peer in _transport.Peers)
+            {
+                if (peer == _lobby.LocalId || _buildChecked.Contains(peer))
+                    continue;
+                if (!_buildSeenAt.TryGetValue(peer, out Double seen))
+                    _buildSeenAt[peer] = seen = nowMs;
+                String theirs = _lobby.GetMemberData(peer, "build");
+                if (String.IsNullOrEmpty(theirs) && nowMs - seen < NoBuildIdAfterMs)
+                    continue;
+                _buildChecked.Add(peer);
+                if (theirs == OnlineBuild.Id)
+                {
+                    Log.Message($"[Online] Build: {SteamNative.Tag(peer)} runs the same build ({theirs})");
+                    continue;
+                }
+                String what = String.IsNullOrEmpty(theirs) ? "an older build (no build id; for example the first v0.1.4 zip)" : $"build {theirs}";
+                Log.Warning($"[Online] Build: {SteamNative.Tag(peer)} runs {what}, this PC {OnlineBuild.Id}: both PCs need the same build");
+                Memoria.Online.Party.PartySync.Toast($"{SteamNative.GetName(peer)} runs {what}; you run {OnlineBuild.Id}. Both PCs need the same build.");
+            }
         }
 
         private void SendControl(UInt64 peer, Byte type, Byte mode, UInt32 transferId, UInt32 crc)

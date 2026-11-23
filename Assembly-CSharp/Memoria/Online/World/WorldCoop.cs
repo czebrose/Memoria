@@ -36,7 +36,7 @@ namespace Memoria.Online.World
         {
             if (pilot == Passenger)
                 return;
-            Log.Message(pilot != 0 ? $"[Online] World map: riding with {SteamNative.Tag(pilot)} (the camera follows the ship)" : "[Online] World map: no longer a passenger");
+            Log.Message(pilot != 0 ? $"[Online] World map: riding with {SteamNative.Tag(pilot)}" : "[Online] World map: no longer a passenger");
             Passenger = pilot;
             _noPlaneLogged = false;
         }
@@ -87,7 +87,7 @@ namespace Memoria.Online.World
 
         private static WMActor _savedActor;
         private static ff9.s_moveCHRControl _savedControl;
-        private static Boolean _swapped, _cameraOnShip, _noPlaneLogged;
+        private static Boolean _swapped, _cameraOnShip, _noPlaneLogged, _musicBack;
         private static Int32 _cameraType = -1;
 
         private static Double Now => OnlineSession.NowMs;
@@ -119,10 +119,15 @@ namespace Memoria.Online.World
                     ff9.s_moveCHRControl control = ff9.w_moveCHRControl[ship.Control];
                     if (!_cameraOnShip || _cameraType != control.type_cam)
                     {
+                        if (!_cameraOnShip)
+                            Log.Message($"[Online] World map: the camera follows {SteamNative.Tag(pilot)}'s ship (control {ship.Control}, camera {control.type_cam})");
                         ff9.w_cameraChange(control.type_cam, 64);
                         _cameraOnShip = true;
                         _cameraType = control.type_cam;
                     }
+                    // The flight music: the pilot's way of moving has its own (the airship theme), as the game plays it
+                    // when you board; w_musicRequestSend does nothing while it's already that one or a change is under way
+                    ff9.w_musicRequestSend(control.music);
                     _savedActor = ff9.w_moveActorPtr;
                     _savedControl = ff9.w_moveCHRControlPtr;
                     ff9.w_moveActorPtr = plane;
@@ -133,8 +138,21 @@ namespace Memoria.Online.World
                 {
                     _cameraOnShip = false;
                     _cameraType = -1;
+                    Log.Message(Passenger != 0 ? $"[Online] World map: {SteamNative.Tag(Passenger)} isn't flying the ship now; the camera is back on this player" : "[Online] World map: the camera is back on this player");
                     if (ff9.w_moveCHRControlPtr != null)
+                    {
                         ff9.w_cameraChange(ff9.w_moveCHRControlPtr.type_cam, 64); // back to this player's own camera
+                        _musicBack = true;
+                    }
+                }
+                if (_musicBack && !_cameraOnShip)
+                {
+                    // This player's own music again (on foot, the world map's theme). Asked until it's taken: a request
+                    // while another change is under way is dropped.
+                    if (ff9.w_moveCHRControlPtr == null || ff9.w_musicRequestNoIdx == ff9.w_moveCHRControlPtr.music)
+                        _musicBack = false;
+                    else
+                        ff9.w_musicRequestSend(ff9.w_moveCHRControlPtr.music);
                 }
             }
             catch (Exception err)
@@ -160,6 +178,9 @@ namespace Memoria.Online.World
         {
             // WMActor.SetPosition takes game units (256 per Unity unit) and wraps the world itself
             plane.SetPosition(ship.Position.x * 256f, ship.Position.y * 256f, ship.Position.z * 256f);
+            // SetPosition moves only the transform: the engine's own position (originalActor.pos, which the world code
+            // reads and puts back) would stay where the ship was, and the ship would jump back between frames
+            plane.pos = plane.transform.position;
             plane.transform.rotation = ship.Rotation;
         }
 
@@ -185,6 +206,7 @@ namespace Memoria.Online.World
             Passenger = 0;
             _cameraOnShip = false;
             _cameraType = -1;
+            _musicBack = false;
         }
     }
 }

@@ -97,15 +97,36 @@ namespace Memoria.Online.Ghosts
                 }
                 if (fieldMap.walkMesh == null || fieldMap.playerController == null || !PersistenSingleton<EventEngine>.Instance.HasObjectList)
                     return; // still loading, or a field without a player: nowhere to stand yet
+                if (state.X == 0 && state.Y == 0 && state.Z == 0 && state.Tri < 0)
+                    return; // its player isn't placed yet (an older sender): appear once it stands somewhere
                 ghost = TrySpawn(peer, fieldMap, state);
                 if (ghost == null)
                     return;
+            }
+            else if (IsOriginJump(ghost.Newest, state))
+            {
+                // Safety net for a sender that hasn't placed its player yet (OnlineSession.SampleLocal holds its state
+                // since the v0.1.4 update): a jump to exactly (0, 0, 0) on the same field is dropped. A player who really walks
+                // to the origin gets there in small steps, so it's still drawn.
+                if (ghost.DroppedOrigin++ == 0)
+                    Log.Message($"[Ghosts] {ghost}: a state at the field's origin, {OriginJumpUnits:0}+ units from its last spot, dropped (its player wasn't placed yet)");
+                return;
             }
             else if (!ghost.Visible && nowMs - ghost.LastReceivedMs > StaleMs)
             {
                 ghost.ResetTimeline(); // back after a silence: appear at the new spot
             }
             ghost.Push(state, nowMs);
+        }
+
+        private const Single OriginJumpUnits = 100f;
+
+        private static Boolean IsOriginJump(GhostState last, GhostState state)
+        {
+            if (state.X != 0 || state.Y != 0 || state.Z != 0 || state.FieldId != last.FieldId)
+                return false;
+            Single distance = new Vector3(last.X, last.Y, last.Z).magnitude;
+            return distance > OriginJumpUnits;
         }
 
         /// <summary>The model this peer's ghost is drawn with (its player's field leader), if it has a ghost.</summary>
@@ -181,7 +202,7 @@ namespace Memoria.Online.Ghosts
             Ghosts.Remove(peer);
             FieldMapActor fieldActor = ghost.IsAlive ? ghost.Despawn() : null;
             PendingRemovals.Add(new Pending { Uid = ghost.Uid, Actor = ghost.Actor, FieldActor = fieldActor });
-            Log.Message($"[Ghosts] {ghost} removed ({reason}): received {ghost.Received}, dropped as old {ghost.DroppedOld}, snaps {ghost.Snaps}, hidden {ghost.Hides} times");
+            Log.Message($"[Ghosts] {ghost} removed ({reason}): received {ghost.Received}, dropped as old {ghost.DroppedOld}, as origin {ghost.DroppedOrigin}, snaps {ghost.Snaps}, hidden {ghost.Hides} times");
         }
 
         public static void RemoveAll(String reason)
@@ -264,7 +285,7 @@ namespace Memoria.Online.Ghosts
                     Remove(kv.Key, reason);
                     continue;
                 }
-                Log.Message($"[Ghosts] {kv.Value} gone with the field ({reason}): received {kv.Value.Received}, dropped as old {kv.Value.DroppedOld}, snaps {kv.Value.Snaps}, hidden {kv.Value.Hides} times");
+                Log.Message($"[Ghosts] {kv.Value} gone with the field ({reason}): received {kv.Value.Received}, dropped as old {kv.Value.DroppedOld}, as origin {kv.Value.DroppedOrigin}, snaps {kv.Value.Snaps}, hidden {kv.Value.Hides} times");
                 Forget(kv.Key, kv.Value);
             }
             _fieldMap = null;

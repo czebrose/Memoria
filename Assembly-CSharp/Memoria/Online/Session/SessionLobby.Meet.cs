@@ -49,6 +49,10 @@ namespace Memoria.Online.Session
         // Guest
         private Int32 _metField = -1; // the field this guest last resynced on with the host there (-1: not together)
         private SavedSpot _restoreSpot;
+
+        /// <summary>Guest: a keep-spot reload is done but the player isn't back at its spot yet (it stands where the
+        /// field's script put it, or at the origin). Its ghost state waits (OnlineSession.SampleLocal).</summary>
+        public Boolean RestoringSpot => _restoreSpot != null;
         private Double _lastMeetNowMs;
 
         // Host
@@ -292,6 +296,7 @@ namespace Memoria.Online.Session
         private HostActivity _published = HostActivity.Other;
         private Double _nextHostState;
         private Double _noControlSince = -1;
+        private Boolean _fromWorldMap; // the host's last place before a battle was the world map, not fldMapNo (stale there)
 
         // Guest
         private HostActivity _hostActivity = HostActivity.Other;
@@ -313,14 +318,17 @@ namespace Memoria.Online.Session
                 }
                 else if (engine.gMode == 3)
                 {
+                    _fromWorldMap = true;
                     activity = ui.State == UIManager.UIState.WorldHUD ? HostActivity.WorldMap : HostActivity.Menu;
                 }
                 else if (engine.gMode == 1 && ui.State != UIManager.UIState.FieldHUD)
                 {
+                    _fromWorldMap = false;
                     activity = ui.State == UIManager.UIState.Title || ui.State == UIManager.UIState.GameOver ? HostActivity.Other : HostActivity.Menu;
                 }
                 else if (engine.gMode == 1)
                 {
+                    _fromWorldMap = false;
                     if (engine.GetUserControl())
                         _noControlSince = -1;
                     else if (_noControlSince < 0)
@@ -330,11 +338,13 @@ namespace Memoria.Online.Session
             }
             if (activity == _published && nowMs < _nextHostState)
                 return;
+            // A battle from the world map is on no field: fldMapNo still says the last field the host left, and the guests
+            // standing there would wait for a battle that isn't theirs
+            UInt16 field = activity == HostActivity.Battle && _fromWorldMap ? GhostState.NotOnField : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             if (activity != _published)
-                Log.Message($"[Online] Host state: {activity}{(activity == HostActivity.Scene || activity == HostActivity.Battle ? $" (guests on field {FF9StateSystem.Common.FF9.fldMapNo} wait)" : "")}");
+                Log.Message($"[Online] Host state: {activity}{(activity == HostActivity.Scene || activity == HostActivity.Battle ? field == GhostState.NotOnField ? " (from the world map: no guests wait)" : $" (guests on field {field} wait)" : "")}");
             _published = activity;
             _nextHostState = nowMs + HostStateEveryMs;
-            UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             Byte[] message = { MsgHostState, (Byte)activity, (Byte)field, (Byte)(field >> 8) };
             foreach (UInt64 peer in _transport.Peers)
                 _transport.Send(peer, TransportChannel.Control, message, message.Length, true);

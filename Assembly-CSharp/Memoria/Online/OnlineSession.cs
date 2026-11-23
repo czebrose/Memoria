@@ -657,6 +657,19 @@ namespace Memoria.Online
                 _local.Motion = GhostMotion.Idle;
                 return;
             }
+            if (!IsPlaced(engine, leader))
+            {
+                // Between a field load (or a Meet reload) and the player's placement, curPos is (0, 0, 0): the other
+                // PCs' ghost of this player would flick to the field's origin. Keep sending the last placed state
+                // (the previous field's, or this spot before the reload) until the player stands somewhere.
+                if (!_holdingPlacement)
+                {
+                    _holdingPlacement = true;
+                    _placementHolds++;
+                }
+                return;
+            }
+            _holdingPlacement = false;
             _local.FieldId = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             _local.Model = actor.model;
             _local.X = ToInt16(leader.curPos.x);
@@ -670,6 +683,20 @@ namespace Memoria.Online
                 : actor.anim == actor.walk ? GhostMotion.Walk
                 : actor.anim == actor.run ? GhostMotion.Run
                 : GhostMotion.Other;
+        }
+
+        private Boolean _holdingPlacement;
+        private Int32 _placementHolds;
+
+        /// <summary>The player has been placed on this field: the field's objects are loaded, the controller stands
+        /// on the walkmesh (or away from the origin), and no Meet reload is waiting to put it back at its spot.</summary>
+        private static Boolean IsPlaced(EventEngine engine, FieldMapActorController leader)
+        {
+            if (!engine.HasObjectList)
+                return false;
+            if (leader.activeTri < 0 && leader.curPos.sqrMagnitude < 1f)
+                return false;
+            return !(SessionLobby.Current?.RestoringSpot ?? false);
         }
 
         private Int16 ToInt16(Single value)
@@ -829,7 +856,7 @@ namespace Memoria.Online
             Log.Message($"[Online] {tag} {s.Tag}: up {(NowMs - s.JoinedAt) / 1000:0}s, pings {s.PingsSent}/pongs {s.PongsReceived}, " +
                 $"rtt min/avg/max {(s.PongsReceived > 0 ? s.MinRtt : 0):0.0}/{s.AvgRtt:0.0}/{s.MaxRtt:0.0}ms, {(s.Relay ? "relay" : "direct")}, stalls {s.Stalls}, " +
                 $"ghost states sent {s.GhostSent} / received {s.GhostReceived} (they reported {s.TheirSentToUs} sent: loss {s.LossPercent:0.00}%), " +
-                $"{ghostInfo}, ignored other-field {GhostManager.IgnoredOtherField}, bad packets {GhostManager.IgnoredBadPacket}, spawn failures {GhostManager.SpawnFailures}");
+                $"{ghostInfo}, ignored other-field {GhostManager.IgnoredOtherField}, bad packets {GhostManager.IgnoredBadPacket}, spawn failures {GhostManager.SpawnFailures}, this PC's states held until placed {_placementHolds} times");
         }
 
         private static Boolean TryGetGhost(UInt64 peer, out GhostActor ghost)
@@ -861,6 +888,7 @@ namespace Memoria.Online
 
         private void OnGUI()
         {
+            DrawBuildOnTitle();
             if (_init == InitState.Waiting)
                 return;
             if (_style == null)
@@ -925,6 +953,30 @@ namespace Memoria.Online
             GUIContent content = new GUIContent(text.ToString());
             Vector2 size = _style.CalcSize(content);
             GUI.Box(new Rect(8, 8, size.x + 8, size.y + 4), content, _style);
+        }
+
+        private GUIStyle _buildStyle;
+
+        /// <summary>The title screen, bottom left: which online build this is (the release zip's name ends with the same digits).</summary>
+        private void DrawBuildOnTitle()
+        {
+            if (PersistenSingleton<UIManager>.Instance?.State != UIManager.UIState.Title || Event.current.type != EventType.Repaint)
+                return;
+            Int32 size = Mathf.Max(12, Screen.height / 54);
+            if (_buildStyle == null)
+            {
+                _buildStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.LowerLeft, wordWrap = false };
+                _buildStyle.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
+            }
+            _buildStyle.fontSize = size;
+            GUIContent text = new GUIContent($"Online co-op {OnlineBuild.Id}");
+            Vector2 extent = _buildStyle.CalcSize(text);
+            Rect rect = new Rect(size, Screen.height - extent.y - size * 0.75f, extent.x, extent.y);
+            Color color = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.6f); // a shadow, readable on the bright title art
+            GUI.Label(new Rect(rect.x + 1, rect.y + 1, rect.width, rect.height), text, _buildStyle);
+            GUI.color = color;
+            GUI.Label(rect, text, _buildStyle);
         }
 
         private Boolean IsConnected(UInt64 peer)

@@ -233,6 +233,9 @@ namespace Memoria.Online.Battle
             }
         }
 
+        /// <summary>A battle's "field" for the log: "on field N" or "on the world map".</summary>
+        private static String PlaceName(UInt16 field) => field == WorldMapField ? "on the world map" : $"on field {field}";
+
         /// <summary>Where this PC is, as a battle's "field": its field, or <see cref="WorldMapField"/>.</summary>
         private static UInt16 LocalPlace => OnWorldMap ? WorldMapField : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
 
@@ -259,8 +262,17 @@ namespace Memoria.Online.Battle
             {
                 if (_incoming != null)
                 {
-                    Log.Message($"[Online] Battle entry: this PC's own world map battle started while {SteamNative.Tag(_incoming.Owner)}'s was coming; declining theirs");
-                    SendTo(_incoming.Owner, BattleEntryMessages.Short(BattleEntryMessages.Decline, _incoming.Seq, 2));
+                    if (_incoming.Field == WorldMapField && FF9StateSystem.Battle.isRandomEncounter)
+                    {
+                        // Two encounters at once (both players start walking when the ship lands): the battle whose
+                        // Pending came first wins. This PC drops its own random encounter (only a flag, nothing to undo)
+                        // and joins theirs; one battle, not two against the same enemies.
+                        Log.Message($"[Online] Battle entry: this PC's own world map encounter (battle {FF9StateSystem.World.FF9World.map.nextMapNo}) came while {SteamNative.Tag(_incoming.Owner)}'s battle #{_incoming.Seq} was coming; dropping this PC's and joining theirs");
+                        DropOwnWorldEncounter();
+                        return EventEngine.FLOW_STATE_EXEC;
+                    }
+                    Log.Message($"[Online] Battle entry: this PC's own world map battle (scripted) started while {SteamNative.Tag(_incoming.Owner)}'s was coming; declining theirs");
+                    SendTo(_incoming.Owner, BattleEntryMessages.DeclineWhy(_incoming.Seq, 2, "its own scripted battle started at the same moment"));
                     _incoming = null;
                 }
                 BeginOwned();
@@ -269,6 +281,14 @@ namespace Memoria.Online.Battle
             if (codeFlowState <= EventEngine.FLOW_STATE_WAIT && _incoming?.Start != null && CanJoinNow(out String _))
                 return JoinBattle();
             return codeFlowState;
+        }
+
+        /// <summary>Forget the random encounter the world map just rolled (another player's battle is coming instead).</summary>
+        private static void DropOwnWorldEncounter()
+        {
+            FF9StateSystem.World.FF9World.map.nextMapNo = FF9StateSystem.Common.FF9.wldMapNo;
+            FF9StateSystem.Battle.isRandomEncounter = false;
+            FF9StateSystem.Battle.isEncount = false;
         }
 
         /// <summary>[Online] HonoluluBattleMain.Start, before InitBattleScene.</summary>
@@ -413,7 +433,7 @@ namespace Memoria.Online.Battle
                 if (_incoming != null)
                 {
                     Log.Message($"[Online] Battle entry: this PC's own battle started while {SteamNative.Tag(_incoming.Owner)}'s was coming; declining theirs");
-                    SendTo(_incoming.Owner, BattleEntryMessages.Short(BattleEntryMessages.Decline, _incoming.Seq, 2));
+                    SendTo(_incoming.Owner, BattleEntryMessages.DeclineWhy(_incoming.Seq, 2, "its own battle started first"));
                     _incoming = null;
                 }
                 BeginOwned();
@@ -938,7 +958,7 @@ namespace Memoria.Online.Battle
             }
             if (why == "elsewhere")
             {
-                Decline(inc, 1, inc.Start.Field == WorldMapField ? "not on the world map any more (or flying)" : $"not on field {inc.Start.Field} any more");
+                Decline(inc, 1, inc.Start.Field == WorldMapField ? "not on the world map on foot any more (flying, riding or gone)" : $"not on field {inc.Start.Field} any more");
                 return;
             }
             Notice = $"A battle is starting: {why} ({Math.Max(0, (JoinTimeoutMs - (now - inc.StartAt)) / 1000):0} s)";
@@ -946,11 +966,14 @@ namespace Memoria.Online.Battle
                 Decline(inc, 0, $"still busy after {JoinTimeoutMs / 1000:0} s ({why})");
         }
 
-        private void Decline(Incoming inc, Byte reason, String why)
+        /// <summary>Participant: out of the incoming battle. The owner gets the reason and <paramref name="why"/> (logged
+        /// there too); this player is told why, unless the caller has its own message (<paramref name="toast"/> false).</summary>
+        private void Decline(Incoming inc, Byte reason, String why, Boolean toast = true)
         {
-            SendTo(inc.Owner, BattleEntryMessages.Short(BattleEntryMessages.Decline, inc.Seq, reason));
+            SendTo(inc.Owner, BattleEntryMessages.DeclineWhy(inc.Seq, reason, why));
             Log.Message($"[Online] Battle entry: #{inc.Seq} declined {SteamNative.Tag(inc.Owner)}'s battle: {why}");
-            PartySync.Toast("You were left out of the battle.");
+            if (toast)
+                PartySync.Toast($"Couldn't join {SteamNative.GetName(inc.Owner)}'s battle: {why}.");
             _incoming = null;
         }
 
@@ -965,6 +988,9 @@ namespace Memoria.Online.Battle
                 // A world map battle: join from the world map, walking or on a chocobo, with the world HUD up. Where this
                 // player stands is saved by the world script's own loop (VAR_GenInt24_64/67/69, World_PlayerAngle), so
                 // the world map puts it back there after the battle.
+                // No FF9StateSystem.attr test here, unlike fields: a field's jump to the world map sets its bit 8, and only
+                // the next field's init clears it, so it stays set the whole time on the world map (test 3's battle 838
+                // was declined for that after 8 s).
                 WMActor actor = ff9.w_moveActorPtr;
                 if (!OnWorldMap || engine == null)
                     why = "elsewhere";
@@ -972,7 +998,9 @@ namespace Memoria.Online.Battle
                     why = "elsewhere"; // flying, or riding as a passenger: no battles up there
                 else if (ui.State != UIManager.UIState.WorldHUD)
                     why = "close the menu to join";
-                else if (PersistenSingleton<SceneDirector>.Instance.IsFading || (PersistenSingleton<FF9StateSystem>.Instance.attr & 15u) != 0)
+                else if (!ff9.GetUserControl())
+                    why = "waiting for the scene to end";
+                else if (PersistenSingleton<SceneDirector>.Instance.IsFading)
                     why = "waiting for the screen change";
                 return why == null;
             }
@@ -1266,7 +1294,7 @@ namespace Memoria.Online.Battle
             if (state != _lastOpenState)
             {
                 _lastOpenState = state;
-                Log.Message($"[Online] Battle join: #{c.Seq} this PC's battle {battleId} on field {field} is {(state == 0 ? "open to players who walk in" : $"closed to late joins: {RefusalText(state)}")} ({seconds} s in)");
+                Log.Message($"[Online] Battle join: #{c.Seq} this PC's battle {battleId} {PlaceName(field)} is {(state == 0 ? "open to players who walk in" : $"closed to late joins: {RefusalText(state)}")} ({seconds} s in)");
             }
             Byte[] message = BattleEntryMessages.Open(c.Seq, field, battleId, state, seconds);
             foreach (UInt64 peer in _transport.Peers)
@@ -1359,12 +1387,12 @@ namespace Memoria.Online.Battle
         }
 
         /// <summary>Owner: a late joiner's Ready (its battle is loaded, intro done) or Decline.</summary>
-        private void OnLateJoinerReady(Current c, UInt64 peer, Boolean ready, Byte declineReason)
+        private void OnLateJoinerReady(Current c, UInt64 peer, Boolean ready, Byte declineReason, String why)
         {
             c.LateJoiners.Remove(peer);
             if (!ready)
             {
-                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} declined after all (reason {declineReason})");
+                Log.Message($"[Online] Battle join: #{c.Seq} {SteamNative.Tag(peer)} declined after all (reason {declineReason}{why})");
                 return;
             }
             LateRefusal state = LateJoinState(c, peer);
@@ -1535,7 +1563,7 @@ namespace Memoria.Online.Battle
                 case BattleEntryMessages.Ready:
                 case BattleEntryMessages.Decline:
                     if (_current?.Role == Role.Owner && _current.Seq == seq && _current.LateJoiners.ContainsKey(peer))
-                        OnLateJoinerReady(_current, peer, d[0] == BattleEntryMessages.Ready, d.Length > 3 ? d[3] : (Byte)0);
+                        OnLateJoinerReady(_current, peer, d[0] == BattleEntryMessages.Ready, d.Length > 3 ? d[3] : (Byte)0, DeclineText(d));
                     else if (_current?.Role == Role.Owner && _current.Seq == seq && _current.Awaiting.Remove(peer))
                     {
                         if (d[0] == BattleEntryMessages.Decline)
@@ -1543,7 +1571,7 @@ namespace Memoria.Online.Battle
                             _current.Participants.Remove(peer);
                             BattleControl.ReleasePeer(peer, "declined");
                         }
-                        Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)} {(d[0] == BattleEntryMessages.Ready ? $"ready, {_now - _current.StartSentAt:0} ms after Start" : $"declined (reason {d[3]})")}; {_current.Awaiting.Count} still awaited");
+                        Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)} {(d[0] == BattleEntryMessages.Ready ? $"ready, {_now - _current.StartSentAt:0} ms after Start" : $"declined (reason {d[3]}{DeclineText(d)})")}; {_current.Awaiting.Count} still awaited");
                     }
                     break;
                 case BattleEntryMessages.Go:
@@ -1590,6 +1618,13 @@ namespace Memoria.Online.Battle
             return true;
         }
 
+        /// <summary>A Decline's reason text (newer builds send one), as ": text", or "".</summary>
+        private static String DeclineText(Byte[] d)
+        {
+            String why = d[0] == BattleEntryMessages.Decline ? BattleEntryMessages.ReadDeclineWhy(d) : null;
+            return String.IsNullOrEmpty(why) ? "" : $": {why}";
+        }
+
         private Boolean IsFromMyOwner(UInt64 peer, UInt16 seq) => _current?.Role == Role.Participant && _current.Owner == peer && _current.Seq == seq;
 
         private void OnPending(UInt64 peer, UInt16 seq, Byte[] d)
@@ -1597,12 +1632,17 @@ namespace Memoria.Online.Battle
             UInt16 field = (UInt16)(d[3] | (d[4] << 8)), battleId = (UInt16)(d[5] | (d[6] << 8));
             if (_current != null)
             {
-                Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)}'s battle {battleId}: this PC is already in a battle; declining");
-                SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Decline, seq, 2));
+                Boolean clash = field == WorldMapField && _current.Role == Role.Owner && _current.Place == WorldMapField && !_current.InBattle;
+                String why = clash ? "its own world map battle started at the same moment (separate battles)" : "already in a battle";
+                if (clash)
+                    Log.Warning($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)}'s world map battle {battleId} and this PC's #{_current.Seq} started at the same moment, before either heard of the other: separate battles");
+                else
+                    Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)}'s battle {battleId}: this PC is already in a battle; declining");
+                SendTo(peer, BattleEntryMessages.DeclineWhy(seq, 2, why));
                 return;
             }
             _incoming = new Incoming { Owner = peer, Seq = seq, Field = field, BattleId = battleId, PendingAt = _now };
-            Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)} starts battle {battleId} on field {field}; this PC takes part ({LocalBusy()}); holding the player");
+            Log.Message($"[Online] Battle entry: #{seq} {SteamNative.Tag(peer)} starts battle {battleId} {PlaceName(field)}; this PC takes part ({LocalBusy()}); holding the player");
         }
 
         private void OnStart(UInt64 peer, BattleStartData data, Int32 bytes)
@@ -1613,13 +1653,13 @@ namespace Memoria.Online.Battle
                     _incoming = new Incoming { Owner = peer, Seq = data.Seq, Field = data.Field, BattleId = data.BattleId, PendingAt = _now };
                 else
                 {
-                    SendTo(peer, BattleEntryMessages.Short(BattleEntryMessages.Decline, data.Seq, 2));
+                    SendTo(peer, BattleEntryMessages.DeclineWhy(data.Seq, 2, "already in a battle"));
                     return;
                 }
             }
             if (data.Speed != LocalSpeed || data.Sfx != LocalSfx)
             {
-                Decline(_incoming, 3, $"battle settings differ (owner Speed {data.Speed} SFXRework {data.Sfx}, this PC {LocalSpeed} / {LocalSfx})");
+                Decline(_incoming, 3, $"battle settings differ (owner Speed {data.Speed} SFXRework {data.Sfx}, this PC {LocalSpeed} / {LocalSfx})", false);
                 PartySync.Toast("Your battle settings (Battle Speed / SFXRework) differ from the battle owner's: you sit this battle out.");
                 return;
             }

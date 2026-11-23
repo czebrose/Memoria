@@ -46,7 +46,7 @@ namespace Memoria.Online.Ghosts
         public Double LastReceivedMs { get; private set; }
 
         // Statistics
-        public Int32 Received, DroppedOld, Snaps, Hides;
+        public Int32 Received, DroppedOld, DroppedOrigin, Snaps, Hides;
         /// <summary>95th percentile of how late states arrive compared with the earliest one in the window.</summary>
         public Double JitterMs { get; private set; }
         /// <summary>How far behind its newest state the ghost is drawn (adaptive unless a fixed delay is set).</summary>

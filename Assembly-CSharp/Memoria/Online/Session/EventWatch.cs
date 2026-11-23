@@ -28,9 +28,45 @@ namespace Memoria.Online.Session
         /// field; the rest of the range is the same kind of variable in the scripts (VAR_GlobUInt8_17/24/37,
         /// VAR_GlobBool_144-167, VAR_GlobInt16_21/28).
         /// </summary>
-        public static Boolean IsForwarded(Int32 index) => index < 2 || index >= 64;
+        public static Boolean IsForwarded(Int32 index) => index < 2 || (index >= 64 && PlayerBits(index) != 0xFF);
 
-        /// <summary>CRC32 of the shared event bytes (the <see cref="IsForwarded"/> ones); 0 if there's no game.</summary>
+        /// <summary>
+        /// The bits of a byte from 64 up that belong to each player, never sent or applied (docs/online/world-map.md,
+        /// "Each player's own world map bytes"). The world map's own bookkeeping, one per PC since each player has
+        /// their own world map:
+        ///  - 64-72: where this player stands and faces (VAR_GenInt24_64, VAR_GenInt16_67, VAR_GenInt24_69,
+        ///    World_PlayerAngle), saved by the world script's loop and restored after a battle or a load;
+        ///  - 74-82, and 1005 bits 0-1 (flags 8040-8041): this PC's ship (where it is, which way, landed or not);
+        ///    the Black Waltz mod syncs those with its own ship versions;
+        ///  - 101: World_CurrentTransport (on foot, chocobo, airship);
+        ///  - 149: the model this PC's world entry loaded (VAR_GenUInt8_149: 1 Clove, 0 Zidane); sharing it gave Clove
+        ///    Zidane's clips;
+        ///  - 190: ff9.w_moveCHRControl_No, how this player moves.
+        /// </summary>
+        public static Byte PlayerBits(Int32 index)
+        {
+            if ((index >= 64 && index <= 72) || (index >= 74 && index <= 82))
+                return 0xFF;
+            switch (index)
+            {
+                case 101:
+                case 149:
+                case 190:
+                    return 0xFF;
+                case 1005:
+                    return 0x03;
+            }
+            return 0;
+        }
+
+        /// <summary>The byte <paramref name="mine"/> with the shared bits of <paramref name="theirs"/> (this player's own kept).</summary>
+        private static Byte Merge(Int32 index, Byte mine, Byte theirs)
+        {
+            Byte own = PlayerBits(index);
+            return (Byte)((mine & own) | (theirs & ~own));
+        }
+
+        /// <summary>CRC32 of the shared event bytes (the <see cref="IsForwarded"/> ones, without each player's own bits); 0 if there's no game.</summary>
         public static UInt32 SharedDigest()
         {
             Byte[] global = FF9StateSystem.EventState?.gEventGlobal;
@@ -40,6 +76,8 @@ namespace Memoria.Online.Session
             shared[0] = global[0];
             shared[1] = global[1];
             Array.Copy(global, 64, shared, 2, global.Length - 64);
+            for (Int32 i = 64; i < global.Length; i++)
+                shared[i - 62] &= (Byte)~PlayerBits(i);
             return GameSnapshot.Crc32(shared, 0, shared.Length);
         }
 
@@ -99,11 +137,14 @@ namespace Memoria.Online.Session
             {
                 if (change.Key < 0 || change.Key >= global.Length || !IsForwarded(change.Key))
                     continue;
+                Byte value = Merge(change.Key, global[change.Key], change.Value);
+                if (value == global[change.Key])
+                    continue;
                 if (applied < MaxPerLine)
-                    text.Append($" [{change.Key}] {global[change.Key]}->{change.Value}");
-                global[change.Key] = change.Value;
+                    text.Append($" [{change.Key}] {global[change.Key]}->{value}");
+                global[change.Key] = value;
                 if (ReferenceEquals(global, _watched) && _copy != null && change.Key < _copy.Length)
-                    _copy[change.Key] = change.Value;
+                    _copy[change.Key] = value;
                 applied++;
             }
             if (applied > 0)
@@ -124,13 +165,16 @@ namespace Memoria.Online.Session
             Int32 applied = 0;
             foreach (KeyValuePair<Int32, Byte> change in changes)
             {
-                if (change.Key < 0 || change.Key >= global.Length || !IsForwarded(change.Key) || global[change.Key] == change.Value)
+                if (change.Key < 0 || change.Key >= global.Length || !IsForwarded(change.Key))
+                    continue;
+                Byte value = Merge(change.Key, global[change.Key], change.Value);
+                if (value == global[change.Key])
                     continue;
                 if (applied < MaxPerLine)
-                    text.Append($" [{change.Key}] {global[change.Key]}->{change.Value}");
-                global[change.Key] = change.Value;
+                    text.Append($" [{change.Key}] {global[change.Key]}->{value}");
+                global[change.Key] = value;
                 if (ReferenceEquals(global, _watched) && _copy != null && change.Key < _copy.Length)
-                    _copy[change.Key] = change.Value;
+                    _copy[change.Key] = value;
                 applied++;
             }
             if (applied > 0)

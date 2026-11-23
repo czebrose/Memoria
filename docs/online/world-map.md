@@ -15,7 +15,26 @@ can leave them out:
 Boarding and landing, picking up passengers, hiding a passenger's player, which ship is newest, and the ship's save
 data all stay the mod's.
 
-**Status:** built and passing both mod checks, but never run in game.
+**Status:** v0.1.4 ran in three two-PC tests; the fixes from them (the v0.1.4 update: each player's own world map bytes, the
+world map join check, encounters at once, the ship's engine position, flight music) are built and pass both mod
+checks, but haven't run on two PCs yet.
+
+## Each player's own world map bytes
+
+The event bytes from 64 up are shared between the PCs (`EventWatch`), but a few belong to each player on the world
+map, since every PC runs its own world map. They're never sent or applied (`EventWatch.PlayerBits`), and the meeting
+digest leaves them out:
+
+| Bytes | What |
+|---|---|
+| 64-72 | where this player stands and faces (`VAR_GenInt24_64`, `VAR_GenInt16_67`, `VAR_GenInt24_69`, `World_PlayerAngle`), saved by the world script's loop and restored after a battle or a load |
+| 74-82, 1005 bits 0-1 (flags 8040-8041) | this PC's ship: where, which way, landed. The Black Waltz mod syncs these with its own ship versions |
+| 101 | `World_CurrentTransport` |
+| 149 | the model this PC's world entry loaded (`VAR_GenUInt8_149`: 1 Clove, 0 Zidane) |
+| 190 | `ff9.w_moveCHRControl_No` |
+
+In v0.1.4 they were shared: players came back from a battle at the other player's spot, and the other PC's 149 gave
+Clove Zidane's on-foot clips. A meeting resync (the host's whole game) still brings the host's copy, as before.
 
 ## World ghosts
 
@@ -58,7 +77,9 @@ because every PC has its own ship and it follows the pilot's (below).
 `ff9.w_cameraUpdate` calls `WorldCoop.BeforeCamera` first and `AfterCamera` last. While another player's state says
 Airship and this PC isn't flying, `BeforeCamera` moves this PC's `ff9.w_movePlanePtr` to that player's interpolated
 position and rotation, every world frame. `WMActor.SetPosition` takes game units (256 per Unity unit), and it wraps
-the world itself. The pilot is the one this PC rides with, else the first with a fresh Airship state.
+the world itself. It moves only the transform, so `FollowPilot` then sets `plane.pos` too: that's the engine's own
+position (`originalActor.pos`), which the world code reads and puts back. The pilot is the one this PC rides with,
+else the first with a fresh Airship state.
 
 ## Passenger camera
 
@@ -71,6 +92,13 @@ when they get off. While the pilot's state is Airship, `BeforeCamera` sets up th
 
 Switching to the ship's camera and back uses `ff9.w_cameraChange(type_cam, 64)`, the blend the game uses when you
 board or leave a vehicle. The passenger's own actor, control and encounters stay the mod's.
+
+While the camera is on the ship, the passenger hears the pilot's music: the music of the pilot's control type
+(`ff9.w_moveCHRControl[state.Control].music`, the airship theme), through `ff9.w_musicRequestSend`, as the game asks for
+it when you board. When the camera comes back, this player's own control's music is asked for again.
+
+Log: `World map: the camera follows #tag's ship (control N, camera N)` when it really switches, and `the camera is back
+on this player`.
 
 ## Shared battles
 
@@ -90,7 +118,21 @@ logged with the distance and keeps walking. Ctrl+Shift+9 (OnlineDebug) turns sha
 
 **Getting in.** A participant on the world map joins when:
 - the Start has come;
-- it has the world HUD, no fade, and isn't flying or riding as a passenger (`CanJoinNow`).
+- it has the world HUD and control, no fade, and isn't flying or riding as a passenger (`CanJoinNow`).
+
+Unlike on fields, there's no `FF9StateSystem.attr` test: a field's jump to the world map sets its bit 8, and only the
+next field's init clears it, so it stays set the whole time on the world map. In v0.1.4 that made every world map
+join wait out the 8 s and give up ("waiting for the screen change").
+
+A participant that gives up sends its reason with the Decline (since the v0.1.4 update: the text after the reason byte), so the owner's
+log says why, and the player sees `Couldn't join <name>'s battle: <why>.`
+
+**Encounters at once.** Both players start walking when the ship lands, so both PCs often roll an encounter within a
+second of each other. The battle whose Pending arrives first wins: a PC whose own world map random encounter comes
+while another player's battle is already coming drops its own (`DropOwnWorldEncounter`: `nextMapNo` back to the world
+map, `isRandomEncounter` and `isEncount` off; a random encounter is only a flag, nothing to undo) and joins theirs. A
+scripted world map battle isn't dropped: it declines the other one, as before. If both start in the same instant,
+before either has heard of the other, they're separate battles, and both logs say so (`started at the same moment`).
 
 `JoinBattle` then sets the world map's next battle (`FF9World.map.nextMapNo`), pattern and flags, and `OnWorldFlow`
 returns the battle jump. The world map director starts it as its own encounter (`ff9worldInternalBattleEncountStart`).
@@ -110,6 +152,9 @@ as for random encounters on fields.
 - late join into a world map battle (`UpdateLateJoin` only asks from a field);
 - a world map battle's participants aren't held in place while it starts (fields hold them). They can walk a step or
   two, which changes nothing, since their spot is saved when they leave.
+
+The host's state message (`MsgHostState`) says no field during a battle from the world map: `fldMapNo` still says the
+last field the host left, and guests standing there were told to wait for the host's battle.
 
 Log: `Battle entry: battle B #N on the world map (world map encounter); this PC owns it; participants: ...`, or
 `#tag is on the world map D away (over 16.0): not in this battle`; participant: `joining #tag's battle B from the world
@@ -142,5 +187,10 @@ move the ship (the mod's raw, at 10 Hz, after the build's smooth one). The hand-
 4. With the mod's passenger update (`SetPassenger`): the passenger's camera follows the ship with the airship's camera,
    and blends back to the on-foot camera after landing.
 5. Both on foot close together; walk until one gets a random battle. Both are in it, and after it each is back where
-   they stood. Then far apart (over 16): only the one whose battle it is fights, and the other's log says how far.
+   they stood (not at the other's spot). Then far apart (over 16): only the one whose battle it is fights, and the
+   other's log says how far.
 6. In 5, the participant flees: it's back on the world map where it stood, not on a field.
+7. Land the ship and both walk off at once: the first encounter takes both players into one battle (the other PC's
+   log: `dropping this PC's and joining theirs`).
+8. Enter the world map as Clove from a field (not through the pilot): Clove's on-foot clips are Clove's.
+9. As a passenger: the airship music plays while riding, and the world map's music after the landing.

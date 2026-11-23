@@ -11,7 +11,8 @@ namespace Memoria.Online.Battle
     ///   Pending   [21, seq u16, field u16, battle u16]                       7 B, owner → participants, at the trigger
     ///   Start     [22, seq u16, ...BattleStartData]                          18 B + 17/character (Step 3: + speed, sfx)
     ///   Ready     [23, seq u16]                                              3 B, participant → owner (its battle is loaded, intro done)
-    ///   Decline   [24, seq u16, reason]                                      4 B, participant → owner
+    ///   Decline   [24, seq u16, reason, why utf8*]                           4 B + text, participant → owner (v0.1.4 update: why, for the owner's log;
+    ///                                                                        older owners read the reason only)
     ///   Go        [25, seq u16, count, (unit, ATB i16)*, music i16,          4 B + 3/unit + 2 + 1 + 5/remote unit, owner → participants (everyone
     ///              control count u8, (unit u8, account u32)*]                ready; the owner's ATB runs; the units and their initial ATB: btl_list is
     ///                                                                        only complete after the intro; M2: who commands each remote unit)
@@ -55,6 +56,27 @@ namespace Memoria.Online.Battle
             message[2] = (Byte)(seq >> 8);
             Buffer.BlockCopy(extra, 0, message, 3, extra.Length);
             return message;
+        }
+
+        private const Int32 MaxWhyBytes = 160;
+
+        /// <summary>Decline with the participant's reason text (UTF-8, cut at <see cref="MaxWhyBytes"/>).</summary>
+        public static Byte[] DeclineWhy(UInt16 seq, Byte reason, String why)
+        {
+            Byte[] text = System.Text.Encoding.UTF8.GetBytes(why ?? String.Empty);
+            Byte[] extra = new Byte[1 + Math.Min(text.Length, MaxWhyBytes)];
+            extra[0] = reason;
+            Buffer.BlockCopy(text, 0, extra, 1, extra.Length - 1);
+            return Short(Decline, seq, extra);
+        }
+
+        /// <summary>A Decline's reason text, or null (an older build's 4-byte Decline).</summary>
+        public static String ReadDeclineWhy(Byte[] data)
+        {
+            if (data == null || data.Length <= 4)
+                return null;
+            try { return System.Text.Encoding.UTF8.GetString(data, 4, data.Length - 4); }
+            catch (Exception) { return null; }
         }
 
         public static UInt16 Seq(Byte[] data) => (UInt16)(data[1] | (data[2] << 8));
@@ -212,7 +234,7 @@ namespace Memoria.Online.Battle
             List<String> members = new List<String>();
             foreach (Member m in Members)
                 members.Add($"{m.Character} (hp {m.Hp}, mp {m.Mp}{(m.Status != 0 ? $", status 0x{m.Status:X}" : "")})");
-            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, field {Field}, speed {Speed}, sfx {Sfx}, music {Music}, party [{String.Join(", ", members.ToArray())}]";
+            return $"battle {BattleId}, pattern {Pattern}, start {StartType}, flags {Flags}, {(Field == BattleEntry.WorldMapField ? "world map" : $"field {Field}")}, speed {Speed}, sfx {Sfx}, music {Music}, party [{String.Join(", ", members.ToArray())}]";
         }
 
         private static void U16(List<Byte> b, UInt16 v) { b.Add((Byte)v); b.Add((Byte)(v >> 8)); }
