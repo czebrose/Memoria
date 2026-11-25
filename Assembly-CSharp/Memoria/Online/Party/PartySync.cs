@@ -20,9 +20,10 @@ namespace Memoria.Online.Party
     ///  - Guest on an update: the host's state, with its unanswered requests re-applied on top. A rejected request
     ///    simply disappears: the guest's numbers become the host's.
     ///  - Guests change who's in the party only with the party screen (CheckPartyScreen).
-    ///  - Equipment: a player changes their own character's, and anyone changes a follow character's (one nobody
-    ///    plays). Nobody, the host included, changes the equipment of a character another player plays
-    ///    (<see cref="MayEquip"/>; the Equip menu blocks it, <see cref="BlockEquipChange"/>).
+    ///  - Equipment and support abilities: a player changes their own character's, and anyone changes a follow
+    ///    character's (one nobody plays). Nobody, the host included, changes those of a character another player plays
+    ///    (<see cref="MayEquip"/>; the Equip and Ability menus block it, <see cref="BlockEquipChange"/> and
+    ///    <see cref="BlockAbilityChange"/>).
     ///  - Blocked on guests: saving, arranging items, discarding cards, changing the party order (rows: own character
     ///    only); a short message says why.
     /// Messages ride on BlobTransfer (chunked, reliable), tagged with <see cref="MagicRequest"/> / <see cref="MagicUpdate"/>.
@@ -35,13 +36,23 @@ namespace Memoria.Online.Party
 
         /// <summary>Keys of a character record a player may change on their own character.</summary>
         private static readonly HashSet<String> OwnKeys = new HashSet<String> { "equip", "sa", "sa_extended", "cur", "status" };
+        /// <summary>Keys anyone may change on a follow character (nobody plays it): its equipment and support abilities, as on one's own.</summary>
+        private static readonly HashSet<String> FollowerKeys = OwnKeys;
+
         /// <summary>
-        /// Keys anyone may change on a follow character (nobody plays it): its equipment. Its support abilities only
-        /// along with an equipment change: taking off a gear can switch off the abilities it was teaching
-        /// (ff9feqp.FF9FEqp_UpdateSA).
+        /// Whether a request may replace this key of a character record: <paramref name="own"/> the requester's
+        /// character, <paramref name="follower"/> one nobody plays. Other characters: only HP/MP/status (items and
+        /// spells), which <see cref="ApplyChanges"/> applies in part. One rule for <see cref="Validate"/> and
+        /// <see cref="ApplyChanges"/>.
         /// </summary>
-        private static readonly HashSet<String> FollowerKeys = new HashSet<String> { "equip", "cur", "status" };
-        private static readonly HashSet<String> FollowerKeysWithEquip = new HashSet<String> { "sa", "sa_extended" };
+        private static Boolean MayReplace(String key, Boolean own, Boolean follower)
+        {
+            if (own)
+                return OwnKeys.Contains(key);
+            if (follower)
+                return FollowerKeys.Contains(key);
+            return false;
+        }
         /// <summary>Keys recomputed from the others when the state is applied (FF9Play_Update): changes are ignored.</summary>
         private static readonly HashSet<String> DerivedKeys = new HashSet<String> { "max", "elem", "defence", "basis", "web_bone", "maxHpLimit", "maxMpLimit", "maxDamageLimit", "maxMpDamageLimit", "trance" };
 
@@ -240,7 +251,7 @@ namespace Memoria.Online.Party
             String reason = Validate(request, character, state, c => c != character && _isPlayed(c));
             if (reason == null)
             {
-                ApplyChanges(state, request, character);
+                ApplyChanges(state, request, character, c => c != character && _isPlayed(c));
                 ApplyState(state);
                 if (request["found"] != null && request["found"].AsArray != null)
                     GuestFinds.Apply(request["found"].AsArray); // M5: a guest's chests, gifts, quest items, gil
@@ -305,11 +316,11 @@ namespace Memoria.Online.Party
                     {
                         if (DerivedKeys.Contains(key.Key))
                             continue;
-                        if (own ? OwnKeys.Contains(key.Key) : follower ? FollowerKeys.Contains(key.Key) || newEquip != null && FollowerKeysWithEquip.Contains(key.Key) : (key.Key == "cur" || key.Key == "status"))
+                        if (MayReplace(key.Key, own, follower) || !own && (key.Key == "cur" || key.Key == "status"))
                             continue;
-                        if (own)
+                        if (own || follower)
                             return $"'{key.Key}' can't be changed from a menu";
-                        return follower ? "only a character's player can change its abilities" : "only a character's player can change its equipment or abilities";
+                        return "only a character's player can change its equipment or abilities";
                     }
                     // Unequipping puts items back in the bag
                     if ((own || follower) && newEquip != null && newEquip.AsArray != null)
@@ -477,7 +488,8 @@ namespace Memoria.Online.Party
         }
 
         /// <summary>Puts a request's changes into a state (validated on the host; re-applied as-is on a guest).</summary>
-        private static void ApplyChanges(JSONClass state, JSONClass request, Int32 character)
+        /// <summary>Puts a checked request (<see cref="Validate"/>) into <paramref name="state"/>; <paramref name="playedByOther"/> as there.</summary>
+        private static void ApplyChanges(JSONClass state, JSONClass request, Int32 character, Func<Int32, Boolean> playedByOther)
         {
             Dictionary<Int32, JSONNode> players = PartyState.PlayersById(state[PartyState.Common]);
             JSONArray changes = request["players"].AsArray;
@@ -487,12 +499,14 @@ namespace Memoria.Online.Party
                 {
                     if (!players.TryGetValue(change["id"].AsInt, out JSONNode player))
                         continue;
-                    Boolean own = change["id"].AsInt == character;
+                    Int32 id = change["id"].AsInt;
+                    Boolean own = id == character;
+                    Boolean follower = !own && !playedByOther(id); // a follow character's equipment: anyone's to change
                     foreach (KeyValuePair<String, JSONNode> key in (JSONClass)change["keys"])
                     {
                         if (DerivedKeys.Contains(key.Key))
                             continue;
-                        if (own && OwnKeys.Contains(key.Key))
+                        if (MayReplace(key.Key, own, follower))
                         {
                             player[key.Key] = PartyState.Clone(key.Value);
                         }
@@ -626,7 +640,7 @@ namespace Memoria.Online.Party
             JSONClass state = PartySync.CloneState(update["state"]);
             Int32 character = _myCharacter();
             foreach (KeyValuePair<Int32, JSONClass> pending in _pending)
-                ApplyChanges(state, pending.Value, character); // not answered yet: stays on top (optimistic)
+                ApplyChanges(state, pending.Value, character, c => c != character && _isPlayed(c)); // not answered yet: stays on top (optimistic)
             ApplyState(state);
             _expected = PartyState.Capture();
             _expectedFingerprint = PartyState.Fingerprint();
@@ -751,6 +765,17 @@ namespace Memoria.Online.Party
                 return false;
             FF9Sfx.FF9SFX_Play(102);
             Toast($"Only {player.Name}'s player can change their equipment.");
+            return true;
+        }
+
+        /// <summary>[Online] hook, AbilityUI (choosing Equip, and turning a support ability on or off): the same rule as
+        /// the equipment's. Using an ability (Cure on the party) stays open to everyone.</summary>
+        public static Boolean BlockAbilityChange(PLAYER player)
+        {
+            if (player == null || MayEquip((Int32)player.info.slot_no))
+                return false;
+            FF9Sfx.FF9SFX_Play(102);
+            Toast($"Only {player.Name}'s player can change their abilities.");
             return true;
         }
 

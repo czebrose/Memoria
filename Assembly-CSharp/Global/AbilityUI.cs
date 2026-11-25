@@ -312,6 +312,9 @@ public class AbilityUI : UIScene
     {
         if (!base.OnKeyConfirm(go))
             return true;
+        if ((ButtonGroupState.ActiveGroup == SubMenuGroupButton && this.GetSubMenuFromGameObject(go) == SubMenu.Equip && this.isSAEnable || ButtonGroupState.ActiveGroup == SupportAbilityGroupButton && ButtonGroupState.ContainButtonInGroup(go, SupportAbilityGroupButton))
+            && Memoria.Online.Party.PartySync.BlockAbilityChange(FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex])) // [Online] another player's character
+            return true;
         if (ButtonGroupState.ActiveGroup == SubMenuGroupButton)
         {
             this.currentSubMenu = this.GetSubMenuFromGameObject(go);
@@ -613,7 +616,7 @@ public class AbilityUI : UIScene
                 FF9Sfx.FF9SFX_Play(102);
             }
         }
-        else if (ButtonGroupState.ActiveGroup == SupportAbilityGroupButton)
+        else if (ButtonGroupState.ActiveGroup == SupportAbilityGroupButton && !(ButtonGroupState.ContainButtonInGroup(go, SupportAbilityGroupButton) && Memoria.Online.Party.PartySync.BlockAbilityChange(FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex]))) // [Online] another player's character
         {
             if (ButtonGroupState.ContainButtonInGroup(go, SupportAbilityGroupButton))
             {
