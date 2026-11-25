@@ -162,6 +162,10 @@ public class EquipUI : UIScene
         if (!base.OnKeyConfirm(go))
             return true;
 
+        if ((ButtonGroupState.ActiveGroup == SubMenuGroupButton || ButtonGroupState.ActiveGroup == EquipmentGroupButton && ButtonGroupState.ContainButtonInGroup(go, EquipUI.EquipmentGroupButton))
+            && Memoria.Online.Party.PartySync.BlockEquipChange(FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex])) // [Online] another player's character
+            return true;
+
         if (ButtonGroupState.ActiveGroup == SubMenuGroupButton)
             OnKeyConfirmSubMenuGroupButton(go);
         else if (ButtonGroupState.ActiveGroup == EquipmentGroupButton)

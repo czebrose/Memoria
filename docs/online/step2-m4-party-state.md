@@ -48,11 +48,14 @@ moonstones, gem boosts, item effects) would duplicate a lot of engine code. Inst
   what it expects (the host's last update + its own pending requests). A difference becomes a **Request** (sequence
   number + the differences: changed character records, item count deltas, gil delta).
 - **Host:** applies requests in order of arrival, after checking them:
-  - character records: **only the guest's own character**, except HP/MP/status, which any item or spell can change;
+  - character records: **only the guest's own character**, except HP/MP/status, which any item or spell can change,
+    and a **follow character's** (one nobody plays) equipment, which anyone may change (with the support abilities
+    an equipment change switches off). Nobody changes the equipment of a character another player plays, the host
+    included: the Equip menu buzzes and says whose it is (`PartySync.BlockEquipChange`);
   - item counts can go down only if the host still has them (**the last Potion**: the first request takes it, the
     second is rejected); they can go up only by unequipping (equipment going back to the bag);
   - gil can't go up from a guest;
-  - anything else (party order, cards, other characters' equipment) is rejected.
+  - anything else (party order, cards, the equipment of characters other players play) is rejected.
 - **Host → everyone:** a **StateUpdate** after every change (the host's own menu use included): the full party state,
   with the result of each request (accepted / rejected). Party state is a few KB, sent on the reliable channel in
   chunks like M1.

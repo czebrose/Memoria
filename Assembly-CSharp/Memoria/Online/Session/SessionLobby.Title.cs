@@ -19,6 +19,8 @@ namespace Memoria.Online.Session
 
         /// <summary>The host's game choices (New Game, then the saves, newest first) and the chosen one.</summary>
         public List<String> ChoiceLabels => _choices.ConvertAll(c => c.Label);
+        /// <summary>Each choice's slot number as the load screen shows it (1-10, then 11-20 on page 2...); 0 for New Game.</summary>
+        public List<Int32> ChoiceSlots => _choices.ConvertAll(c => c.NewGame ? 0 : c.SlotNumber);
         public Int32 ChoiceIndex => _choiceIndex;
         public Boolean ChoiceLoading => _choiceLoading;
 

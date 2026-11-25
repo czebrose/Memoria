@@ -23,7 +23,8 @@ namespace Memoria.Online
     ///        <see cref="GhostState.NotOnField"/> while in a battle / menu / world map), so ghosts hide at once
     ///
     /// Hotkeys (Ctrl+Shift): H host, I invite (Steam overlay), J join (lobby id in the clipboard, else a friend's FF9
-    /// lobby), L leave, O status box. With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
+    /// lobby), L leave, O the debug overlay (off at start: the status box, notices and toasts, the battle sync box;
+    /// everything drawn here that isn't the game's own UI). With [Debug] Enabled = 1 and OnlineDebug = 1 in Memoria.ini, also:
     /// G shadow ghost (replays you ~1 s behind), P pause its feed 6 s, K network simulation (10% loss, 0-80 ms jitter),
     /// M ghost model override, N interpolation on/off, D adaptive / fixed 100 ms delay, C pretend to be a guest playing
     /// another character (offline test of the body swap; reloads the field), F7 switch Player / Cast scene mode, F8
@@ -75,7 +76,11 @@ namespace Memoria.Online
         private UInt32 _ghostStatesSampled;
         private readonly ShadowGhost _shadow = new ShadowGhost();
         private Int32 _modelOverrideIndex = -1;
-        private Boolean _showStatus = true;
+        /// <summary>
+        /// The debug overlay (Ctrl+Shift+O, off at start): every box drawn with Unity's GUI rather than the game's own
+        /// windows. The status box, the centred notices and toasts (this class), the battle sync box (BattleSyncHud).
+        /// </summary>
+        internal static Boolean OverlayShown { get; private set; }
         private Boolean _finalLogged;
         private Int32 _clamped;
         private GUIStyle _style;
@@ -297,7 +302,8 @@ namespace Memoria.Online
                 return;
             if (Input.GetKeyDown(KeyCode.O))
             {
-                _showStatus = !_showStatus;
+                OverlayShown = !OverlayShown;
+                Log.Message($"[Online] Debug overlay {(OverlayShown ? "shown" : "hidden")} (Ctrl+Shift+O)");
                 return;
             }
             if (_session != null)
@@ -889,14 +895,14 @@ namespace Memoria.Online
         private void OnGUI()
         {
             DrawBuildOnTitle();
-            if (_init == InitState.Waiting)
+            if (_init == InitState.Waiting || !OverlayShown)
                 return;
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14, wordWrap = false };
                 _style.normal.textColor = Color.white;
             }
-            // Always shown (status box or not): the M5 freeze notice, then the toasts
+            // Shown with the overlay, even when the Online windows hide the status box: the M5 freeze notice, then the toasts
             String notice = GuestGuard.Frozen ? GuestGuard.FrozenMessage : null;
             String toast = PartySync.CurrentToast;
             Single noticeY = Screen.height * 0.75f;
@@ -910,7 +916,7 @@ namespace Memoria.Online
                 GUI.Box(new Rect((Screen.width - messageSize.x) / 2f, noticeY, messageSize.x + 16, messageSize.y + 8), message, _style);
                 noticeY += messageSize.y + 14;
             }
-            if (!_showStatus || Menus.OnlineMenu.Active || Menus.TitleOnline.Active || (Menus.BattleOnline.Current?.IsOpen ?? false)) // the Online windows cover it: the status box steps aside
+            if (Menus.OnlineMenu.Active || Menus.TitleOnline.Active || (Menus.BattleOnline.Current?.IsOpen ?? false)) // the Online windows cover it: the status box steps aside
                 return;
             StringBuilder text = new StringBuilder();
             if (_init == InitState.NoSteam)
@@ -938,7 +944,7 @@ namespace Memoria.Online
             foreach (GhostActor g in GhostManager.All)
                 text.Append($"\n  {(g.Peer == ShadowGhost.Peer ? "shadow" : SteamNative.GetName(g.Peer))} ({g.Model.Name}): {(g.Visible ? "shown" : "hidden")}, delay {g.DelayMs:0}ms, jitter {g.JitterMs:0}ms");
             if (_init == InitState.Ready && _lobby.State == SteamLobby.LobbyState.None)
-                text.Append("\nCtrl+Shift: H host, I invite, J join, L leave, O hide");
+                text.Append("\nCtrl+Shift: H host, I invite, J join, L leave, O hide the overlay");
             if (_debug)
             {
                 text.Append($"\nDebug: G shadow {(_shadow.Enabled ? "ON" : "off")}, P pause{(NowMs < _shadow.PausedUntilMs ? " (PAUSED)" : "")}, K net sim {(_shadow.NetworkSimulation ? "ON" : "off")}, ");

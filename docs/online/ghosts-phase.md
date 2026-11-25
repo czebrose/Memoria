@@ -30,7 +30,7 @@ Branch `online-ghosts` (from `main` at `c716e1fa`, merging `steam-spike-a` and `
   clamped to 80-250 ms**. Logged every second and in the summaries (delay, jitter, max jitter).
 - **Loss measurement:** the movement channel carries ghost states only now (spike A's dummy 48-byte packets are gone),
   so every 5 s each side tells the other on channel 0 how many states it sent them; loss = 1 - received / reported.
-- **Status box** (top-left, Ctrl+Shift+O): lobby, host, peers with RTT / relay or direct / loss, ghosts with
+- **Status box** (top-left, part of the debug overlay: Ctrl+Shift+O, off at start): lobby, host, peers with RTT / relay or direct / loss, ghosts with
   delay / jitter.
 - **Debug flag:** `Memoria.ini` `[Debug] Enabled = 1` + `OnlineDebug = 1` enables the shadow ghost and its tools
   (Ctrl+Shift+G / P / K / M / N / D). Off by default.

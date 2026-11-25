@@ -20,6 +20,9 @@ namespace Memoria.Online.Party
     ///  - Guest on an update: the host's state, with its unanswered requests re-applied on top. A rejected request
     ///    simply disappears: the guest's numbers become the host's.
     ///  - Guests change who's in the party only with the party screen (CheckPartyScreen).
+    ///  - Equipment: a player changes their own character's, and anyone changes a follow character's (one nobody
+    ///    plays). Nobody, the host included, changes the equipment of a character another player plays
+    ///    (<see cref="MayEquip"/>; the Equip menu blocks it, <see cref="BlockEquipChange"/>).
     ///  - Blocked on guests: saving, arranging items, discarding cards, changing the party order (rows: own character
     ///    only); a short message says why.
     /// Messages ride on BlobTransfer (chunked, reliable), tagged with <see cref="MagicRequest"/> / <see cref="MagicUpdate"/>.
@@ -32,6 +35,13 @@ namespace Memoria.Online.Party
 
         /// <summary>Keys of a character record a player may change on their own character.</summary>
         private static readonly HashSet<String> OwnKeys = new HashSet<String> { "equip", "sa", "sa_extended", "cur", "status" };
+        /// <summary>
+        /// Keys anyone may change on a follow character (nobody plays it): its equipment. Its support abilities only
+        /// along with an equipment change: taking off a gear can switch off the abilities it was teaching
+        /// (ff9feqp.FF9FEqp_UpdateSA).
+        /// </summary>
+        private static readonly HashSet<String> FollowerKeys = new HashSet<String> { "equip", "cur", "status" };
+        private static readonly HashSet<String> FollowerKeysWithEquip = new HashSet<String> { "sa", "sa_extended" };
         /// <summary>Keys recomputed from the others when the state is applied (FF9Play_Update): changes are ignored.</summary>
         private static readonly HashSet<String> DerivedKeys = new HashSet<String> { "max", "elem", "defence", "basis", "web_bone", "maxHpLimit", "maxMpLimit", "maxDamageLimit", "maxMpDamageLimit", "trance" };
 
@@ -285,21 +295,24 @@ namespace Memoria.Online.Party
                 {
                     Int32 id = change["id"].AsInt;
                     Boolean own = id == character;
+                    Boolean follower = !own && !playedByOther(id); // nobody plays it: anyone may change its equipment
                     if (!players.ContainsKey(id))
                         return $"character {id} isn't in the host's party";
                     if (change["row"] != null && !own)
                         return "only a character's player can change its row";
+                    JSONNode newEquip = change["keys"]["equip"];
                     foreach (KeyValuePair<String, JSONNode> key in (JSONClass)change["keys"])
                     {
                         if (DerivedKeys.Contains(key.Key))
                             continue;
-                        if (own ? OwnKeys.Contains(key.Key) : (key.Key == "cur" || key.Key == "status"))
+                        if (own ? OwnKeys.Contains(key.Key) : follower ? FollowerKeys.Contains(key.Key) || newEquip != null && FollowerKeysWithEquip.Contains(key.Key) : (key.Key == "cur" || key.Key == "status"))
                             continue;
-                        return own ? $"'{key.Key}' can't be changed from a menu" : "only a character's player can change its equipment or abilities";
+                        if (own)
+                            return $"'{key.Key}' can't be changed from a menu";
+                        return follower ? "only a character's player can change its abilities" : "only a character's player can change its equipment or abilities";
                     }
                     // Unequipping puts items back in the bag
-                    JSONNode newEquip = change["keys"]["equip"];
-                    if (own && newEquip != null && newEquip.AsArray != null)
+                    if ((own || follower) && newEquip != null && newEquip.AsArray != null)
                     {
                         Dictionary<Int32, Int32> was = Counts(players[id]["equip"]), now = Counts(newEquip);
                         foreach (KeyValuePair<Int32, Int32> kv in was)
@@ -717,6 +730,29 @@ namespace Memoria.Online.Party
 
         /// <summary>[Online] hook, ItemUI arrange and CardUI discard.</summary>
         public static Boolean BlockGuestAction(String message) => Block(message);
+
+        /// <summary>
+        /// Whether this PC may change this character's equipment: its own character, or a follow character (nobody
+        /// plays it). Not a character another player plays, on the host either. True off a session.
+        /// </summary>
+        public static Boolean MayEquip(Int32 character)
+        {
+            PartySync sync = Instance;
+            if (sync == null || !sync.Active || character < 0)
+                return true;
+            return character == sync._myCharacter() || !sync._isPlayed(character);
+        }
+
+        /// <summary>[Online] hook, EquipUI (Equip, Optimize, Remove, and choosing a gear slot): only this character's
+        /// player changes its equipment, but anyone a follow character's.</summary>
+        public static Boolean BlockEquipChange(PLAYER player)
+        {
+            if (player == null || MayEquip((Int32)player.info.slot_no))
+                return false;
+            FF9Sfx.FF9SFX_Play(102);
+            Toast($"Only {player.Name}'s player can change their equipment.");
+            return true;
+        }
 
         /// <summary>[Online] hook, MainMenuUI.ToggleOrder: guests change only their own character's row, never the order.</summary>
         public static Boolean BlockOrderChange(PLAYER player, Boolean isRowToggle)

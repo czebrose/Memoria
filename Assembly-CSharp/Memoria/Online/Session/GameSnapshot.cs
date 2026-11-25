@@ -54,7 +54,55 @@ namespace Memoria.Online.Session
             storage.GetLatestSlotAndSave((slot, save) => done(slot, save));
         }
 
+        /// <summary>
+        /// The save pages that exist: page 0 (the game's own 10 slots), then Memoria's extra pages (EncryptedSaveData/
+        /// ExtraSave_N, made when the load screen first shows that page). An extra page that was never opened has no
+        /// saves, so it isn't listed (and its folder isn't created).
+        /// </summary>
+        public static List<Int32> SavePages()
+        {
+            List<Int32> pages = new List<Int32> { 0 };
+            if (!(FF9StateSystem.Serializer?.Storage is SharedDataBytesStorage) || String.IsNullOrEmpty(SharedDataBytesStorage.MetaData.DirPath))
+                return pages;
+            for (Int32 page = 1; page < SharedDataBytesStorage.MaximumSavePage; page++)
+                if (File.Exists(Path.Combine(Path.Combine(SharedDataBytesStorage.MetaData.DirPath, "ExtraSave_" + page), Path.GetFileName(SharedDataBytesStorage.MetaData.FilePath ?? "SavedData_ww.dat"))))
+                    pages.Add(page);
+            return pages;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="act"/> with the storage on save page <paramref name="page"/>, then puts the page the
+        /// load screen was on back. The storage opens its file inside the call, so a preview read finishing later
+        /// (a coroutine) still reads that page.
+        /// </summary>
+        public static void OnPage(Int32 page, Action act)
+        {
+            Int32 current = SharedDataBytesStorage.CurrentSavePage;
+            if (page == current || !(FF9StateSystem.Serializer?.Storage is SharedDataBytesStorage))
+            {
+                act();
+                return;
+            }
+            SharedDataBytesStorage.CurrentSavePage = page;
+            SharedDataBytesStorage.UpdatePathForPage();
+            try
+            {
+                act();
+            }
+            finally
+            {
+                SharedDataBytesStorage.CurrentSavePage = current;
+                SharedDataBytesStorage.UpdatePathForPage();
+            }
+        }
+
         /// <summary>A save slot's tree, read through the game's storage (decrypted, Memoria data merged) without loading it.</summary>
+        public static void CaptureSlot(Int32 page, Int32 slotId, Int32 saveId, Action<Byte[], JSONClass, String> done)
+        {
+            OnPage(page, () => CaptureSlot(slotId, saveId, done));
+        }
+
+        /// <summary>A save slot's tree on the load screen's current page (see the overload with a page).</summary>
         public static void CaptureSlot(Int32 slotId, Int32 saveId, Action<Byte[], JSONClass, String> done)
         {
             ISharedDataStorage storage = FF9StateSystem.Serializer?.Storage;

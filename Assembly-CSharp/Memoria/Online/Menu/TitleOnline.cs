@@ -26,6 +26,8 @@ namespace Memoria.Online.Menus
         private const String MainGroup = "Online.Title";
         private const String ListGroup = "Online.TitleList";
         private const Int32 StartWidth = 640, LobbyWidth = 1040, ListWidth = 1000;
+        /// <summary>Rows a list shows at once (more get a "More" row): 15 saves wouldn't fit on the screen.</summary>
+        private const Int32 PageRows = 8;
 
         public static TitleOnline Current { get; private set; }
 
@@ -34,14 +36,15 @@ namespace Memoria.Online.Menus
 
         public readonly GameObject Entry;
 
-        private enum ListKind { None, Games, Friends }
+        /// <summary>Games: New Game and the save slots; Saves: one slot's saves (<see cref="_listSlot"/>).</summary>
+        private enum ListKind { None, Games, Saves, Friends }
 
         private readonly TitleUI _title;
         private readonly MenuWindows _windows;
         private readonly Int32 _depth;
         private Window _window, _list;
         private ListKind _listKind;
-        private Int32 _cursor, _listCursor;
+        private Int32 _cursor, _listCursor, _listPage, _listSlot;
         private String _key;
         private SteamLobby.LobbyState _lastState = SteamLobby.LobbyState.None;
         private List<KeyValuePair<UInt64, UInt64>> _friends = new List<KeyValuePair<UInt64, UInt64>>();
@@ -107,7 +110,10 @@ namespace Memoria.Online.Menus
             if (_list != null && ButtonGroupState.ActiveGroup == ListGroup)
             {
                 FF9Sfx.FF9SFX_Play(101);
-                CloseList();
+                if (_listKind == ListKind.Saves)
+                    OpenList(ListKind.Games, _listSlot); // back to the slots, on this one
+                else
+                    CloseList();
                 return true;
             }
             if (_window != null && ButtonGroupState.ActiveGroup == MainGroup)
@@ -148,7 +154,7 @@ namespace Memoria.Online.Menus
                 return;
             _key = key;
             Build(true);
-            if (_list != null && (_listKind == ListKind.Games ? !(session != null && session.IsHost && session.Phase == SessionPhase.Gathering) : state != SteamLobby.LobbyState.None))
+            if (_list != null && (_listKind == ListKind.Games || _listKind == ListKind.Saves ? !(session != null && session.IsHost && session.Phase == SessionPhase.Gathering) : state != SteamLobby.LobbyState.None))
                 CloseList();
         }
 
@@ -179,15 +185,64 @@ namespace Memoria.Online.Menus
             _title.OnlineIdleTimer(true);
         }
 
-        private void OpenList(ListKind kind)
+        /// <param name="slot">Games: the slot row to put the cursor on (else the chosen game's); Saves: the slot to list.</param>
+        private void OpenList(ListKind kind, Int32 slot = -1)
         {
             MenuWindows.Destroy(ref _list);
             _listKind = kind;
-            _listCursor = kind == ListKind.Games ? Math.Max(0, Session?.ChoiceIndex ?? 0) : 0;
+            _listCursor = 0;
+            _listPage = 0;
+            SessionLobby session = Session;
             if (kind == ListKind.Friends)
-                _friends = Session?.FriendLobbies() ?? new List<KeyValuePair<UInt64, UInt64>>();
+                _friends = session?.FriendLobbies() ?? new List<KeyValuePair<UInt64, UInt64>>();
+            if (kind == ListKind.Saves)
+                _listSlot = slot;
+            if (session != null && (kind == ListKind.Games || kind == ListKind.Saves))
+            {
+                // The cursor starts on the chosen game (or its slot), on the page that shows it
+                List<Int32> slots = session.ChoiceSlots;
+                Int32 chosen = session.ChoiceIndex;
+                Int32 at;
+                if (kind == ListKind.Games)
+                {
+                    Int32 target = slot >= 0 ? slot : chosen >= 0 && chosen < slots.Count ? slots[chosen] : 0;
+                    at = GameRows(session).IndexOf(target);
+                }
+                else
+                {
+                    at = SaveRows(session, _listSlot).IndexOf(chosen);
+                }
+                if (at >= 0)
+                {
+                    _listPage = at / PageRows;
+                    _listCursor = at % PageRows;
+                }
+            }
             BuildList(false);
             MenuWindows.Focus(_list, _listCursor);
+        }
+
+        /// <summary>The Games list's rows: 0 (New Game), then each slot number that has saves.</summary>
+        private static List<Int32> GameRows(SessionLobby session)
+        {
+            List<Int32> rows = new List<Int32>();
+            foreach (Int32 slot in session.ChoiceSlots)
+                if (slot > 0 && !rows.Contains(slot))
+                    rows.Add(slot);
+            rows.Sort();
+            rows.Insert(0, 0);
+            return rows;
+        }
+
+        /// <summary>A slot's saves, as choice indexes (newest first).</summary>
+        private static List<Int32> SaveRows(SessionLobby session, Int32 slot)
+        {
+            List<Int32> rows = new List<Int32>();
+            List<Int32> slots = session.ChoiceSlots;
+            for (Int32 i = 0; i < slots.Count; i++)
+                if (slot > 0 && slots[i] == slot)
+                    rows.Add(i);
+            return rows;
         }
 
         private void CloseList()
@@ -293,7 +348,7 @@ namespace Memoria.Online.Menus
                 if (session.IsHost)
                 {
                     String game = String.IsNullOrEmpty(session.GameLabel) ? "..." : session.GameLabel;
-                    rows.Add(MenuWindows.NewRow($"Game: {Shorten(game, 36)}", !session.ChoiceLoading && session.ChoiceLabels.Count > 1, "Choose New Game or a save.", () => OpenList(ListKind.Games)));
+                    rows.Add(MenuWindows.NewRow($"Game: {Shorten(game, 36)}", !session.ChoiceLoading && session.ChoiceLabels.Count > 1, "Choose New Game or any save.", () => OpenList(ListKind.Games)));
                 }
                 else
                 {
@@ -323,13 +378,38 @@ namespace Memoria.Online.Menus
             if (_listKind == ListKind.Games)
             {
                 caption = "GAME";
+                info = "Choose New Game or a save slot (* is the chosen game's slot).";
                 List<String> labels = session.ChoiceLabels;
-                for (Int32 i = 0; i < labels.Count; i++)
+                List<Int32> slots = session.ChoiceSlots;
+                Int32 chosen = session.ChoiceIndex;
+                Int32 chosenSlot = chosen >= 0 && chosen < slots.Count ? slots[chosen] : -1;
+                foreach (Int32 slot in GameRows(session))
+                {
+                    if (slot == 0)
+                    {
+                        Int32 newGame = slots.IndexOf(0);
+                        rows.Add(MenuWindows.NewRow("New Game", newGame >= 0 && newGame != chosen, null, () => { session.Choose(newGame); CloseList(); }));
+                        continue;
+                    }
+                    List<Int32> saves = SaveRows(session, slot);
+                    Int32 listed = slot;
+                    String newest = labels[saves[0]];
+                    Int32 colon = newest.IndexOf(": ");
+                    String text = $"Slot {slot}{(slot == chosenSlot ? "*" : "")} ({saves.Count} save{(saves.Count > 1 ? "s" : "")}): {(colon >= 0 ? newest.Substring(colon + 2) : newest)}";
+                    rows.Add(MenuWindows.NewRow(Shorten(text, 44), true, null, () => OpenList(ListKind.Saves, listed)));
+                }
+            }
+            else if (_listKind == ListKind.Saves)
+            {
+                caption = $"SLOT {_listSlot}";
+                List<String> labels = session.ChoiceLabels;
+                foreach (Int32 i in SaveRows(session, _listSlot))
                 {
                     Int32 index = i;
-                    Boolean current = i == session.ChoiceIndex;
-                    rows.Add(MenuWindows.NewRow(Shorten(labels[i], 44), !current, null, () => { session.Choose(index); CloseList(); }));
+                    rows.Add(MenuWindows.NewRow(Shorten(labels[i], 44), i != session.ChoiceIndex, null, () => { session.Choose(index); CloseList(); }));
                 }
+                if (rows.Count == 0)
+                    info = "This slot has no saves any more.";
             }
             else
             {
@@ -346,6 +426,20 @@ namespace Memoria.Online.Menus
                     _friends = session.FriendLobbies();
                     BuildList(true);
                 }));
+            }
+            Int32 pages = (rows.Count + PageRows - 1) / PageRows;
+            if (pages > 1)
+            {
+                _listPage = Math.Max(0, Math.Min(_listPage, pages - 1));
+                List<Row> page = rows.GetRange(_listPage * PageRows, Math.Min(PageRows, rows.Count - _listPage * PageRows));
+                page.Add(MenuWindows.NewRow($"More ({_listPage + 1}/{pages})", true, null, () =>
+                {
+                    _listPage = (_listPage + 1) % pages;
+                    _listCursor = PageRows; // the "More" row, so it can be pressed again (Fill keeps it in range)
+                    BuildList(false);
+                    MenuWindows.Focus(_list, _listCursor);
+                }));
+                rows = page;
             }
             if (rows.Count == 0)
                 rows.Add(MenuWindows.NewRow("Back", true, null, CloseList));

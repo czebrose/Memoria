@@ -29,7 +29,7 @@ before the host can start. Then:
 
 | Who | Rows |
 |---|---|
-| host | **Game: ...**: a list of New Game and the saves, newest first. The party shown comes from that game |
+| host | **Game: ...**: New Game and every save slot that has saves (the load screen's 10 slots, and Memoria's extra save pages, as slots 11-20 and up); a slot opens its saves, newest first, 8 at a time (**More**). The newest save is chosen at first; * marks the chosen game's slot. The party shown comes from that game |
 | guest | one row per party member, with who plays it: choose a free one to pick it, choose yours to give it back. The first is always the host's |
 | everyone | **Invite friends**: the Steam overlay's invite dialog (if the overlay doesn't open, friends can use Join a friend) |
 | host | **Start**: greyed until everyone is at the title screen and connected; the reason is in the window |
@@ -116,7 +116,9 @@ A framed **ONLINE** notice at the top of the field screen shows:
 - an open swap offer to you ("*name* offers a swap: answer in the menu, Online.") until it's answered or expires;
 - "You now play *character*." / "You're watching (no character)." for a few seconds after your character changes.
 
-The connection status box (Ctrl+Shift+O) hides while the Online menu has the cursor.
+The debug overlay (Ctrl+Shift+O, off at start) is every box drawn outside the game's own windows: the connection
+status box, the centred notices and toasts (a scene's owner advancing the text, battle joins, blocked actions), and
+the battle sync box at the bottom left. The status box also hides while the Online menu has the cursor.
 
 ## For developers
 
@@ -175,7 +177,8 @@ Host on PC 1, a guest on PC 2, a party of at least three; both in the same field
 - T5. **Pick:** PC 2 picks a free character (its row and PC 1's party line show PC 2's name), picks another, gives it
   back. The host's character can't be picked.
 - T6. **Game:** PC 1 changes the game (New Game, a save); PC 2's window follows (game and party), PC 2's pick of a
-  character that isn't in the new party is dropped.
+  character that isn't in the new party is dropped. With saves in several slots: every slot is listed, a save from
+  a slot other than the latest one starts that save.
 - T7. **Start:** greyed while PC 2 is connecting or not at the title (the reason shows); Start puts both in the game,
   PC 2 playing its pick.
 - T8. **Leave / cancel:** Cancel closes the window but keeps the lobby (Online reopens it); Leave lobby on PC 2 drops

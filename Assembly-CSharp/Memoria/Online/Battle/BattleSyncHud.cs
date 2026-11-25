@@ -4,7 +4,8 @@ using UnityEngine;
 namespace Memoria.Online.Battle
 {
     /// <summary>
-    /// Spike C: debug hotkeys and status box. Only active with [Debug] Enabled = 1 and OnlineDebug = 1.
+    /// Spike C: debug hotkeys and status box. Only active with [Debug] Enabled = 1 and OnlineDebug = 1; the box only
+    /// shows with the debug overlay (Ctrl+Shift+O, <see cref="OnlineSession.OverlayShown"/>).
     /// Ctrl+Shift+E: cycle Off / Record / Replay (the next battle is recorded, or replayed passively from the last
     /// recording). Ctrl+Shift+A: C2, the first ready character attacks the first enemy without the menu.
     /// Ctrl+Shift+Q: write the battle state to Memoria.log.
@@ -50,7 +51,7 @@ namespace Memoria.Online.Battle
 
         private void OnGUI()
         {
-            if (!_enabled)
+            if (!_enabled || !OnlineSession.OverlayShown)
                 return;
             if (BattleSync.Mode == DebugReplayMode.Off && BattleSync.Recorder == null && BattleSync.Replayer == null && !(BattleSync.OwnerStream != null && InBattle))
                 return;

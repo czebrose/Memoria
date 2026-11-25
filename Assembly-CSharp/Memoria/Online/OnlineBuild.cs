@@ -15,7 +15,7 @@ namespace Memoria.Online
     internal static class OnlineBuild
     {
         /// <summary>The release this build is for (bump it with each release).</summary>
-        public const String Version = "0.1.4";
+        public const String Version = "0.1.5";
 
         private static String _hash;
 
@@ -30,7 +30,7 @@ namespace Memoria.Online
             }
         }
 
-        /// <summary>"v0.1.4 1A2B3C4D5E6F": what a PC puts in its lobby member data, and what the title screen shows.</summary>
+        /// <summary>"v0.1.5 1A2B3C4D5E6F": what a PC puts in its lobby member data, and what the title screen shows.</summary>
         public static String Id => $"v{Version} {Hash}";
 
         private static String ComputeHash()

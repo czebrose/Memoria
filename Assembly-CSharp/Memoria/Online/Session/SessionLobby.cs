@@ -65,7 +65,9 @@ namespace Memoria.Online.Session
         private sealed class GameChoice
         {
             public Boolean NewGame;
-            public Int32 Slot, Save;
+            public Int32 Page, Slot, Save;
+            /// <summary>The slot number the load screen shows (1-10 on page 1, 11-20 on page 2...).</summary>
+            public Int32 SlotNumber => Page * SharedDataBytesStorage.MetaData.SlotCount + Slot + 1;
             public String Label;
             public Double Timestamp;
         }
@@ -195,43 +197,63 @@ namespace Memoria.Online.Session
 
         // ---- Host: game choice, party, picks ---------------------------------------------------------------------
 
+        /// <summary>Counts the scans, so a scan that a newer one replaced stops (a lobby left and hosted again).</summary>
+        private Int32 _choiceScan;
+
+        /// <summary>
+        /// Host: lists New Game and every save on every save page (the 10 slots of 15 saves the load screen shows, and
+        /// Memoria's extra pages), newest first, and chooses the newest save. The previews are read one slot at a
+        /// time: the storage reads one file at a time.
+        /// </summary>
         private void RefreshChoices()
         {
             _choices.Clear();
             _choices.Add(new GameChoice { NewGame = true, Label = "New Game" });
             _choiceIndex = 0;
-            GameSnapshot.GetLatestSlot((slot, save) =>
+            Int32 scan = ++_choiceScan;
+            List<KeyValuePair<Int32, Int32>> slots = new List<KeyValuePair<Int32, Int32>>();
+            foreach (Int32 page in GameSnapshot.SavePages())
+                for (Int32 slot = 0; slot < SharedDataBytesStorage.MetaData.SlotCount; slot++)
+                    slots.Add(new KeyValuePair<Int32, Int32>(page, slot));
+            _choiceLoading = true;
+            ReadSlotChoices(scan, slots, 0);
+        }
+
+        private void ReadSlotChoices(Int32 scan, List<KeyValuePair<Int32, Int32>> slots, Int32 next)
+        {
+            if (scan != _choiceScan)
+                return;
+            if (next >= slots.Count || FF9StateSystem.Serializer?.Storage == null)
             {
-                if (slot < 0)
-                {
-                    ApplyChoice();
+                _choiceLoading = false;
+                _choices.Sort((a, b) => a.NewGame ? -1 : b.NewGame ? 1 : b.Timestamp.CompareTo(a.Timestamp));
+                _choiceIndex = _choices.Count > 1 ? 1 : 0; // the latest save if there is one
+                Log.Message($"[Online] Session: {_choices.Count - 1} save(s) to choose from");
+                ApplyChoice();
+                return;
+            }
+            Int32 page = slots[next].Key;
+            Int32 slot = slots[next].Value;
+            GameSnapshot.OnPage(page, () => FF9StateSystem.Serializer.Storage.LoadSlotPreview(slot, (slotId, previews) =>
+            {
+                if (scan != _choiceScan)
                     return;
-                }
-                FF9StateSystem.Serializer.Storage.LoadSlotPreview(slot, (slotId, previews) =>
+                if (previews != null)
                 {
-                    if (previews != null)
+                    for (Int32 i = 0; i < previews.Count; i++)
                     {
-                        for (Int32 i = 0; i < previews.Count; i++)
-                        {
-                            SharedDataPreviewSlot preview = previews[i];
-                            if (preview == null || !preview.HasData || preview.IsPreviewCorrupted)
-                                continue;
-                            String leader = preview.CharacterInfoList != null && preview.CharacterInfoList.Count > 0 && preview.CharacterInfoList[0] != null ? $"{preview.CharacterInfoList[0].Name} Lv{preview.CharacterInfoList[0].Level}, " : "";
-                            TimeSpan played = TimeSpan.FromSeconds(preview.PlayDuration);
-                            _choices.Add(new GameChoice
-                            {
-                                Slot = slotId,
-                                Save = i,
-                                Timestamp = preview.Timestamp,
-                                Label = $"Continue {slotId + 1}-{i + 1}: {preview.Location} ({leader}{(Int32)played.TotalHours}:{played.Minutes:D2})",
-                            });
-                        }
+                        SharedDataPreviewSlot preview = previews[i];
+                        if (preview == null || !preview.HasData || preview.IsPreviewCorrupted)
+                            continue;
+                        String leader = preview.CharacterInfoList != null && preview.CharacterInfoList.Count > 0 && preview.CharacterInfoList[0] != null ? $"{preview.CharacterInfoList[0].Name} Lv{preview.CharacterInfoList[0].Level}, " : "";
+                        TimeSpan played = TimeSpan.FromSeconds(preview.PlayDuration);
+                        GameChoice choice = new GameChoice { Page = page, Slot = slot, Save = i, Timestamp = preview.Timestamp };
+                        choice.Label = $"Continue {choice.SlotNumber}-{i + 1}: {preview.Location} ({leader}{(Int32)played.TotalHours}:{played.Minutes:D2})";
+                        _choices.Add(choice);
                     }
-                    _choices.Sort((a, b) => a.NewGame ? -1 : b.NewGame ? 1 : b.Timestamp.CompareTo(a.Timestamp));
-                    _choiceIndex = _choices.Count > 1 ? 1 : 0; // the latest save if there is one
-                    ApplyChoice();
-                });
-            });
+                }
+                ReadSlotChoices(scan, slots, next + 1);
+            }));
         }
 
         public void NextChoice()
@@ -257,7 +279,7 @@ namespace Memoria.Online.Session
                 return;
             }
             _choiceLoading = true;
-            GameSnapshot.CaptureSlot(choice.Slot, choice.Save, (blob, tree, error) =>
+            GameSnapshot.CaptureSlot(choice.Page, choice.Slot, choice.Save, (blob, tree, error) =>
             {
                 _choiceLoading = false;
                 if (blob == null)
@@ -599,6 +621,8 @@ namespace Memoria.Online.Session
             Assignments.Clear();
             _choices.Clear();
             _choiceIndex = -1;
+            _choiceScan++;
+            _choiceLoading = false;
             _continueBlob = null;
             _pending = null;
             _receivedBlobs.Clear();
