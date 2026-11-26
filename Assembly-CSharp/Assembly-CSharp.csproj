@@ -249,6 +249,7 @@
     <Compile Include="Global\battle\BattleHUD\BattleHUD.Const.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.AbilityOrder.cs" />
+    <Compile Include="Global\battle\BattleHUD\BattleHUD.QueuedPulse.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.HUDAutoAttack.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.PanelParty.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.PanelTarget.cs" />
@@ -384,8 +385,6 @@
     <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
     <Compile Include="Memoria\Online\Menu\BattleHUD.Online.cs" />
-    <Compile Include="Memoria\Online\Menu\BattleQueueHud.cs" />
-    <Compile Include="Memoria\Online\Battle\BattleQueue.cs" />
     <Compile Include="Memoria\Online\Session\SessionLobby.Join.cs" />
     <Compile Include="Memoria\Online\Menu\BattleOnline.cs" />
     <Compile Include="Memoria\Online\Menu\IPartyControl.cs" />

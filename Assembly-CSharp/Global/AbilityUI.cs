@@ -80,6 +80,8 @@ public class AbilityUI : UIScene
     private GOScrollablePanel _supportPanel;
     /// <summary>The Arrange button (a copy of Equip, after it) and its mode: choose an ability, then another, to swap them (<see cref="AbilityOrder"/>).</summary>
     private GameObject arrangeSubMenu;
+    private Vector3 arrangeStep;        // from Equip to Arrange (as from Use to Equip)
+    private Boolean arrangeMovedLogged; // something moved the button back once (logged with its components)
     private Boolean arranging;
     private Int32 arrangeFirst = -1;
     [NonSerialized]
@@ -839,9 +841,12 @@ public class AbilityUI : UIScene
             return true;
         if (ButtonGroupState.ActiveGroup == SubMenuGroupButton)
         {
-            if (this.GetSubMenuFromGameObject(go) != SubMenu.Arrange && this.currentSubMenu != this.GetSubMenuFromGameObject(go))
+            SubMenu hovered = this.GetSubMenuFromGameObject(go);
+            if (hovered == SubMenu.Arrange)
+                hovered = SubMenu.Use; // Arrange orders the action abilities: their list shows from the hover on
+            if (this.currentSubMenu != hovered)
             {
-                this.currentSubMenu = this.GetSubMenuFromGameObject(go);
+                this.currentSubMenu = hovered;
                 switch (this.currentSubMenu)
                 {
                     case SubMenu.Use:
@@ -930,7 +935,7 @@ public class AbilityUI : UIScene
         if (arrangeButton != null)
         {
             arrangeButton.Help.TextKey = String.Empty;
-            arrangeButton.Help.Text = "Change the order of the abilities.\nChoose one, then the one to swap it with. The battle menus use this order too.";
+            arrangeButton.Help.Text = "Change the order of the action abilities.\nChoose one, then the one to swap it with. The battle menus use this order.";
         }
         this.HelpDespLabelGameObject.SetActive(FF9StateSystem.PCPlatform);
     }
@@ -1491,8 +1496,7 @@ public class AbilityUI : UIScene
             }
         }
         this.saIdList.RemoveAll(id => boostedList.Contains(ff9abil.GetSupportAbilityFromAbilityId(id)));
-        this.aaIdList = AbilityOrder.Sorted(player, this.aaIdList); // the player's Arrange
-        this.saIdList = AbilityOrder.Sorted(player, this.saIdList);
+        this.aaIdList = AbilityOrder.Sorted(player, this.aaIdList); // the player's Arrange (action abilities only)
         for (Int32 i = 0; i < 5; ++i)
         {
             RegularItem itemId = player.equip[i];
@@ -1544,7 +1548,10 @@ public class AbilityUI : UIScene
             this.arrangeSubMenu.name = "Arrange SubMenu";
             this.arrangeSubMenu.transform.parent = equip.transform.parent;
             this.arrangeSubMenu.transform.localScale = equip.transform.localScale;
+            // Equip's anchors (to the bar it sits in) came along: they'd pull the copy back on top of Equip
+            Memoria.Online.Menus.MenuWindows.DetachOutsideAnchors(this.arrangeSubMenu);
             Vector3 step = equip.transform.localPosition - use.transform.localPosition;
+            this.arrangeStep = step;
             this.arrangeSubMenu.transform.localPosition = equip.transform.localPosition + step;
             UILabel label = this.arrangeSubMenu.GetChild(1).GetComponent<UILabel>();
             Memoria.Online.Menus.MenuWindows.SetText(label, "Arrange");
@@ -1581,12 +1588,36 @@ public class AbilityUI : UIScene
         }
     }
 
-    /// <summary>The Arrange button: the list shown (Use's or Equip's) takes the cursor; two choices swap two abilities.</summary>
+    /// <summary>
+    /// Keeps the Arrange button one step past Equip, after everything else this frame: the copy came with Equip's own
+    /// components (its slide-in, its anchors), which put it back on top of Equip.
+    /// </summary>
+    private void LateUpdate()
+    {
+        if (this.arrangeSubMenu == null || this.EquipSubMenu == null)
+            return;
+        Vector3 wanted = this.EquipSubMenu.transform.localPosition + this.arrangeStep;
+        Vector3 now = this.arrangeSubMenu.transform.localPosition;
+        if ((now - wanted).sqrMagnitude < 0.01f)
+            return;
+        if (!this.arrangeMovedLogged)
+        {
+            this.arrangeMovedLogged = true;
+            List<String> components = new List<String>();
+            foreach (Component c in this.arrangeSubMenu.GetComponents<Component>())
+                if (c != null)
+                    components.Add(c.GetType().Name);
+            Memoria.Prime.Log.Message($"[Menu] Ability menu: the Arrange button was moved to {now} (Equip at {this.EquipSubMenu.transform.localPosition}); put back at {wanted}. Its components: {String.Join(", ", components.ToArray())}");
+        }
+        this.arrangeSubMenu.transform.localPosition = wanted;
+    }
+
+    /// <summary>The Arrange button: the action abilities' list (Use's, shown if Equip's was) takes the cursor; two
+    /// choices swap two abilities. Only action abilities: the order is for the battle menus.</summary>
     private void StartArrange()
     {
         PLAYER player = FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex];
-        Boolean support = this.currentSubMenu == SubMenu.Equip;
-        List<Int32> list = support ? this.saIdList : this.aaIdList;
+        List<Int32> list = this.aaIdList;
         if (list.Count < 2)
         {
             FF9Sfx.FF9SFX_Play(102);
@@ -1597,9 +1628,19 @@ public class AbilityUI : UIScene
         FF9Sfx.FF9SFX_Play(103);
         this.arranging = true;
         this.arrangeFirst = -1;
+        if (this.currentSubMenu != SubMenu.Use)
+        {
+            // Equip's list was shown: show Use's (as moving the cursor onto Use does)
+            this.currentSubMenu = SubMenu.Use;
+            this.CommandPanel.SetActive(true);
+            this.ActiveAbilityListPanel.SetActive(true);
+            this.MagicStonePanel.SetActive(false);
+            this.SupportAbilityListPanel.SetActive(false);
+            this.DisplayAA();
+        }
         if (this.currentAbilityIndex < 0 || this.currentAbilityIndex >= list.Count)
             this.currentAbilityIndex = 0;
-        ButtonGroupState.ActiveGroup = support ? SupportAbilityGroupButton : ActionAbilityGroupButton;
+        ButtonGroupState.ActiveGroup = ActionAbilityGroupButton;
         this.SetAbilityInfo(true);
         this.DisplayPlayerArrow(false);
         this.DisplaySubMenuArrow(false);
@@ -1609,12 +1650,10 @@ public class AbilityUI : UIScene
 
     private void ArrangeConfirm(GameObject go)
     {
-        Boolean support = ButtonGroupState.ActiveGroup == SupportAbilityGroupButton;
-        String group = support ? SupportAbilityGroupButton : ActionAbilityGroupButton;
-        if (go == null || !ButtonGroupState.ContainButtonInGroup(go, group) || go.GetComponent<RecycleListItem>() == null)
+        if (go == null || !ButtonGroupState.ContainButtonInGroup(go, ActionAbilityGroupButton) || go.GetComponent<RecycleListItem>() == null)
             return;
         PLAYER player = FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex];
-        List<Int32> list = support ? this.saIdList : this.aaIdList;
+        List<Int32> list = this.aaIdList;
         Int32 index = go.GetComponent<RecycleListItem>().ItemDataIndex;
         if (index < 0 || index >= list.Count)
             return;
@@ -1638,7 +1677,7 @@ public class AbilityUI : UIScene
         list[this.arrangeFirst] = list[index];
         list[index] = first;
         this.arrangeFirst = -1;
-        AbilityOrder.Set(player, this.aaIdList, this.saIdList);
+        AbilityOrder.Set(player, this.aaIdList);
         this.RedrawArrangedList();
         this.SetAbilityInfo(true);
     }

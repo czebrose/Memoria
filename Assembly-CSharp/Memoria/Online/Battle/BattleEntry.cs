@@ -943,8 +943,6 @@ namespace Memoria.Online.Battle
                     c.NextControlSync = now + 250;
                     BattleControl.OwnerSync(ControlMap(c), c.Participants); // mid-battle take / swap / release / follow
                 }
-                if (c.GoSent && !c.EndSent && c.Participants.Count > 0)
-                    BattleQueue.OwnerSend(c.Seq, c.Participants, SendTo, now); // the Actions window on the other PCs
                 // Taken even with nobody in the battle yet: the history is what a late joiner replays
                 if (c.GoSent && BattleSync.OwnerStream != null)
                 {

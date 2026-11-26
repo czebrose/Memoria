@@ -130,7 +130,6 @@ namespace Memoria.Online
                 Double now = NowMs;
                 HandleHotkeys(now);
                 Menus.OnlineNotice.Update(); // party-control news on the field (swap offers)
-                Menus.BattleQueueHud.Update(); // the battle's action queue
                 Menus.TitleOnline.Current?.Update(); // the title screen's Online button and lobby window
                 Menus.BattleOnline.Current?.Update(); // the battle's Online window
 

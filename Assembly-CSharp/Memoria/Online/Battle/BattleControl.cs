@@ -50,7 +50,7 @@ namespace Memoria.Online.Battle
         /// Every control-channel type byte is listed in <see cref="MessageIds"/>.</summary>
         public const Byte MsgControlUpdate = 37;
 
-        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate || d[0] == BattleQueue.MsgQueue);
+        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate);
 
         public const Byte RejectNotReady = 1, RejectNoItem = 2, RejectNoMp = 3, RejectBadCommand = 4;
 
@@ -131,7 +131,6 @@ namespace Memoria.Online.Battle
             _runTimer = 0f;
             _fleeFor = 0;
             Notice = null;
-            BattleQueue.Reset();
             TurnsSent = Requests = Accepted = Rejected = RoundTrips = Flees = 0;
             RoundTripTotal = RoundTripMax = 0;
         }
@@ -367,9 +366,6 @@ namespace Memoria.Online.Battle
                         break;
                     case MsgControlUpdate:
                         if (_role == Role.Passive && peer == _owner) OnControlUpdate(d);
-                        break;
-                    case BattleQueue.MsgQueue:
-                        if (_role == Role.Passive && peer == _owner) BattleQueue.OnMessage(d);
                         break;
                     case MsgRunHeld:
                         if (_role == Role.Owner && d.Length >= 4)
@@ -802,7 +798,9 @@ namespace Memoria.Online.Battle
             }
         }
 
-        /// <summary>Passive: this PC's commands sent to the owner and not running yet (unit, what), for the Actions window.</summary>
+        /// <summary>Passive: this PC's commands sent to the owner and not running yet (unit, what).</summary>
+        public static Boolean HasPending(UInt16 unit) => _role == Role.Passive && _pending.ContainsKey(unit);
+
         public static IEnumerable<KeyValuePair<UInt16, String>> PendingCommands()
         {
             foreach (KeyValuePair<UInt16, Pending> kv in _pending)
@@ -816,14 +814,26 @@ namespace Memoria.Online.Battle
             return p != null && !String.IsNullOrEmpty(p.Name) ? p.Name : BattleSync.UnitName(unit);
         }
 
+        /// <summary>A command's name as the battle menu shows it: the ability's (Fira), the item's (Potion), else the
+        /// command's (Attack, Defend). Only for the screen and the log.</summary>
         internal static String CommandName(BattleCommandId cmd, Int32 sub)
         {
             try
             {
-                CMD_DATA test = new CMD_DATA { cmd_no = cmd, sub_no = sub };
-                AA_DATA aa = btl_util.GetCommandAction(test);
-                if (aa != null && !String.IsNullOrEmpty(aa.Name))
-                    return aa.Name;
+                String name = null;
+                if (Memoria.Database.CharacterCommands.Commands.TryGetValue(cmd, out CharacterCommand command))
+                {
+                    if (command.Type == CharacterCommandType.Item || command.Type == CharacterCommandType.Throw)
+                        name = global::Assets.Sources.Scripts.UI.Common.FF9TextTool.ItemName((RegularItem)sub);
+                    else if (command.Type == CharacterCommandType.Ability)
+                        name = global::Assets.Sources.Scripts.UI.Common.FF9TextTool.ActionAbilityName((BattleAbilityId)sub);
+                    if (String.IsNullOrEmpty(name))
+                        name = global::Assets.Sources.Scripts.UI.Common.FF9TextTool.CommandName(cmd);
+                }
+                if (String.IsNullOrEmpty(name))
+                    name = global::Assets.Sources.Scripts.UI.Common.FF9TextTool.ActionAbilityName((BattleAbilityId)sub); // counters, auto-potions...
+                if (!String.IsNullOrEmpty(name))
+                    return name;
             }
             catch (Exception)
             {
@@ -831,6 +841,10 @@ namespace Memoria.Online.Battle
             }
             return cmd.ToString();
         }
+
+        /// <summary>This PC chooses this unit's commands: on a passive battle its own units, on the battle's PC every
+        /// player unit no other PC commands.</summary>
+        public static Boolean IsCommandedHere(UInt16 unit) => _role == Role.Passive ? _mine.Contains(unit) : !_remote.ContainsKey(unit);
 
         /// <summary>Passive: a command of the owner's stream is about to run here (the round trip for a request ends).</summary>
         public static void OnInjected(BattleEvent ev)

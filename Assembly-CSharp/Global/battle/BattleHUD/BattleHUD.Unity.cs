@@ -210,6 +210,7 @@ public partial class BattleHUD : UIScene
         _blinkAlphaCounter += RealTime.deltaTime * 3f;
         _blinkAlphaCounter = _blinkAlphaCounter <= 2.0 ? _blinkAlphaCounter : 0.0f;
         Single alpha = _blinkAlphaCounter > 1.0 ? 2f - _blinkAlphaCounter : _blinkAlphaCounter;
+        UpdateQueuedPulse(); // a chosen command waiting its turn: a slow, dim pulse (BattleHUD.QueuedPulse.cs)
         if (!_commandEnable)
             return;
 

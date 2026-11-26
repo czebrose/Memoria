@@ -123,18 +123,18 @@ How it works: the battle's owner checks the session's control state four times a
 (`MsgControlUpdate`, 40). The next TurnReady for that unit goes to its new PC, which opens its menu as usual; a
 TurnReady that arrives before the map is kept until it does.
 
-## In battle: the Actions window
+## In battle: the ATB bar
 
-In an online session, a small **ACTIONS** window at the top right of the battle screen lists the party's commands in
-the order they'll run (v0.1.6, `Battle/BattleQueue.cs`, `Menu/BattleQueueHud.cs`):
-- **Now** is the one running;
-- **1.**, **2.**... are the ones waiting their turn;
-- **... (sending)** is a command this PC chose that the battle's owner hasn't queued yet.
+Every battle (single-player too) shows "waiting for the turn" on the ATB bar with a slow, dim pulse
+(v0.1.6, `Global/battle/BattleHUD/BattleHUD.QueuedPulse.cs`). The game itself shows a full, solid bar both while a
+chosen command waits and while it runs.
+- A character this PC commands: filling, then blinking (choose a command), then pulsing (chosen, waiting), then solid
+  (its action plays), then empty.
+- Another player's character: filling, then pulsing once full (being chosen, or waiting), then solid (its action plays),
+  then empty.
 
-It shows only while something is in it, at most six lines ("+N more"). Enemy commands and system ones (an escape, a
-trance) aren't listed. The PC that runs the battle reads its own queue. A shared battle's owner also sends it to the
-other players whenever it changes (`MsgQueue`, 38), since their battles only run each command when the owner's
-stream reaches it.
+Each PC works this out from its own battle; no message is sent for it. In a shared battle another PC runs, a command
+this PC chose counts as waiting until it runs here.
 
 ## Notices on the field
 
