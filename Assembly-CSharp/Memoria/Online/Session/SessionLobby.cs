@@ -42,7 +42,8 @@ namespace Memoria.Online.Session
     ///   lobby data (host only):  "game"   label of the chosen game
     ///                            "party"  "position:characterId:name|..."
     ///                            "assign" "characterId:accountId|..."   the host's arbitration of the picks
-    ///                            "started" "1" once the session has started (no joining mid-game in this step)
+    ///                            "started" "1" once the session has started (later players join it in progress:
+    ///                                       SessionLobby.Join.cs)
     ///   member data (each user): "pick"   character id the user wants (-1 = none)
     ///                            "where"  "title" / "game"
     /// Start goes over P2P (control channel): MsgStart, then for Continue the snapshot via <see cref="BlobTransfer"/>.
@@ -163,8 +164,11 @@ namespace Memoria.Online.Session
                 Phase = SessionPhase.Gathering;
                 _startedBeforeJoin = !IsHost && _lobby.GetData("started") == "1";
                 if (!IsHost)
+                {
                     _lobby.SetMemberData("ctl", ""); // no request from an earlier session
-                Log.Message($"[Online] Session: {(IsHost ? "hosting" : "joined")} a lobby{(_startedBeforeJoin ? " whose session has already started (joining mid-game isn't supported yet)" : "")}");
+                    _lobby.SetMemberData("join", "");
+                }
+                Log.Message($"[Online] Session: {(IsHost ? "hosting" : "joined")} a lobby{(_startedBeforeJoin ? " whose game is in progress (Join the game asks the host for it)" : "")}");
                 if (IsHost)
                     RefreshChoices();
             }
@@ -480,12 +484,15 @@ namespace Memoria.Online.Session
         private void ReadHostData()
         {
             GameLabel = _lobby.GetData("game");
-            Party.Clear();
-            foreach (String part in _lobby.GetData("party").Split('|'))
+            if (!(_startedBeforeJoin && Phase == SessionPhase.Gathering && ReadLiveParty())) // a game in progress: the party now
             {
-                String[] fields = part.Split(':');
-                if (fields.Length == 3 && Int32.TryParse(fields[0], out Int32 index) && Int32.TryParse(fields[1], out Int32 character))
-                    Party.Add(new PartyEntry { Index = index, CharacterId = character, Name = fields[2] });
+                Party.Clear();
+                foreach (String part in _lobby.GetData("party").Split('|'))
+                {
+                    String[] fields = part.Split(':');
+                    if (fields.Length == 3 && Int32.TryParse(fields[0], out Int32 index) && Int32.TryParse(fields[1], out Int32 character))
+                        Party.Add(new PartyEntry { Index = index, CharacterId = character, Name = fields[2] });
+                }
             }
             Assignments.Clear();
             foreach (String part in _lobby.GetData("assign").Split('|'))
@@ -516,7 +523,7 @@ namespace Memoria.Online.Session
             UInt32 crc = ReadU32(data, 6);
             if (data[0] == MsgStart)
             {
-                if (Phase != SessionPhase.Gathering || _startedBeforeJoin)
+                if (Phase != SessionPhase.Gathering || _startedBeforeJoin && !_joinAsked)
                     return true;
                 GuestGuard.BeginGuestSession();
                 Log.Message($"[Online] Session: the host started {(mode == ModeNewGame ? "a New Game" : GameLabel)}; you play {(MyCharacter >= 0 ? $"{CharacterName(MyCharacter)} (character {MyCharacter})" : "no character (watching)")}");
@@ -587,6 +594,14 @@ namespace Memoria.Online.Session
             }
             _restoreSpot = spot;
             _metField = PersistenSingleton<FF9StateSystem>.Instance.mode == 1 ? FF9StateSystem.Common.FF9.fldMapNo : -1; // with the host now: no meeting request for this field
+            if (_startedBeforeJoin)
+            {
+                // A game in progress, joined: from here on, a player like the others (the lobby's party list again)
+                _startedBeforeJoin = false;
+                _joinAsked = false;
+                _lobby.SetMemberData("join", "");
+                Log.Message($"[Online] Session: joined the game in progress; you play {(MyCharacter >= 0 ? $"{CharacterName(MyCharacter)} (character {MyCharacter})" : "no character (watching: take a free one in the menu, Online)")}");
+            }
             Phase = SessionPhase.Playing;
             Status = String.Empty;
             Log.Message($"[Online] Session: loaded the host's game{(pending.IsResync ? " (resync)" : "")}");
@@ -635,6 +650,7 @@ namespace Memoria.Online.Session
             _buildChecked.Clear();
             ResetControl();
             ResetMeet();
+            ResetJoin();
             Status = String.Empty;
         }
 

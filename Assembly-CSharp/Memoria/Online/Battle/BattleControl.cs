@@ -50,7 +50,7 @@ namespace Memoria.Online.Battle
         /// Every control-channel type byte is listed in <see cref="MessageIds"/>.</summary>
         public const Byte MsgControlUpdate = 37;
 
-        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate);
+        public static Boolean IsControlMessage(Byte[] d) => d != null && d.Length >= 3 && (d[0] >= MsgCommandRequest && d[0] <= MsgFleeResult || d[0] == MsgControlUpdate || d[0] == BattleQueue.MsgQueue);
 
         public const Byte RejectNotReady = 1, RejectNoItem = 2, RejectNoMp = 3, RejectBadCommand = 4;
 
@@ -131,6 +131,7 @@ namespace Memoria.Online.Battle
             _runTimer = 0f;
             _fleeFor = 0;
             Notice = null;
+            BattleQueue.Reset();
             TurnsSent = Requests = Accepted = Rejected = RoundTrips = Flees = 0;
             RoundTripTotal = RoundTripMax = 0;
         }
@@ -366,6 +367,9 @@ namespace Memoria.Online.Battle
                         break;
                     case MsgControlUpdate:
                         if (_role == Role.Passive && peer == _owner) OnControlUpdate(d);
+                        break;
+                    case BattleQueue.MsgQueue:
+                        if (_role == Role.Passive && peer == _owner) BattleQueue.OnMessage(d);
                         break;
                     case MsgRunHeld:
                         if (_role == Role.Owner && d.Length >= 4)
@@ -798,6 +802,13 @@ namespace Memoria.Online.Battle
             }
         }
 
+        /// <summary>Passive: this PC's commands sent to the owner and not running yet (unit, what), for the Actions window.</summary>
+        public static IEnumerable<KeyValuePair<UInt16, String>> PendingCommands()
+        {
+            foreach (KeyValuePair<UInt16, Pending> kv in _pending)
+                yield return new KeyValuePair<UInt16, String>(kv.Key, kv.Value.What);
+        }
+
         private static String UnitLabel(UInt16 unit)
         {
             BTL_DATA btl = BattleSync.FindBtl(unit);
@@ -805,7 +816,7 @@ namespace Memoria.Online.Battle
             return p != null && !String.IsNullOrEmpty(p.Name) ? p.Name : BattleSync.UnitName(unit);
         }
 
-        private static String CommandName(BattleCommandId cmd, Int32 sub)
+        internal static String CommandName(BattleCommandId cmd, Int32 sub)
         {
             try
             {

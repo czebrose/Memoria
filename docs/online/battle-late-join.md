@@ -161,7 +161,7 @@ from, or already played.
 | **The joiner is in a menu, a scene, or a fade** | It only asks with field control (`Busy.Control`), after the arrival fade and the field's opening scripts. With a menu open it asks once the menu closes. Once let in, the usual 8 s busy rule applies. |
 | **The joiner had declined the battle at its start** (menu open 8 s) | It can now join late once it has control. |
 | **Scripted / boss battles** | Joinable like random encounters. The replay carries the battle scripts' writes. The owner's after-battle field script runs only on the owner's PC (as for every participant). Battles started inside a **party scene** (`SceneSync`) are refused (3): the scene's followers get in through the scene's own path. |
-| **World map random encounters** | Not joinable. World map battles aren't shared at all today (no `BattleEntry` owner), so there's no BattleOpen, and a PC only asks from a field. |
+| **World map battles** | Joinable since v0.1.6 from the world map, by a player within 16 units of the owner's spot (world-map.md, "Coming back"). |
 | **Joiner is the host, owner a guest** | Same as a host participant. The host's passive battle ends through its own victory screen and applies the rewards. The guest's results blob then comes in as "played here" (no double rewards). |
 | **Joiner is a guest, owner the host** | The "The host is in a battle..." freeze shows until the ask goes out. After the battle the guest takes the host's next party update (as any guest participant), and the keep-spot meeting runs once both are back on the field. |
 | **More than one battle at once** | Each owner broadcasts its own battle. A PC only asks about battles on its own field, the host's first. A PC already in a battle (or asking) asks nothing. |
@@ -230,6 +230,6 @@ Things to watch:
    battle. Free characters it leads that weren't in the battle at the trigger stay out.
 3. **A faster way in for long battles.** A mid-battle snapshot would avoid the catch-up, but it needs the writers
    listed in section 2.
-4. **World map battles** aren't shared at all yet, so they can't be joined.
+4. ~~World map battles~~: shared since v0.1.4, joinable late since v0.1.6 (world-map.md).
 5. **Muting the fast-forward** (sound effects play at 4x) is cosmetic and left.
 6. **Not run in game.** All of section 5 is pending.

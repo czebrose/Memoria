@@ -307,8 +307,6 @@ namespace Memoria.Online.Menus
         private static String LobbyInfo(SessionLobby session)
         {
             StringBuilder info = new StringBuilder();
-            if (session.StartedBeforeJoin)
-                return "This game has already started: joining a game in progress isn't possible yet. Leave the lobby and ask the host to start again with you in it.";
             List<String> players = new List<String>();
             foreach (UInt64 member in session.Members)
             {
@@ -322,6 +320,20 @@ namespace Memoria.Online.Menus
                 players.Add(name);
             }
             info.Append("Players: ").Append(String.Join(", ", players.ToArray()));
+            if (session.StartedBeforeJoin)
+            {
+                // A game in progress: the party as it is now, then Join
+                info.Append("\nThis game is in progress. Pick a character nobody plays (or none, to watch), then Join the game.");
+                String join;
+                if (session.Phase == SessionPhase.Starting)
+                    join = "Receiving the host's game...";
+                else if (session.JoinAsked)
+                    join = String.IsNullOrEmpty(session.JoinWait) ? "Waiting for the host's game..." : Capitalize(session.JoinWait) + ".";
+                else
+                    join = String.IsNullOrEmpty(session.Status) ? (session.Party.Count == 0 ? "Waiting for the host's party..." : "Ready to join.") : Capitalize(session.Status);
+                info.Append('\n').Append(join);
+                return info.ToString();
+            }
             info.Append("\nGame: ").Append(String.IsNullOrEmpty(session.GameLabel) ? (session.IsHost ? "..." : "the host is choosing") : session.GameLabel);
             if (session.IsHost)
             {
@@ -343,6 +355,22 @@ namespace Memoria.Online.Menus
 
         private void LobbyRows(SessionLobby session, List<Row> rows)
         {
+            if (session.StartedBeforeJoin && session.Phase == SessionPhase.Gathering)
+            {
+                foreach (PartyEntry entry in session.Party)
+                {
+                    PartyEntry e = entry;
+                    UInt64 by = session.PickedBy(e.CharacterId);
+                    Boolean mine = session.MyPick == e.CharacterId;
+                    Boolean free = by == 0;
+                    String owner = mine ? "you" : by == 0 ? "free" : session.PlayerName(by);
+                    rows.Add(MenuWindows.NewRow($"{e.Name}: {owner}", !session.JoinAsked && (mine || free), null, () => session.Pick(mine ? -1 : e.Index)));
+                }
+                if (session.JoinAsked)
+                    rows.Add(MenuWindows.NewRow("Cancel joining", true, null, () => session.CancelJoin()));
+                else
+                    rows.Add(MenuWindows.NewRow("Join the game", session.Party.Count > 0 && session.IsConnectedTo(session.OwnerId), null, () => session.AskToJoin()));
+            }
             if (!session.StartedBeforeJoin && session.Phase == SessionPhase.Gathering)
             {
                 if (session.IsHost)
@@ -476,6 +504,7 @@ namespace Memoria.Online.Menus
             foreach (PartyEntry entry in session.Party)
                 key.Append('|').Append(entry.CharacterId).Append(':').Append(session.PickedBy(entry.CharacterId));
             key.Append('/').Append(session.Status).Append('/').Append(session.IsHost ? session.StartBlocker() : "");
+            key.Append('/').Append(session.MyPick).Append(session.JoinAsked).Append(session.StartedBeforeJoin ? session.JoinWait : "");
             return key.ToString();
         }
     }

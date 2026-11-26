@@ -260,6 +260,7 @@ namespace Memoria.Online.Session
                 }
             }
             PublishControl();
+            HostServeJoins(nowMs); // players joining the game in progress (SessionLobby.Join.cs)
         }
 
         private Int32 FirstFree(List<Int32> party)

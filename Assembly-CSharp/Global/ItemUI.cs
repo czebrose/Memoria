@@ -285,8 +285,6 @@ public class ItemUI : UIScene
         }
         else if (ButtonGroupState.ActiveGroup == ArrangeMenuGroupButton)
         {
-            if (Memoria.Online.Party.PartySync.BlockGuestAction("Only the host can arrange the items.")) // [Online] one shared bag order
-                return true;
             FF9Sfx.FF9SFX_Play(103);
             _currentArrangeMode = go.transform.GetSiblingIndex() + 1;
             switch (_currentArrangeMode)

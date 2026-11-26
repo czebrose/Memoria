@@ -15,7 +15,7 @@ namespace Memoria.Online
     internal static class OnlineBuild
     {
         /// <summary>The release this build is for (bump it with each release).</summary>
-        public const String Version = "0.1.5";
+        public const String Version = "0.1.6";
 
         private static String _hash;
 

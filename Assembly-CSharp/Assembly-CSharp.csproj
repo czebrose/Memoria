@@ -214,6 +214,7 @@
     <Compile Include="Compression\MatchState.cs" />
     <Compile Include="Compression\OutputWindow.cs" />
     <Compile Include="Global\AA_DATA.cs" />
+    <Compile Include="Global\AbilityOrder.cs" />
     <Compile Include="Global\AbilityUI.cs" />
     <Compile Include="Global\Achievement\AchievementState.cs" />
     <Compile Include="Global\Achievement\AchievementStatusesEnum.cs" />
@@ -247,6 +248,7 @@
     <Compile Include="Global\battle\BattleCalculation.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.Const.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.cs" />
+    <Compile Include="Global\battle\BattleHUD\BattleHUD.AbilityOrder.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.HUDAutoAttack.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.PanelParty.cs" />
     <Compile Include="Global\battle\BattleHUD\BattleHUD.UI.PanelTarget.cs" />
@@ -382,6 +384,9 @@
     <Compile Include="Memoria\Online\Bodies\CharacterBodies.cs" />
     <Compile Include="Memoria\Online\ITransport.cs" />
     <Compile Include="Memoria\Online\Menu\BattleHUD.Online.cs" />
+    <Compile Include="Memoria\Online\Menu\BattleQueueHud.cs" />
+    <Compile Include="Memoria\Online\Battle\BattleQueue.cs" />
+    <Compile Include="Memoria\Online\Session\SessionLobby.Join.cs" />
     <Compile Include="Memoria\Online\Menu\BattleOnline.cs" />
     <Compile Include="Memoria\Online\Menu\IPartyControl.cs" />
     <Compile Include="Memoria\Online\Menu\MainMenuUI.Online.cs" />

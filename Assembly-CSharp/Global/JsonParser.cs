@@ -901,6 +901,10 @@ public class JsonParser : ISharedDataParser
                 foreach (SupportAbility saIndex in p.saExtended)
                     saClass.Add(((Int32)saIndex).ToString());
                 playerClass.Add("sa_extended", saClass);
+                JSONArray orderClass = new JSONArray(); // the Ability menu's Arrange (AbilityOrder); always written, so an emptied order is a change too
+                foreach (Int32 abilId in p.abilityOrder)
+                    orderClass.Add(abilId.ToString());
+                playerClass.Add("abilityOrder", orderClass);
             }
             if (!oldSaveFormat)
             {
@@ -1285,6 +1289,12 @@ public class JsonParser : ISharedDataParser
                             if (ff9abil._FF9Abil_SaData.ContainsKey((SupportAbility)playerClass["sa_extended"][j].AsInt)) // Check if SA exist (specially custom SA otherwise loading save can softlock).
                                 ff9abil.FF9Abil_SetEnableSA(player, (SupportAbility)playerClass["sa_extended"][j].AsInt, true);
                     }
+                }
+                player.abilityOrder.Clear(); // a save without one: the game's order
+                if (playerClass["abilityOrder"] != null)
+                {
+                    for (Int32 j = 0; j < playerClass["abilityOrder"].Count; j++)
+                        player.abilityOrder.Add(playerClass["abilityOrder"][j].AsInt);
                 }
                 if (playerClass["maxHpLimit"] != null)
                     player.maxHpLimit = playerClass["maxHpLimit"].AsUInt;

@@ -91,6 +91,12 @@ namespace Memoria.Online.Party
                     foreach (SupportAbility sa in p.saExtended)
                         Mix((Int32)sa * 31 + 7);
                 }
+                if (p.abilityOrder != null)
+                {
+                    Mix(p.abilityOrder.Count);
+                    foreach (Int32 abil in p.abilityOrder)
+                        Mix(abil * 131 + 3);
+                }
                 String name = p.Name;
                 if (name != null)
                     Mix(name.GetHashCode());
@@ -186,9 +192,14 @@ namespace Memoria.Online.Party
                 result.Add("items", items);
                 any = true;
             }
-            else if (a["items"].ToString() != b["items"].ToString())
+            // The bag's order (arranging), when it isn't what the count changes alone would give
+            List<Int32> orderB = ItemOrder(b);
+            if (!SameOrder(orderB, OrderAfterCounts(ItemOrder(a), itemsB)))
             {
-                AddOther(result, "items order"); // same counts, another order (arranging)
+                JSONArray order = new JSONArray();
+                foreach (Int32 id in orderB)
+                    order.Add(new JSONData(id));
+                result.Add("order", order);
                 any = true;
             }
 
@@ -256,6 +267,68 @@ namespace Memoria.Online.Party
                 result[id] = count + items[i]["count"].AsInt;
             }
             return result;
+        }
+
+        /// <summary>The bag's item ids in order, once each (empty slots left out).</summary>
+        public static List<Int32> ItemOrder(JSONNode common)
+        {
+            List<Int32> order = new List<Int32>();
+            HashSet<Int32> seen = new HashSet<Int32>();
+            JSONArray items = common["items"].AsArray;
+            if (items == null)
+                return order;
+            for (Int32 i = 0; i < items.Count; i++)
+            {
+                Int32 id = items[i]["id"].AsInt;
+                if (id != (Int32)Memoria.Data.RegularItem.NoItem && items[i]["count"].AsInt > 0 && seen.Add(id))
+                    order.Add(id);
+            }
+            return order;
+        }
+
+        /// <summary>An order after count changes, as <see cref="AddItem"/> makes them: items gone are dropped, new ones go at the end.</summary>
+        private static List<Int32> OrderAfterCounts(List<Int32> order, Dictionary<Int32, Int32> counts)
+        {
+            List<Int32> result = order.FindAll(id => counts.TryGetValue(id, out Int32 c) && c > 0);
+            foreach (KeyValuePair<Int32, Int32> kv in counts)
+                if (kv.Value > 0 && kv.Key != (Int32)Memoria.Data.RegularItem.NoItem && !result.Contains(kv.Key) && !order.Contains(kv.Key))
+                    result.Add(kv.Key);
+            return result;
+        }
+
+        private static Boolean SameOrder(List<Int32> a, List<Int32> b)
+        {
+            if (a.Count != b.Count)
+                return false;
+            for (Int32 i = 0; i < a.Count; i++)
+                if (a[i] != b[i])
+                    return false;
+            return true;
+        }
+
+        /// <summary>Arranges a state's bag in this order of ids (a guest's Arrange); ids it doesn't name keep their place after them.</summary>
+        public static void ApplyItemOrder(JSONClass state, JSONArray order)
+        {
+            JSONArray items = state[Common]["items"].AsArray;
+            if (items == null || order == null)
+                return;
+            Dictionary<Int32, Int32> rank = new Dictionary<Int32, Int32>();
+            for (Int32 i = 0; i < order.Count; i++)
+                if (!rank.ContainsKey(order[i].AsInt))
+                    rank[order[i].AsInt] = i;
+            List<KeyValuePair<Int32, JSONNode>> entries = new List<KeyValuePair<Int32, JSONNode>>();
+            for (Int32 i = 0; i < items.Count; i++)
+                entries.Add(new KeyValuePair<Int32, JSONNode>(i, items[i]));
+            entries.Sort((x, y) =>
+            {
+                Int32 rx = rank.TryGetValue(x.Value["id"].AsInt, out Int32 a) ? a : Int32.MaxValue;
+                Int32 ry = rank.TryGetValue(y.Value["id"].AsInt, out Int32 b) ? b : Int32.MaxValue;
+                return rx != ry ? rx.CompareTo(ry) : x.Key.CompareTo(y.Key); // stable
+            });
+            JSONArray arranged = new JSONArray();
+            foreach (KeyValuePair<Int32, JSONNode> entry in entries)
+                arranged.Add(entry.Value);
+            state[Common]["items"] = arranged;
         }
 
         /// <summary>Changes one item's count in a state (adds the item at the end, removes it at 0).</summary>

@@ -18,6 +18,10 @@ namespace Memoria.Online.World
         /// <summary>On the world map but not to be drawn: a passenger (<see cref="WorldCoop.SetPassenger"/>), or the
         /// player's actor is hidden.</summary>
         Hidden = 4,
+        /// <summary>In a battle started on the world map, or that battle's result screens: drawn standing where the
+        /// player left the world map (the world script puts them back there), so the others still see them and the
+        /// build counts them as near (a battle running there can be joined late; a new encounter waits for them).</summary>
+        Battle = 5,
         /// <summary>Not on the world map (a field, a battle, a menu, loading).</summary>
         Away = 255,
     }
@@ -53,7 +57,7 @@ namespace Memoria.Online.World
         public Quaternion Rotation;
         public Single Ground;
 
-        public Boolean Drawn => Mode == WorldMode.Foot || Mode == WorldMode.Chocobo;
+        public Boolean Drawn => Mode == WorldMode.Foot || Mode == WorldMode.Chocobo || Mode == WorldMode.Battle;
 
         public Int32 Serialize(Byte[] b, Int32 o)
         {

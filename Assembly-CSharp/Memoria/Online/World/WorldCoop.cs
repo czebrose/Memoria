@@ -27,6 +27,10 @@ namespace Memoria.Online.World
         /// <summary>The build's world camera follows the ship while <see cref="SetPassenger"/> is set.</summary>
         public static Boolean HasPassengerCamera => true;
 
+        /// <summary>This player is in a battle started on the world map, or its result screens (not back on the world map
+        /// yet). Meanwhile the others get its state as <see cref="WorldMode.Battle"/> (5), at the spot it left from.</summary>
+        public static Boolean InWorldBattle => WorldGhosts.InWorldBattle;
+
         /// <summary>The player this PC rides with (0: not a passenger).</summary>
         public static UInt64 Passenger { get; private set; }
 
@@ -54,7 +58,7 @@ namespace Memoria.Online.World
         /// <summary>
         /// A player's world map state now, as the build draws it (interpolated ~110 ms behind): <paramref name="mode"/>
         /// is a <see cref="WorldMode"/> (0 on foot, 1 chocobo, 2 flying the airship, 3 another vehicle, 4 hidden or a
-        /// passenger, 255 away); the position is absolute, in Unity units (WMActor.RealPosition; WMActor.SetPosition
+        /// passenger, 5 in a battle from the world map, at the spot it left from, 255 away); the position is absolute, in Unity units (WMActor.RealPosition; WMActor.SetPosition
         /// takes 256 times that). False if nothing fresh came from that player.
         /// </summary>
         public static Boolean TryGetPlayer(UInt64 peer, out Int32 mode, out Vector3 absolutePosition, out Quaternion rotation)

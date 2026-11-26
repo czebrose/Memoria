@@ -186,6 +186,8 @@ public class PLAYER
     public FF9LEVEL_BONUS bonus;
 
     public Int32[] pa;
+    /// <summary>The player's order of this character's abilities (the Ability menu's Arrange; empty: the game's). See <see cref="AbilityOrder"/>.</summary>
+    public List<Int32> abilityOrder = new List<Int32>();
 
     public UInt32[] sa;
     public HashSet<SupportAbility> saExtended;

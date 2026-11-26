@@ -807,7 +807,7 @@ public partial class BattleHUD : UIScene
             abilId = BattleAbilityId.Void;
             return transform.spell[subNo];
         }
-        abilId = PatchAbility(ff9Command.GetAbilityId(abilityIndex));
+        abilId = PatchAbility(ff9Command.GetAbilityId(AbilityEntryIndex(playerIndex, cmdId, abilityIndex))); // the player's order (AbilityOrder)
         subNo = (Int32)abilId;
         return FF9StateSystem.Battle.FF9Battle.aa_data[abilId];
     }
@@ -826,6 +826,7 @@ public partial class BattleHUD : UIScene
             SetAbilityAp(_abilityDetailDict[CurrentPlayerIndex]);
             foreach (BattleAbilityId abilId in ff9Command.EnumerateAbilities())
                 inDataList.Add(new BattleAbilityListData { Id = ff9abil.GetAbilityIdFromActiveAbility(abilId) });
+            inDataList = InAbilityOrder(inDataList, CurrentPlayerIndex, _currentCommandId); // the player's order (AbilityOrder)
         }
 
         if (_abilityScrollList.ItemsPool.Count == 0)
@@ -1610,7 +1611,7 @@ public partial class BattleHUD : UIScene
 
         CharacterCommandType commandType = CharacterCommands.Commands[cmdId].Type;
         if (commandType == CharacterCommandType.Normal || commandType == CharacterCommandType.Ability || commandType == CharacterCommandType.Instant)
-            commandDetail.SubId = (Int32)PatchAbility(CharacterCommands.Commands[cmdId].GetAbilityId(_currentSubMenuIndex));
+            commandDetail.SubId = (Int32)PatchAbility(CharacterCommands.Commands[cmdId].GetAbilityId(AbilityEntryIndex(CurrentPlayerIndex, cmdId, _currentSubMenuIndex)));
         else if (commandType == CharacterCommandType.Item || commandType == CharacterCommandType.Throw)
             commandDetail.SubId = (Int32)_itemIdList[_currentSubMenuIndex];
 

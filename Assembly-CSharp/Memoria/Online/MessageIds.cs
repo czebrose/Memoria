@@ -32,6 +32,7 @@ namespace Memoria.Online
             for (Byte b = Battle.BattleControl.MsgCommandRequest; b <= Battle.BattleControl.MsgFleeResult; b++)
                 yield return Id(b, $"BattleControl ({b})");
             yield return Id(Battle.BattleControl.MsgControlUpdate, "BattleControl.MsgControlUpdate");
+            yield return Id(Battle.BattleQueue.MsgQueue, "BattleQueue.MsgQueue");
             for (Byte b = Session.SceneSync.MsgStart; b <= Session.SceneSync.MsgResume; b++)
                 yield return Id(b, $"SceneSync ({b})");
             yield return Id(SteamTransport.MsgHello, "SteamTransport.MsgHello");

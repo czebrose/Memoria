@@ -20,7 +20,8 @@ points). M5 isn't built yet, so until then a guest *can* interact; the protocol 
 | **Support abilities** | `AbilityUI` (`ff9abil.FF9Abil_SetEnableSA`, gem boosts) | a character's equipped support abilities | yes | **Cover** (own character only) |
 | **Magic in the menu** | `AbilityUI` (cast: Cure, Life...) | caster's MP, target's HP/status | yes | **Cover** (caster = own character; any target) |
 | **Item use** | `ItemUI` (`FF9Item_Remove` + effect) | item count, target's HP/MP/status | yes | **Cover** (any target; the item is the contested resource) |
-| **Item arrange / sort** | `ItemUI` arrange | the order of the shared item list | yes | **Block on guests** (the host's order wins anyway) |
+| **Item arrange / sort** | `ItemUI` arrange | the order of the shared item list | yes | **Anyone** (v0.1.6: the request's "order", the bag's ids in order; before, blocked on guests) |
+| **Ability arrange** | `AbilityUI` Arrange (v0.1.6) | the character's ability order (`PLAYER.abilityOrder`, saved as "abilityOrder") | yes | **As equipment**: own character, or a follow character |
 | **Order / rows** | `MainMenuUI` Order (`party.member` swap, row) | party order, rows | yes | **Order: block on guests** (the host's; position 1 is the host's character). **Row: own character only** (a property of the character, like equipment) |
 | **Card discard** | `CardUI.OnDiscardDialogKeyConfirm` | shared card collection | yes | **Block on guests** |
 | **Status / Config** | `MainMenuUI` | nothing shared (Config is per-PC) | yes | nothing to do |
@@ -103,7 +104,10 @@ first free character, else Follow.
    caster's MP being the cost. Equipment and abilities stay own-character only.
 2. **Order: host only. Row: each player sets their own character's row.**
 3. **Item arrange and card discard: blocked on guests** (one shared bag order, decided by the host; card discards
-   are permanent and cards are only used by the host's card games).
+   are permanent and cards are only used by the host's card games). *Since v0.1.6 anyone arranges the items: a
+   request carries the bag's new order ("order": its item ids, in order), and the host puts its own bag in that order
+   (`PartyState.ApplyItemOrder`; items the request doesn't name keep their place after the others). Card discards are
+   still the host's.*
 4. **Control changes are part of M4**, built after the state sync and the save block.
 
 ## 7. Two-PC test of the sync (2026-11-18)

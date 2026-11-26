@@ -78,6 +78,10 @@ public class AbilityUI : UIScene
     private Dictionary<Int32, RegularItem[]> equipmentIdInAbilityDict;
     private GOScrollablePanel _abilityPanel;
     private GOScrollablePanel _supportPanel;
+    /// <summary>The Arrange button (a copy of Equip, after it) and its mode: choose an ability, then another, to swap them (<see cref="AbilityOrder"/>).</summary>
+    private GameObject arrangeSubMenu;
+    private Boolean arranging;
+    private Int32 arrangeFirst = -1;
     [NonSerialized]
     private GOMenuBackground _background;
 
@@ -125,6 +129,8 @@ public class AbilityUI : UIScene
         };
 
         SceneDirector.FadeEventSetColor(FadeMode.Sub, Color.black);
+        this.arranging = false;
+        this.arrangeFirst = -1;
         base.Show(afterShowAction);
         this.UpdateUserInterface();
         this.SwitchCharacter(true);
@@ -312,6 +318,16 @@ public class AbilityUI : UIScene
     {
         if (!base.OnKeyConfirm(go))
             return true;
+        if (ButtonGroupState.ActiveGroup == SubMenuGroupButton && go != null && go == this.arrangeSubMenu)
+        {
+            this.StartArrange();
+            return true;
+        }
+        if (this.arranging && (ButtonGroupState.ActiveGroup == ActionAbilityGroupButton || ButtonGroupState.ActiveGroup == SupportAbilityGroupButton))
+        {
+            this.ArrangeConfirm(go);
+            return true;
+        }
         if ((ButtonGroupState.ActiveGroup == SubMenuGroupButton && this.GetSubMenuFromGameObject(go) == SubMenu.Equip && this.isSAEnable || ButtonGroupState.ActiveGroup == SupportAbilityGroupButton && ButtonGroupState.ContainButtonInGroup(go, SupportAbilityGroupButton))
             && Memoria.Online.Party.PartySync.BlockAbilityChange(FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex])) // [Online] another player's character
             return true;
@@ -554,6 +570,17 @@ public class AbilityUI : UIScene
     {
         if (!base.OnKeyCancel(go))
             return true;
+        if (this.arranging && (ButtonGroupState.ActiveGroup == ActionAbilityGroupButton || ButtonGroupState.ActiveGroup == SupportAbilityGroupButton))
+        {
+            if (this.arrangeFirst >= 0)
+            {
+                FF9Sfx.FF9SFX_Play(101);
+                this.arrangeFirst = -1;
+                this.RedrawArrangedList();
+                return true;
+            }
+            this.arranging = false; // and back to the sub-menu, below
+        }
         if (ButtonGroupState.ActiveGroup == SubMenuGroupButton)
         {
             FF9Sfx.FF9SFX_Play(101);
@@ -598,6 +625,8 @@ public class AbilityUI : UIScene
 
     public override Boolean OnKeySpecial(GameObject go)
     {
+        if (this.arranging && ButtonGroupState.ActiveGroup == SupportAbilityGroupButton)
+            return true;
         if (base.OnKeySpecial(go) && ButtonGroupState.ActiveGroup == SubMenuGroupButton)
         {
             if (PersistenSingleton<UIManager>.Instance.MainMenuScene.IsSubMenuEnabled(MainMenuUI.SubMenu.Equip))
@@ -810,7 +839,7 @@ public class AbilityUI : UIScene
             return true;
         if (ButtonGroupState.ActiveGroup == SubMenuGroupButton)
         {
-            if (this.currentSubMenu != this.GetSubMenuFromGameObject(go))
+            if (this.GetSubMenuFromGameObject(go) != SubMenu.Arrange && this.currentSubMenu != this.GetSubMenuFromGameObject(go))
             {
                 this.currentSubMenu = this.GetSubMenuFromGameObject(go);
                 switch (this.currentSubMenu)
@@ -856,6 +885,7 @@ public class AbilityUI : UIScene
 
     private void OnSecondaryGroupClick(GameObject go)
     {
+        this.arrangeFirst = -1; // clicking the sub-menu leaves the Arrange mode at once
         ButtonGroupState.HoldActiveStateOnGroup(go, SubMenuGroupButton);
         if (ButtonGroupState.ActiveGroup == ActionAbilityGroupButton)
         {
@@ -896,6 +926,12 @@ public class AbilityUI : UIScene
             localizationPrefix = IsSubMenuDisabledByMainMenu(false) ? "EquipAbilityHelpNow" : "EquipAbilityPlayer";
         help += Localization.Get(localizationPrefix + mobileSuffix);
         equipSubMenu.Help.Text = help;
+        ButtonGroupState arrangeButton = this.arrangeSubMenu != null ? this.arrangeSubMenu.GetComponent<ButtonGroupState>() : null;
+        if (arrangeButton != null)
+        {
+            arrangeButton.Help.TextKey = String.Empty;
+            arrangeButton.Help.Text = "Change the order of the abilities.\nChoose one, then the one to swap it with. The battle menus use this order too.";
+        }
         this.HelpDespLabelGameObject.SetActive(FF9StateSystem.PCPlatform);
     }
 
@@ -1455,6 +1491,8 @@ public class AbilityUI : UIScene
             }
         }
         this.saIdList.RemoveAll(id => boostedList.Contains(ff9abil.GetSupportAbilityFromAbilityId(id)));
+        this.aaIdList = AbilityOrder.Sorted(player, this.aaIdList); // the player's Arrange
+        this.saIdList = AbilityOrder.Sorted(player, this.saIdList);
         for (Int32 i = 0; i < 5; ++i)
         {
             RegularItem itemId = player.equip[i];
@@ -1489,7 +1527,136 @@ public class AbilityUI : UIScene
     {
         if (go == this.UseSubMenu)
             return SubMenu.Use;
+        if (go != null && go == this.arrangeSubMenu)
+            return SubMenu.Arrange;
         return go == this.EquipSubMenu ? SubMenu.Equip : SubMenu.None;
+    }
+
+    // ---- Arrange ------------------------------------------------------------------------------------------------
+
+    /// <summary>A copy of the Equip button, one step after it (as Equip is after Use), named Arrange.</summary>
+    private void CreateArrangeButton()
+    {
+        try
+        {
+            GameObject use = this.UseSubMenu, equip = this.EquipSubMenu;
+            this.arrangeSubMenu = UnityEngine.Object.Instantiate(equip);
+            this.arrangeSubMenu.name = "Arrange SubMenu";
+            this.arrangeSubMenu.transform.parent = equip.transform.parent;
+            this.arrangeSubMenu.transform.localScale = equip.transform.localScale;
+            Vector3 step = equip.transform.localPosition - use.transform.localPosition;
+            this.arrangeSubMenu.transform.localPosition = equip.transform.localPosition + step;
+            UILabel label = this.arrangeSubMenu.GetChild(1).GetComponent<UILabel>();
+            Memoria.Online.Menus.MenuWindows.SetText(label, "Arrange");
+            if (label != null)
+            {
+                label.leftAnchor.Set(0f, 0);
+                label.rightAnchor.Set(1f, 0);
+            }
+            UIEventListener.Get(this.arrangeSubMenu).Click += this.onClick;
+            UIKeyNavigation nav = this.arrangeSubMenu.GetComponent<UIKeyNavigation>();
+            UIKeyNavigation equipNav = equip.GetComponent<UIKeyNavigation>();
+            if (nav != null && equipNav != null)
+            {
+                nav.startsSelected = false;
+                if (Mathf.Abs(step.x) >= Mathf.Abs(step.y))
+                {
+                    if (step.x > 0f) { equipNav.onRight = this.arrangeSubMenu; nav.onLeft = equip; nav.onRight = null; }
+                    else { equipNav.onLeft = this.arrangeSubMenu; nav.onRight = equip; nav.onLeft = null; }
+                }
+                else
+                {
+                    if (step.y < 0f) { equipNav.onDown = this.arrangeSubMenu; nav.onUp = equip; nav.onDown = null; }
+                    else { equipNav.onUp = this.arrangeSubMenu; nav.onDown = equip; nav.onUp = null; }
+                }
+            }
+            Memoria.Prime.Log.Message($"[Menu] Ability menu: Arrange button at {this.arrangeSubMenu.transform.localPosition} (Use at {use.transform.localPosition}, Equip at {equip.transform.localPosition})");
+        }
+        catch (Exception err)
+        {
+            Memoria.Prime.Log.Error(err, "[Menu] Ability menu: the Arrange button couldn't be made");
+            if (this.arrangeSubMenu != null)
+                UnityEngine.Object.Destroy(this.arrangeSubMenu);
+            this.arrangeSubMenu = null;
+        }
+    }
+
+    /// <summary>The Arrange button: the list shown (Use's or Equip's) takes the cursor; two choices swap two abilities.</summary>
+    private void StartArrange()
+    {
+        PLAYER player = FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex];
+        Boolean support = this.currentSubMenu == SubMenu.Equip;
+        List<Int32> list = support ? this.saIdList : this.aaIdList;
+        if (list.Count < 2)
+        {
+            FF9Sfx.FF9SFX_Play(102);
+            return;
+        }
+        if (Memoria.Online.Party.PartySync.BlockAbilityChange(player)) // [Online] another player's character
+            return;
+        FF9Sfx.FF9SFX_Play(103);
+        this.arranging = true;
+        this.arrangeFirst = -1;
+        if (this.currentAbilityIndex < 0 || this.currentAbilityIndex >= list.Count)
+            this.currentAbilityIndex = 0;
+        ButtonGroupState.ActiveGroup = support ? SupportAbilityGroupButton : ActionAbilityGroupButton;
+        this.SetAbilityInfo(true);
+        this.DisplayPlayerArrow(false);
+        this.DisplaySubMenuArrow(false);
+        ButtonGroupState.SetSecondaryOnGroup(SubMenuGroupButton);
+        ButtonGroupState.HoldActiveStateOnGroup(SubMenuGroupButton);
+    }
+
+    private void ArrangeConfirm(GameObject go)
+    {
+        Boolean support = ButtonGroupState.ActiveGroup == SupportAbilityGroupButton;
+        String group = support ? SupportAbilityGroupButton : ActionAbilityGroupButton;
+        if (go == null || !ButtonGroupState.ContainButtonInGroup(go, group) || go.GetComponent<RecycleListItem>() == null)
+            return;
+        PLAYER player = FF9StateSystem.Common.FF9.party.member[this.currentPartyIndex];
+        List<Int32> list = support ? this.saIdList : this.aaIdList;
+        Int32 index = go.GetComponent<RecycleListItem>().ItemDataIndex;
+        if (index < 0 || index >= list.Count)
+            return;
+        if (this.arrangeFirst < 0)
+        {
+            FF9Sfx.FF9SFX_Play(103);
+            this.arrangeFirst = index;
+            foreach (UILabel label in go.GetComponentsInChildren<UILabel>())
+                label.color = FF9TextTool.Yellow; // the first choice, until the second (a redraw puts the colours back)
+            return;
+        }
+        if (this.arrangeFirst == index)
+        {
+            FF9Sfx.FF9SFX_Play(101);
+            this.arrangeFirst = -1;
+            this.RedrawArrangedList();
+            return;
+        }
+        FF9Sfx.FF9SFX_Play(103);
+        Int32 first = list[this.arrangeFirst];
+        list[this.arrangeFirst] = list[index];
+        list[index] = first;
+        this.arrangeFirst = -1;
+        AbilityOrder.Set(player, this.aaIdList, this.saIdList);
+        this.RedrawArrangedList();
+        this.SetAbilityInfo(true);
+    }
+
+    private void RedrawArrangedList()
+    {
+        if (this.currentSubMenu == SubMenu.Equip)
+        {
+            this.DisplaySA();
+            if (this.supportAbilityScrollList.isActiveAndEnabled)
+                this.supportAbilityScrollList.UpdateTableViewImp();
+        }
+        else
+        {
+            this.DisplayAA();
+            if (this.activeAbilityScrollList.isActiveAndEnabled)
+                this.activeAbilityScrollList.UpdateTableViewImp();
+        }
     }
 
     private void Awake()
@@ -1542,6 +1709,7 @@ public class AbilityUI : UIScene
         this.useSubMenuLabel.rightAnchor.Set(1f, 0);
         this.equipSubMenuLabel.leftAnchor.Set(0f, 0);
         this.equipSubMenuLabel.rightAnchor.Set(1f, 0);
+        this.CreateArrangeButton();
     }
 
     private Boolean IsSubMenuDisabledByMainMenu(Boolean useMenu)
@@ -1614,6 +1782,7 @@ public class AbilityUI : UIScene
         Use,
         Equip,
         None,
+        Arrange,
     }
 
     public enum AbilityType

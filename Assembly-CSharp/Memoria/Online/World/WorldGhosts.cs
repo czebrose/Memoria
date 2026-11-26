@@ -63,6 +63,30 @@ namespace Memoria.Online.World
         private static Int32 _renderedFrame = -1;
         private static Double _leftWorldAt = -1;
         private static Boolean _wasOnWorld;
+        // A battle from the world map: the spot this player left from, sent as Battle until they're back
+        private static Boolean _inWorldBattle;
+        private static WorldGhostState _battleSpot;
+        // Each model's standing animation, learnt while the player stood still (a battle starts while walking)
+        private static readonly Dictionary<UInt16, UInt16> _standingAnim = new Dictionary<UInt16, UInt16>();
+        private static Vector3 _lastSampled;
+        private static Boolean _hasLastSampled;
+        private static Double _lastSampledAt;
+
+        /// <summary>This player is in a battle started on the world map (or its result screens), not back yet.</summary>
+        public static Boolean InWorldBattle => _inWorldBattle;
+
+        /// <summary>[Online] BattleEntry, when a world map battle takes this player (its own encounter, or another
+        /// player's battle it joins): from now until it's back, its state is its spot here, as <see cref="WorldMode.Battle"/>.</summary>
+        public static void NoteBattleFromWorld(Double nowMs)
+        {
+            if (!TrySample(nowMs, out WorldGhostState state) || state.Mode != WorldMode.Foot && state.Mode != WorldMode.Chocobo)
+                return; // flying, hidden: nothing to stand there
+            if (_standingAnim.TryGetValue(state.Model, out UInt16 standing))
+                state.Anim = standing;
+            state.Mode = WorldMode.Battle;
+            _battleSpot = state;
+            _inWorldBattle = true;
+        }
         private static Font _tagFont;
 
         public static Int32 IgnoredBadPacket, Received, Shown;
@@ -88,6 +112,20 @@ namespace Memoria.Online.World
             state.Rotation = Quaternion.identity;
             Boolean onWorld = OnWorldMap;
             if (onWorld)
+                _inWorldBattle = false; // back
+            else if (_inWorldBattle)
+            {
+                EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+                if (engine != null && engine.gMode == 1 || PersistenSingleton<UIManager>.Instance?.State == UIManager.UIState.Title)
+                    _inWorldBattle = false; // the battle led to a field, or to the title (game over)
+                else
+                {
+                    state = _battleSpot;
+                    state.Tick = (UInt32)nowMs;
+                    return true;
+                }
+            }
+            if (onWorld)
                 _wasOnWorld = true;
             else if (_wasOnWorld)
             {
@@ -107,6 +145,14 @@ namespace Memoria.Online.World
             state.Position = actor.RealPosition;
             state.Rotation = actor.transform.rotation;
             state.Ground = original != null && ff9.w_moveCHRStatus != null && original.index < ff9.w_moveCHRStatus.Length ? ff9.w_moveCHRStatus[original.index].ground_height : state.Position.y;
+            Boolean still = false;
+            if (!_hasLastSampled || nowMs - _lastSampledAt >= 40) // two samples apart in time (not an extra call this frame)
+            {
+                still = _hasLastSampled && (state.Position - _lastSampled).sqrMagnitude < 0.0001f;
+                _lastSampled = state.Position;
+                _lastSampledAt = nowMs;
+                _hasLastSampled = true;
+            }
             if (actor == ff9.w_movePlanePtr)
                 state.Mode = WorldMode.Airship;
             else if (original != null && original.IsChocoboIndex)
@@ -115,6 +161,8 @@ namespace Memoria.Online.World
                 state.Mode = WorldCoop.Passenger != 0 || !AnyRendererOn(actor) ? WorldMode.Hidden : WorldMode.Foot;
             else
                 state.Mode = WorldMode.Vehicle;
+            if (still && (state.Mode == WorldMode.Foot || state.Mode == WorldMode.Chocobo))
+                _standingAnim[state.Model] = state.Anim;
             return true;
         }
 

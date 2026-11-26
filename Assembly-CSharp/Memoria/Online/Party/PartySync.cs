@@ -35,7 +35,7 @@ namespace Memoria.Online.Party
         private const Double MinUpdateIntervalMs = 100;
 
         /// <summary>Keys of a character record a player may change on their own character.</summary>
-        private static readonly HashSet<String> OwnKeys = new HashSet<String> { "equip", "sa", "sa_extended", "cur", "status" };
+        private static readonly HashSet<String> OwnKeys = new HashSet<String> { "equip", "sa", "sa_extended", "abilityOrder", "cur", "status" };
         /// <summary>Keys anyone may change on a follow character (nobody plays it): its equipment and support abilities, as on one's own.</summary>
         private static readonly HashSet<String> FollowerKeys = OwnKeys;
 
@@ -528,6 +528,8 @@ namespace Memoria.Online.Party
             if (items != null)
                 foreach (JSONNode item in items)
                     PartyState.AddItem(state, item["id"].AsInt, item["d"].AsInt);
+            if (request["order"] != null && request["order"].AsArray != null)
+                PartyState.ApplyItemOrder(state, request["order"].AsArray); // Arrange: one shared bag, anyone may order it
             if (IsShopRequest(request) && request["gil"] != null && request["gil"].AsLong != 0)
             {
                 Int64 gil = Math.Max(0L, Math.Min(9999999L, state[PartyState.Common]["gil"].AsLong + request["gil"].AsLong));
@@ -838,6 +840,8 @@ namespace Memoria.Online.Party
                     parts.Add($"item {i["id"].AsInt} {(i["d"].AsInt > 0 ? "+" : "")}{i["d"].AsInt}");
             if (request["gil"] != null)
                 parts.Add($"gil {request["gil"].AsLong}");
+            if (request["order"] != null)
+                parts.Add("items arranged");
             if (IsShopRequest(request))
                 parts.Add("in a shop");
             if (IsPartyScreenRequest(request))

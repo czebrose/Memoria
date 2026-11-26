@@ -43,6 +43,7 @@ namespace Memoria.Online.Battle
         private const Double OpenEveryMs = 1000;         // owner: BattleOpen this often while its battle runs
         private const Double OpenStaleMs = 3500;         // joiner: no BattleOpen this long → that battle is over
         private const Double LateJoinMaxMs = 180000;     // owner: the battle has run this long since Go → no late joins (catch-up too long)
+        private const Double WorldGraceMs = 20000;       // world map: this PC's random encounters wait this long at most for a near player still in a battle
         private const Int32 HistoryMaxBytes = 256 * 1024; // owner: stream history kept for late joiners
 
         /// <summary>Why a battle can't be joined late (BattleOpen state, JoinRefuse reason). 0 = joinable.</summary>
@@ -143,6 +144,8 @@ namespace Memoria.Online.Battle
         private readonly Dictionary<UInt64, OpenBattle> _open = new Dictionary<UInt64, OpenBattle>(); // late join: each peer's running field battle
         private readonly HashSet<String> _asked = new HashSet<String>();   // "owner/seq": asked, refused, fled or left: not again
         private readonly Dictionary<String, Byte> _noted = new Dictionary<String, Byte>(); // "owner/seq" → last state logged
+        private Double _worldGraceUntil = -1;  // world map: random encounters dropped until then (a near player is in a battle)
+        private Double _worldGraceLogged = -1;
 
         private readonly SteamTransport _transport;
         private readonly SteamLobby _lobby;
@@ -239,14 +242,15 @@ namespace Memoria.Online.Battle
         /// <summary>Where this PC is, as a battle's "field": its field, or <see cref="WorldMapField"/>.</summary>
         private static UInt16 LocalPlace => OnWorldMap ? WorldMapField : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
 
-        /// <summary>Owner on the world map: whether a player is near enough to be pulled into this PC's battle, and how far.</summary>
-        private static Boolean NearOnWorldMap(UInt64 peer, out Single distance)
+        /// <summary>On the world map: whether a player is near enough to share a battle with this one, and how far.
+        /// <paramref name="inBattle"/>: a player in a world map battle counts too, at the spot it left from.</summary>
+        private static Boolean NearOnWorldMap(UInt64 peer, out Single distance, Boolean inBattle = false)
         {
             distance = -1f;
             WMActor me = ff9.w_moveActorPtr;
             if (me == null || me.World == null || !World.WorldGhosts.TryGetState(peer, OnlineSession.NowMs, out World.WorldGhostState s))
                 return false;
-            if (s.Mode != World.WorldMode.Foot && s.Mode != World.WorldMode.Chocobo)
+            if (s.Mode != World.WorldMode.Foot && s.Mode != World.WorldMode.Chocobo && !(inBattle && s.Mode == World.WorldMode.Battle))
                 return false; // flying, riding as a passenger, hidden: no battles there
             UnityEngine.Vector3 d = s.Position - me.RealPosition;
             d.y = 0f;
@@ -275,12 +279,55 @@ namespace Memoria.Online.Battle
                     SendTo(_incoming.Owner, BattleEntryMessages.DeclineWhy(_incoming.Seq, 2, "its own scripted battle started at the same moment"));
                     _incoming = null;
                 }
+                else if (FF9StateSystem.Battle.isRandomEncounter && WaitForNearWorldBattle())
+                {
+                    DropOwnWorldEncounter();
+                    return EventEngine.FLOW_STATE_EXEC;
+                }
+                World.WorldGhosts.NoteBattleFromWorld(_now); // the others keep seeing this player here until it's back
                 BeginOwned();
                 return codeFlowState;
             }
             if (codeFlowState <= EventEngine.FLOW_STATE_WAIT && _incoming?.Start != null && CanJoinNow(out String _))
                 return JoinBattle();
             return codeFlowState;
+        }
+
+        /// <summary>
+        /// World map, this PC's own random encounter: a player near here is still in a world map battle (or its result
+        /// screens). Their running battle is joined instead, if it's open (<see cref="UpdateLateJoin"/> asks); else the
+        /// encounter waits for them to come back, <see cref="WorldGraceMs"/> at most, so the two aren't split into two
+        /// battles a moment apart.
+        /// </summary>
+        private Boolean WaitForNearWorldBattle()
+        {
+            UInt64 near = 0;
+            Single distance = 0f;
+            foreach (KeyValuePair<UInt64, World.WorldMode> kv in World.WorldGhosts.FreshModes(OnlineSession.NowMs))
+                if (kv.Value == World.WorldMode.Battle && NearOnWorldMap(kv.Key, out distance, true))
+                {
+                    near = kv.Key;
+                    break;
+                }
+            if (near == 0)
+            {
+                _worldGraceUntil = -1;
+                return false;
+            }
+            Boolean open = _open.TryGetValue(near, out OpenBattle o) && o.Field == WorldMapField && o.State == (Byte)LateRefusal.Joinable && !_asked.Contains($"{near}/{o.Seq}") && LateJoin;
+            if (!open)
+            {
+                if (_worldGraceUntil < 0)
+                    _worldGraceUntil = _now + WorldGraceMs;
+                if (_now >= _worldGraceUntil)
+                    return false; // waited long enough
+            }
+            if (_worldGraceLogged < 0 || _now - _worldGraceLogged > 5000)
+            {
+                _worldGraceLogged = _now;
+                Log.Message($"[Online] Battle entry: this PC's world map encounter (battle {FF9StateSystem.World.FF9World.map.nextMapNo}) dropped: {SteamNative.Tag(near)} is in a battle {distance:0.0} away, {(open ? "which this PC joins instead" : $"and should be back soon (encounters wait {Math.Max(0, (_worldGraceUntil - _now) / 1000):0} s more at most)")}");
+            }
+            return true;
         }
 
         /// <summary>Forget the random encounter the world map just rolled (another player's battle is coming instead).</summary>
@@ -896,6 +943,8 @@ namespace Memoria.Online.Battle
                     c.NextControlSync = now + 250;
                     BattleControl.OwnerSync(ControlMap(c), c.Participants); // mid-battle take / swap / release / follow
                 }
+                if (c.GoSent && !c.EndSent && c.Participants.Count > 0)
+                    BattleQueue.OwnerSend(c.Seq, c.Participants, SendTo, now); // the Actions window on the other PCs
                 // Taken even with nobody in the battle yet: the history is what a late joiner replays
                 if (c.GoSent && BattleSync.OwnerStream != null)
                 {
@@ -991,17 +1040,7 @@ namespace Memoria.Online.Battle
                 // No FF9StateSystem.attr test here, unlike fields: a field's jump to the world map sets its bit 8, and only
                 // the next field's init clears it, so it stays set the whole time on the world map (test 3's battle 838
                 // was declined for that after 8 s).
-                WMActor actor = ff9.w_moveActorPtr;
-                if (!OnWorldMap || engine == null)
-                    why = "elsewhere";
-                else if (actor == null || (ff9.w_movePlanePtr != null && actor == ff9.w_movePlanePtr) || World.WorldCoop.Passenger != 0)
-                    why = "elsewhere"; // flying, or riding as a passenger: no battles up there
-                else if (ui.State != UIManager.UIState.WorldHUD)
-                    why = "close the menu to join";
-                else if (!ff9.GetUserControl())
-                    why = "waiting for the scene to end";
-                else if (PersistenSingleton<SceneDirector>.Instance.IsFading)
-                    why = "waiting for the screen change";
+                why = WorldJoinBlocker();
                 return why == null;
             }
             if (engine == null || engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1)
@@ -1017,6 +1056,26 @@ namespace Memoria.Online.Battle
             return why == null;
         }
 
+        /// <summary>Null when this player can go into a world map battle now (on foot or on a chocobo, world HUD, control,
+        /// no fade), else why not ("elsewhere": not on the world map, or flying / riding as a passenger).</summary>
+        private static String WorldJoinBlocker()
+        {
+            EventEngine engine = PersistenSingleton<EventEngine>.Instance;
+            UIManager ui = PersistenSingleton<UIManager>.Instance;
+            WMActor actor = ff9.w_moveActorPtr;
+            if (!OnWorldMap || engine == null || ui == null)
+                return "elsewhere";
+            if (actor == null || (ff9.w_movePlanePtr != null && actor == ff9.w_movePlanePtr) || World.WorldCoop.Passenger != 0)
+                return "elsewhere"; // flying, or riding as a passenger: no battles up there
+            if (ui.State != UIManager.UIState.WorldHUD)
+                return "close the menu to join";
+            if (!ff9.GetUserControl())
+                return "waiting for the scene to end";
+            if (PersistenSingleton<SceneDirector>.Instance.IsFading)
+                return "waiting for the screen change";
+            return null;
+        }
+
         private Int32 JoinBattle()
         {
             Incoming inc = _incoming;
@@ -1030,7 +1089,10 @@ namespace Memoria.Online.Battle
             // As the field's (or world map's) own encounter / ENCOUNT opcode would set them; the pattern is forced
             // through btlSubMapNo. From the world map, the director then starts it as its own encounter.
             if (d.Field == WorldMapField)
+            {
                 FF9StateSystem.World.FF9World.map.nextMapNo = (Int16)d.BattleId;
+                World.WorldGhosts.NoteBattleFromWorld(_now); // the others keep seeing this player here until it's back
+            }
             else
                 FF9StateSystem.Field.FF9Field.loc.map.nextMapNo = (Int16)d.BattleId;
             FF9StateSystem.Common.FF9.btlSubMapNo = (SByte)d.Pattern;
@@ -1453,9 +1515,15 @@ namespace Memoria.Online.Battle
                 foreach (UInt64 peer in stale)
                     _open.Remove(peer);
             EventEngine engine = PersistenSingleton<EventEngine>.Instance;
-            if (_current != null || _incoming != null || engine == null || engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1)
+            if (_current != null || _incoming != null || engine == null)
                 return;
-            UInt16 field = (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
+            // A field, or the world map: there, a battle that started near this player (its owner's spot)
+            Boolean world = engine.gMode == 3 && OnWorldMap;
+            if (!world && (engine.gMode != 1 || PersistenSingleton<FF9StateSystem>.Instance.mode != 1))
+                return;
+            if (world && !WorldBattles)
+                return;
+            UInt16 field = world ? WorldMapField : (UInt16)FF9StateSystem.Common.FF9.fldMapNo;
             UInt64 owner = 0;
             OpenBattle pick = null;
             foreach (KeyValuePair<UInt64, OpenBattle> kv in _open)
@@ -1466,12 +1534,16 @@ namespace Memoria.Online.Battle
                 String key = $"{kv.Key}/{o.Seq}";
                 if (_asked.Contains(key))
                     continue;
-                if (!_noted.TryGetValue(key, out Byte last) || last != o.State)
+                Single distance = -1f;
+                Boolean near = !world || NearOnWorldMap(kv.Key, out distance, true);
+                Byte noted = (Byte)(o.State | (near ? 0 : 0x80));
+                if (!_noted.TryGetValue(key, out Byte last) || last != noted)
                 {
-                    _noted[key] = o.State;
-                    Log.Message($"[Online] Battle join: #{o.Seq} detected {SteamNative.Tag(kv.Key)}'s battle {o.BattleId} on this field ({field}, {o.Seconds} s in): {(o.State == 0 ? "joinable" : $"can't be joined: {RefusalText(o.State)}")}");
+                    _noted[key] = noted;
+                    String where = world ? $"on the world map, {(distance >= 0f ? $"{distance:0.0} away" : "distance unknown")}" : $"on this field ({field}";
+                    Log.Message($"[Online] Battle join: #{o.Seq} detected {SteamNative.Tag(kv.Key)}'s battle {o.BattleId} {where}{(world ? " (" : ", ")}{o.Seconds} s in): {(o.State != 0 ? $"can't be joined: {RefusalText(o.State)}" : near ? "joinable" : $"too far to join (over {WorldBattleRange:0.0})")}");
                 }
-                if (o.State != (Byte)LateRefusal.Joinable)
+                if (o.State != (Byte)LateRefusal.Joinable || !near)
                     continue;
                 if (pick == null || kv.Key == _lobby.OwnerId) // two battles here: the host's first
                 {
@@ -1481,8 +1553,8 @@ namespace Memoria.Online.Battle
             }
             if (pick == null || !LateJoin || Memoria.Online.Session.SceneSync.Active)
                 return;
-            if (LocalBusy() != Busy.Control)
-                return; // after the arrival fade and the field's opening scripts, with no menu open
+            if (world ? WorldJoinBlocker() != null : LocalBusy() != Busy.Control)
+                return; // after the arrival fade and the field's opening scripts (the world map: walking, its HUD up), with no menu open
             _asked.Add($"{owner}/{pick.Seq}");
             _incoming = new Incoming { Owner = owner, Seq = pick.Seq, Field = field, BattleId = pick.BattleId, PendingAt = now, Late = true };
             SendTo(owner, BattleEntryMessages.Short(BattleEntryMessages.JoinAsk, pick.Seq));

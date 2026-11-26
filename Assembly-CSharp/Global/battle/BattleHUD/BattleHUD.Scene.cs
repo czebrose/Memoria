@@ -619,7 +619,7 @@ public partial class BattleHUD : UIScene
         CharacterCommand command = CharacterCommands.Commands[_currentCommandId];
         if (CommandIsMonsterTransformCommand(CurrentPlayerIndex, _currentCommandId, out _))
             return GetMonsterTransformAbilityState(command.ListEntry[subMenuIndex]);
-        BattleAbilityId abilId = command.GetAbilityId(subMenuIndex);
+        BattleAbilityId abilId = command.GetAbilityId(AbilityEntryIndex(CurrentPlayerIndex, _currentCommandId, subMenuIndex)); // the player's order (AbilityOrder)
         if (abilId == BattleAbilityId.Void)
             return AbilityStatus.None;
         return GetAbilityState(ff9abil.GetAbilityIdFromActiveAbility(abilId));

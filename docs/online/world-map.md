@@ -148,8 +148,30 @@ world map where it stood.
 **Music.** At the trigger, the world map's theme is playing, so the Start carries no music. Go carries the battle's,
 as for random encounters on fields.
 
+**Coming back (v0.1.6).** In v0.1.4-v0.1.5 tests, a player in a world map battle's result screens was gone from the
+world map for the others: a new encounter right after didn't take them, and the airship could leave without them.
+- **They stay visible.** When a world map battle takes a player (`OnWorldFlow`: their own, or another player's they
+  join), their PC keeps the spot they left from (`WorldGhosts.NoteBattleFromWorld`). Until they're back, it sends
+  that as their world state, mode **`Battle` (5)**. The others draw them standing there, with the model's standing
+  animation if it was seen. `WorldCoop.TryGetPlayer` gives the mod mode 5, and `WorldCoop.InWorldBattle` is true on
+  their own PC meanwhile.
+- **A battle there can be joined late.** `UpdateLateJoin` also asks from the world map, for a world map battle
+  (BattleOpen's field `0xFFFE`) whose owner is within 16 units. The owner's spot is its mode-5 state. The joiner must
+  be able to join now: walking or on a chocobo, world HUD, control, no fade (`WorldJoinBlocker`, the same rule as a
+  participant's). Then it's the field late join: Start, Ready, Go and the stream so far, catch-up, and its character
+  joins the fight.
+- **A random encounter waits for them.** When this PC rolls a world map random encounter while a player within 16
+  units is in mode 5, the encounter is dropped (`WaitForNearWorldBattle`, as for two encounters at once):
+  - if that player's battle is open, this PC joins it instead;
+  - otherwise encounters wait for them to come back, 20 s at most (`WorldGraceMs`).
+
+  Log: `this PC's world map encounter (battle B) dropped: #tag is in a battle D away, which this PC joins instead` /
+  `...and should be back soon`.
+- **The airship** is the mod's: its pick-up runs on the passenger's PC when it sees the pilot board, and that PC
+  wasn't on the world map then. The hand-off for the mod suggests picking up a player who comes back after the ship
+  was boarded near them.
+
 **Not covered:**
-- late join into a world map battle (`UpdateLateJoin` only asks from a field);
 - a world map battle's participants aren't held in place while it starts (fields hold them). They can walk a step or
   two, which changes nothing, since their spot is saved when they leave.
 

@@ -37,8 +37,22 @@ before the host can start. Then:
 
 The host's window also lists the party with who picked what. When the host starts, the guests' windows say
 "receiving the host's game" and everyone goes into the game. The window opens by itself when you enter a lobby some
-other way (a Steam invite, Ctrl+Shift+H / J). A lobby whose game has already started says so: joining a game in
-progress isn't possible yet.
+other way (a Steam invite, Ctrl+Shift+H / J).
+
+**Joining a game in progress** (v0.1.6, `Session/SessionLobby.Join.cs`). A player who enters the lobby after the host
+pressed Start sees the party as it is now, with who plays whom (the host keeps it in the lobby data, "liveparty").
+- Choose a free character to pick it, or none to watch. Choose it again to give it back.
+- **Join the game** asks the host for its game. **Cancel joining** takes the request back.
+- The host answers as soon as its game can be captured whole: on the field with control, or on the world map, with
+  no screen change, battle, shared cutscene or menu. Until then the window says what the host is in.
+- The host gives the joiner its pick if that character is in the party and nobody plays it; otherwise the joiner
+  watches, and can take a free character in the menu (Online).
+- The joiner gets the host's game as it is now, as a resync does, and starts at the host's spot. From then on it's a
+  player like the others.
+
+Log: `[Online] Session: #tag joins the game in progress and plays <name> (character C); the host's game sent from
+field F (N bytes)` on the host; `asked to join the game in progress`, then `joined the game in progress; you play ...`
+on the joiner.
 
 ## In game: the Online entry
 
@@ -108,6 +122,19 @@ How it works: the battle's owner checks the session's control state four times a
 (`BattleControl.OwnerSync`), moves units whose controller changed, and sends every participant the new map
 (`MsgControlUpdate`, 40). The next TurnReady for that unit goes to its new PC, which opens its menu as usual; a
 TurnReady that arrives before the map is kept until it does.
+
+## In battle: the Actions window
+
+In an online session, a small **ACTIONS** window at the top right of the battle screen lists the party's commands in
+the order they'll run (v0.1.6, `Battle/BattleQueue.cs`, `Menu/BattleQueueHud.cs`):
+- **Now** is the one running;
+- **1.**, **2.**... are the ones waiting their turn;
+- **... (sending)** is a command this PC chose that the battle's owner hasn't queued yet.
+
+It shows only while something is in it, at most six lines ("+N more"). Enemy commands and system ones (an escape, a
+trance) aren't listed. The PC that runs the battle reads its own queue. A shared battle's owner also sends it to the
+other players whenever it changes (`MsgQueue`, 38), since their battles only run each command when the owner's
+stream reaches it.
 
 ## Notices on the field
 

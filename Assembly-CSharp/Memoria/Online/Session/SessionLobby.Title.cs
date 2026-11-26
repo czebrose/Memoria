@@ -48,7 +48,8 @@ namespace Memoria.Online.Session
         /// <summary>The lobby member a party character goes to (0: the host's game, none picked it).</summary>
         public UInt64 PickedBy(Int32 character)
         {
-            if (Party.Count > 0 && Party[0].CharacterId == character)
+            Int32 host = _startedBeforeJoin ? (_hostPlays >= 0 ? _hostPlays : HostCharacter) : (Party.Count > 0 ? Party[0].CharacterId : -1); // a game in progress: who the host plays now
+            if (character == host)
                 return _lobby.OwnerId;
             return Assignments.TryGetValue(character, out UInt64 member) ? member : 0;
         }
